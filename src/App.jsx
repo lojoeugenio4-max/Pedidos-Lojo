@@ -5,10 +5,7 @@ import { departments } from "./products";
 const WHATSAPP_NUMBER = "34670716744";
 
 const normalize = (text) =>
-  text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+  text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
 const matchesSearch = (product, search) => {
   const p = normalize(product);
@@ -34,7 +31,8 @@ function ProductPhoto({ name, onClick }) {
   if (error) {
     return (
       <div style={styles.photoBox}>
-        <ImageOff size={22} />
+        <ImageOff size={28} />
+        <span>Sin foto</span>
       </div>
     );
   }
@@ -62,9 +60,7 @@ export default function App() {
       .map((department) => ({
         ...department,
         products: clean
-          ? department.products.filter((product) =>
-              matchesSearch(product, clean)
-            )
+          ? department.products.filter((product) => matchesSearch(product, clean))
           : department.products,
       }))
       .filter((department) => department.products.length > 0);
@@ -72,7 +68,6 @@ export default function App() {
 
   const update = (id, field, value) => {
     const clean = value.replace(/[^0-9]/g, "");
-
     setQty((current) => ({
       ...current,
       [id]: {
@@ -83,20 +78,20 @@ export default function App() {
   };
 
   const send = () => {
-    const lines = [];
+    const lines = ["Nuevo pedido", ""];
 
     Object.entries(qty).forEach(([id, value]) => {
       if (value?.cajas || value?.unidades) {
         const productName = id.split("-").slice(1).join("-");
         lines.push(
-          `${productName}: ${value.cajas || 0} cajas / ${
+          `- ${productName}: ${value.cajas || 0} cajas / ${
             value.unidades || 0
           } unidades`
         );
       }
     });
 
-    if (!lines.length) {
+    if (lines.length <= 2) {
       alert("Añade productos antes de enviar.");
       return;
     }
@@ -111,14 +106,21 @@ export default function App() {
 
   return (
     <div style={styles.page}>
-      <h1 style={styles.title}>Pedidos con Fotos</h1>
+      <h1 style={styles.title}>Pedido online Cash Lojo</h1>
 
-      <input
-        placeholder="Buscar artículo..."
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        style={styles.search}
-      />
+      <div style={styles.topBar}>
+        <input
+          placeholder="Buscar artículo..."
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          style={styles.search}
+        />
+
+        <button onClick={send} style={styles.whatsappButton}>
+          <Send size={20} />
+          Enviar
+        </button>
+      </div>
 
       {filtered.map((department) => (
         <section key={department.name} style={styles.section}>
@@ -128,45 +130,47 @@ export default function App() {
             const id = `${department.name}-${name}`;
 
             return (
-              <div key={id} style={styles.row}>
-                <div style={styles.topRow}>
-                  <input
-                    placeholder="Cajas"
-                    value={qty[id]?.cajas || ""}
-                    onChange={(event) =>
-                      update(id, "cajas", event.target.value)
-                    }
-                    style={styles.qtyInput}
-                    inputMode="numeric"
-                  />
+              <div key={id} style={styles.card}>
+                <div style={styles.productLayout}>
+                  <div style={styles.qtyColumn}>
+                    <input
+                      placeholder="Cajas"
+                      value={qty[id]?.cajas || ""}
+                      onChange={(event) =>
+                        update(id, "cajas", event.target.value)
+                      }
+                      style={styles.qtyInput}
+                      inputMode="numeric"
+                    />
 
-                  <input
-                    placeholder="Unid."
-                    value={qty[id]?.unidades || ""}
-                    onChange={(event) =>
-                      update(id, "unidades", event.target.value)
-                    }
-                    style={styles.qtyInput}
-                    inputMode="numeric"
-                  />
+                    <input
+                      placeholder="Unid."
+                      value={qty[id]?.unidades || ""}
+                      onChange={(event) =>
+                        update(id, "unidades", event.target.value)
+                      }
+                      style={styles.qtyInput}
+                      inputMode="numeric"
+                    />
+                  </div>
 
                   <ProductPhoto name={name} onClick={setZoomImage} />
                 </div>
 
-                <div style={styles.name}>{name}</div>
+                <div style={styles.productName}>{name}</div>
               </div>
             );
           })}
         </section>
       ))}
 
-      <button onClick={send} style={styles.button}>
-        <Send size={18} /> Enviar por WhatsApp
-      </button>
-
       {zoomImage && (
         <div style={styles.overlay} onClick={() => setZoomImage(null)}>
-          <img src={zoomImage} alt="Producto ampliado" style={styles.zoomedImage} />
+          <img
+            src={zoomImage}
+            alt="Producto ampliado"
+            style={styles.zoomedImage}
+          />
         </div>
       )}
     </div>
@@ -175,118 +179,141 @@ export default function App() {
 
 const styles = {
   page: {
-    padding: 12,
-    fontFamily: "Arial, sans-serif",
-    background: "#f1f5f9",
     minHeight: "100vh",
+    background: "#f1f5f9",
+    padding: 8,
+    fontFamily: "Arial, sans-serif",
+    boxSizing: "border-box",
   },
 
   title: {
-    margin: "0 0 12px",
-    fontSize: 24,
+    margin: "0 0 8px",
+    fontSize: 22,
+    fontWeight: "900",
+  },
+
+  topBar: {
+    position: "sticky",
+    top: 0,
+    zIndex: 20,
+    display: "grid",
+    gridTemplateColumns: "1fr 105px",
+    gap: 6,
+    background: "#f1f5f9",
+    padding: "6px 0 10px",
   },
 
   search: {
     width: "100%",
-    padding: 12,
-    marginBottom: 14,
+    height: 50,
     borderRadius: 12,
     border: "1px solid #cbd5e1",
-    fontSize: 16,
+    padding: "0 12px",
+    fontSize: 17,
+    fontWeight: "600",
     boxSizing: "border-box",
   },
 
+  whatsappButton: {
+    height: 50,
+    border: "none",
+    borderRadius: 12,
+    background: "#22c55e",
+    color: "white",
+    fontSize: 16,
+    fontWeight: "900",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+
   section: {
-    marginBottom: 18,
+    marginBottom: 14,
   },
 
   sectionTitle: {
+    margin: "8px 0",
     background: "#0f172a",
     color: "white",
     padding: "10px 12px",
     borderRadius: 12,
-    fontSize: 17,
-    margin: "14px 0 10px",
+    fontSize: 18,
+    fontWeight: "900",
   },
 
-  row: {
+  card: {
     background: "white",
-    padding: 10,
-    borderRadius: 12,
-    marginBottom: 10,
-    boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+    borderRadius: 14,
+    padding: 8,
+    marginBottom: 8,
+    boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
   },
 
-  topRow: {
+  productLayout: {
     display: "grid",
-    gridTemplateColumns: "70px 70px 1fr",
+    gridTemplateColumns: "64px 1fr",
     gap: 8,
-    alignItems: "center",
+    alignItems: "stretch",
+  },
+
+  qtyColumn: {
+    display: "grid",
+    gridTemplateRows: "1fr 1fr",
+    gap: 6,
   },
 
   qtyInput: {
     width: "100%",
-    height: 76,
-    borderRadius: 10,
+    minHeight: 54,
+    borderRadius: 12,
     border: "1px solid #cbd5e1",
     textAlign: "center",
     fontSize: 16,
-    fontWeight: "bold",
+    fontWeight: "900",
     boxSizing: "border-box",
   },
 
   productImage: {
     width: "100%",
-    height: 76,
+    height: 116,
     objectFit: "contain",
-    borderRadius: 10,
+    borderRadius: 12,
     background: "#f8fafc",
     border: "1px solid #cbd5e1",
-    cursor: "pointer",
+    boxSizing: "border-box",
   },
 
   photoBox: {
-    height: 76,
-    background: "#f1f5f9",
-    borderRadius: 10,
-    border: "1px dashed #cbd5e1",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#64748b",
-  },
-
-  name: {
-    marginTop: 8,
-    fontWeight: "bold",
-    fontSize: 14,
-    lineHeight: 1.3,
-  },
-
-  button: {
-    width: "100%",
-    padding: 15,
-    background: "#22c55e",
-    color: "white",
+    height: 116,
     borderRadius: 12,
-    border: "none",
+    background: "#f8fafc",
+    border: "1px dashed #cbd5e1",
+    color: "#64748b",
     fontSize: 16,
-    fontWeight: "bold",
-    marginTop: 12,
+    fontWeight: "800",
     display: "flex",
+    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: 4,
+  },
+
+  productName: {
+    marginTop: 7,
+    fontSize: 17,
+    fontWeight: "900",
+    lineHeight: 1.25,
   },
 
   overlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(0,0,0,0.88)",
+    background: "rgba(0,0,0,0.9)",
+    zIndex: 9999,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 9999,
     padding: 12,
   },
 
@@ -294,7 +321,7 @@ const styles = {
     maxWidth: "96%",
     maxHeight: "92%",
     objectFit: "contain",
-    borderRadius: 14,
     background: "white",
+    borderRadius: 14,
   },
 };
