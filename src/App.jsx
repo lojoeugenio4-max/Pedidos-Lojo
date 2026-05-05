@@ -1143,79 +1143,49 @@ const hiddenProductsRaw = [
   "ZUMO JUVER PIÑA 850ML",
 ];
 
+
 /* =========================
-   📸 IMÁGENES AUTOMÁTICAS
+   📸 IMÁGENES AUTOMÁTICAS (FIX ORDEN)
 ========================= */
 
-const productImages = Object.values(
-  import.meta.glob("./assets/productos/*.{jpg,jpeg,png,webp}", {
-    eager: true,
-    query: "?url",
-    import: "default",
+const imageModules = import.meta.glob("./assets/productos/*.{jpg,jpeg,png,webp}", {
+  eager: true,
+  query: "?url",
+  import: "default",
+});
+
+const productImages = Object.entries(imageModules)
+  .sort(([a], [b]) => {
+    const numA = Number(a.match(/(\d+)/)?.[1] || 0);
+    const numB = Number(b.match(/(\d+)/)?.[1] || 0);
+    return numA - numB;
   })
-).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  .map(([, src]) => src);
 
 
 /* =========================
    🔧 FUNCIONES
 ========================= */
 
-const normalizeForCompare = (text) =>
-  text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9ñ]+/gi, "")
-    .trim();
-
 const normalizeText = (text) =>
-  text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim();
+  text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-const productMatchesSearch = (product, searchText) => {
-  const normalizedProduct = normalizeText(product);
-  const searchWords = normalizeText(searchText)
-    .split(/[^a-z0-9ñ]+/i)
-    .filter(Boolean);
-
-  return searchWords.every((word) =>
-    normalizedProduct.includes(word)
-  );
-};
+const productMatchesSearch = (product, search) =>
+  normalizeText(product).includes(normalizeText(search));
 
 
 /* =========================
    🧠 PRODUCTOS
 ========================= */
 
-const visibleProducts = departments.flatMap((department) =>
-  department.products.map((name) => ({
-    id: `${department.name}-${name}`,
+const visibleProducts = departments.flatMap((d) =>
+  d.products.map((name) => ({
+    id: `${d.name}-${name}`,
     name,
-    department: department.name,
-    hidden: false,
   }))
 );
 
-const visibleProductNamesForCompare = new Set(
-  visibleProducts.map((p) => normalizeForCompare(p.name))
-);
-
-const hiddenProductsUnique = [...new Set(hiddenProductsRaw)]
-  .filter((name) => !visibleProductNamesForCompare.has(normalizeForCompare(name)))
-  .sort((a, b) => a.localeCompare(b, "es"));
-
-const hiddenProductsFormatted = hiddenProductsUnique.map((name) => ({
-  id: `ARTÍCULOS BUSCADOS-${name}`,
-  name,
-  department: "ARTÍCULOS BUSCADOS",
-  hidden: true,
-}));
-
-const products = [...visibleProducts, ...hiddenProductsFormatted];
+const products = visibleProducts;
 
 
 /* =========================
@@ -1223,98 +1193,44 @@ const products = [...visibleProducts, ...hiddenProductsFormatted];
 ========================= */
 
 export default function App() {
-  useEffect(() => {
-    let viewport = document.querySelector("meta[name=viewport]");
-    if (!viewport) {
-      viewport = document.createElement("meta");
-      viewport.setAttribute("name", "viewport");
-      document.head.appendChild(viewport);
-    }
-    viewport.setAttribute(
-      "content",
-      "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
-    );
-  }, []);
-
   const [quantities, setQuantities] = useState({});
-  const [customerName, setCustomerName] = useState("");
-  const [notes, setNotes] = useState("");
   const [search, setSearch] = useState("");
   const [selectedImage, setSelectedImage] = useState(null);
 
-
   const filteredDepartments = useMemo(() => {
-    const cleanSearch = search.trim();
-
-    const visibleDepartments = departments
-      .map((d) => ({
-        ...d,
-        products: cleanSearch
-          ? d.products.filter((p) =>
-              productMatchesSearch(p, cleanSearch)
-            )
-          : d.products,
-      }))
-      .filter((d) => d.products.length > 0);
-
-    if (!cleanSearch) return visibleDepartments;
-
-    const hiddenMatches = hiddenProductsUnique.filter((p) =>
-      productMatchesSearch(p, cleanSearch)
-    );
-
-    if (hiddenMatches.length > 0) {
-      visibleDepartments.push({
-        name: "ARTÍCULOS BUSCADOS",
-        products: hiddenMatches,
-      });
-    }
-
-    return visibleDepartments;
+    return departments.map((d) => ({
+      ...d,
+      products: d.products.filter((p) =>
+        productMatchesSearch(p, search)
+      ),
+    }));
   }, [search]);
-
-
-  const selectedItems = useMemo(() => {
-    return products
-      .map((product) => ({
-        ...product,
-        cajas: Number(quantities[product.id]?.cajas || 0),
-        unidades: Number(quantities[product.id]?.unidades || 0),
-      }))
-      .filter((p) => p.cajas > 0 || p.unidades > 0);
-  }, [quantities]);
-
 
   const updateQuantity = (id, field, value) => {
     const clean = value.replace(/[^0-9]/g, "");
-    setQuantities((cur) => ({
-      ...cur,
-      [id]: { ...cur[id], [field]: clean },
+    setQuantities((q) => ({
+      ...q,
+      [id]: { ...q[id], [field]: clean },
     }));
   };
 
-
   const sendOrder = () => {
-    if (selectedItems.length === 0) {
-      alert("Introduce al menos una cantidad antes de enviar.");
-      return;
-    }
+    const items = Object.entries(quantities)
+      .filter(([_, v]) => v?.cajas || v?.unidades)
+      .map(
+        ([id, v]) =>
+          `${id.split("-")[1]} - ${v.cajas || 0} cajas / ${
+            v.unidades || 0
+          } unidades`
+      )
+      .join("\n");
 
-    const msg = encodeURIComponent(
-      selectedItems
-        .map(
-          (i) =>
-            `${i.name} - ${i.cajas} cajas / ${i.unidades} unid`
-        )
-        .join("\n")
-    );
+    if (!items) return alert("Añade cantidades");
 
     window.open(
-      `https://wa.me/${WHATSAPP_NUMBER}?text=${msg}`,
-      "_blank"
+      `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(items)}`
     );
   };
-
 
   return (
     <div style={styles.page}>
@@ -1322,37 +1238,34 @@ export default function App() {
 
         {/* HEADER */}
         <div style={styles.header}>
-          <ShoppingCart />
-          <h1>Pedido online Cash Lojo</h1>
+          <ShoppingCart size={24} />
+          <h2>Pedido Cash Lojo</h2>
         </div>
 
-        {/* BUSCADOR */}
-        <div style={styles.searchRow}>
+        {/* BUSCADOR + WHATSAPP */}
+        <div style={styles.topBar}>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar..."
             style={styles.input}
           />
-          <button onClick={sendOrder} style={styles.whatsappBtn}>
-            <Send /> WhatsApp
+          <button style={styles.whatsapp} onClick={sendOrder}>
+            <Send size={16} /> WhatsApp
           </button>
         </div>
 
-
-        {/* PRODUCTOS */}
+        {/* LISTA */}
         {filteredDepartments.map((dep) => (
           <div key={dep.name}>
-            <h2 style={styles.section}>{dep.name}</h2>
+            <div style={styles.section}>{dep.name}</div>
 
             {dep.products.map((name) => {
               const id = `${dep.name}-${name}`;
-
               const index = products.findIndex(
                 (p) => p.name === name
               );
-
-              const imageSrc = productImages[index];
+              const img = productImages[index];
 
               return (
                 <div key={id} style={styles.row}>
@@ -1360,37 +1273,33 @@ export default function App() {
                   {/* IZQUIERDA */}
                   <div style={styles.left}>
 
-                    {/* FOTO */}
                     <div style={styles.imageBox}>
-                      {imageSrc ? (
+                      {img ? (
                         <img
-                          src={imageSrc}
+                          src={img}
                           style={styles.image}
-                          onClick={() =>
-                            setSelectedImage(imageSrc)
-                          }
+                          onClick={() => setSelectedImage(img)}
                         />
                       ) : (
                         "Sin foto"
                       )}
                     </div>
 
-                    {/* INPUTS */}
                     <div style={styles.qtyRow}>
                       <input
+                        placeholder="Cajas"
                         value={quantities[id]?.cajas || ""}
                         onChange={(e) =>
                           updateQuantity(id, "cajas", e.target.value)
                         }
-                        placeholder="Cajas"
                         style={styles.qty}
                       />
                       <input
+                        placeholder="Unid"
                         value={quantities[id]?.unidades || ""}
                         onChange={(e) =>
                           updateQuantity(id, "unidades", e.target.value)
                         }
-                        placeholder="Unid"
                         style={styles.qty}
                       />
                     </div>
@@ -1420,7 +1329,7 @@ export default function App() {
 
 
 /* =========================
-   🎨 ESTILOS
+   🎨 ESTILOS RESPONSIVE
 ========================= */
 
 const styles = {
@@ -1429,7 +1338,7 @@ const styles = {
 
   header: { display: "flex", gap: 10, alignItems: "center" },
 
-  searchRow: {
+  topBar: {
     display: "grid",
     gridTemplateColumns: "1fr 120px",
     gap: 8,
@@ -1438,20 +1347,26 @@ const styles = {
 
   input: { padding: 10 },
 
-  whatsappBtn: {
-    background: "green",
+  whatsapp: {
+    background: "#22c55e",
     color: "white",
     border: "none",
+    borderRadius: 8,
   },
 
-  section: { background: "black", color: "white", padding: 6 },
+  section: {
+    background: "#000",
+    color: "#fff",
+    padding: 6,
+    marginTop: 10,
+  },
 
   row: {
     display: "grid",
     gridTemplateColumns: "minmax(110px,35vw) 1fr",
     gap: 10,
     padding: 8,
-    borderBottom: "1px solid #ccc",
+    borderBottom: "1px solid #ddd",
   },
 
   left: { display: "flex", flexDirection: "column", gap: 6 },
@@ -1459,6 +1374,7 @@ const styles = {
   imageBox: {
     height: "clamp(100px,30vw,170px)",
     border: "1px solid #ccc",
+    borderRadius: 8,
   },
 
   image: {
@@ -1473,9 +1389,17 @@ const styles = {
     gap: 5,
   },
 
-  qty: { padding: 6, textAlign: "center" },
+  qty: {
+    padding: 6,
+    textAlign: "center",
+    borderRadius: 6,
+    border: "1px solid #ccc",
+  },
 
-  name: { fontWeight: "bold" },
+  name: {
+    fontWeight: "bold",
+    fontSize: 14,
+  },
 
   modal: {
     position: "fixed",
@@ -1486,5 +1410,8 @@ const styles = {
     justifyContent: "center",
   },
 
-  modalImg: { maxWidth: "90%", maxHeight: "90%" },
+  modalImg: {
+    maxWidth: "90%",
+    maxHeight: "90%",
+  },
 };
