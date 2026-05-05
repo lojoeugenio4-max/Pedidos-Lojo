@@ -1141,7 +1141,6 @@ const hiddenProductsRaw = [
   "ZUMO D SIMON PIÑA 200 P6 (3574)",
   "ZUMO JUVER PIÑA 850ML",
 ];
-
 const slugifyImageName = (text) =>
   text
     .toLowerCase()
@@ -1226,6 +1225,7 @@ export default function App() {
   const [customerName, setCustomerName] = useState("");
   const [notes, setNotes] = useState("");
   const [search, setSearch] = useState("");
+  const [selectedImage, setSelectedImage] = useState(null);
 
   const filteredDepartments = useMemo(() => {
     const cleanSearch = search.trim();
@@ -1377,15 +1377,22 @@ export default function App() {
 
             {department.products.map((productName) => {
               const productId = `${department.name}-${productName}`;
+              const imageSrc = getProductImage(productName);
 
               return (
                 <div key={productId} style={styles.row}>
                   <div style={styles.leftColumn}>
                     <div style={styles.imageBox}>
                       <img
-                        src={getProductImage(productName)}
+                        src={imageSrc}
                         alt={productName}
                         style={styles.productImage}
+                        onClick={() =>
+                          setSelectedImage({
+                            src: imageSrc,
+                            name: productName,
+                          })
+                        }
                         onError={(event) => {
                           event.currentTarget.style.display = "none";
                           event.currentTarget.parentElement.textContent = "Sin foto";
@@ -1416,11 +1423,7 @@ export default function App() {
                           enterKeyHint="done"
                           value={quantities[productId]?.unidades || ""}
                           onChange={(event) =>
-                            updateQuantity(
-                              productId,
-                              "unidades",
-                              event.target.value
-                            )
+                            updateQuantity(productId, "unidades", event.target.value)
                           }
                           onKeyDown={closeKeyboardOnEnter}
                           placeholder="0"
@@ -1460,6 +1463,26 @@ export default function App() {
           </button>
         </div>
       </div>
+
+      {selectedImage && (
+        <div style={styles.modal} onClick={() => setSelectedImage(null)}>
+          <div style={styles.modalContent}>
+            <img
+              src={selectedImage.src}
+              alt={selectedImage.name}
+              style={styles.modalImage}
+              onClick={(event) => event.stopPropagation()}
+            />
+            <p style={styles.modalTitle}>{selectedImage.name}</p>
+            <button
+              onClick={() => setSelectedImage(null)}
+              style={styles.closeButton}
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1598,6 +1621,7 @@ const styles = {
     height: "100%",
     objectFit: "cover",
     display: "block",
+    cursor: "pointer",
   },
   qtyRow: {
     display: "grid",
@@ -1687,5 +1711,42 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     gap: "8px",
+  },
+  modal: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.82)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 9999,
+    padding: "18px",
+  },
+  modalContent: {
+    maxWidth: "95vw",
+    maxHeight: "95vh",
+    textAlign: "center",
+  },
+  modalImage: {
+    maxWidth: "100%",
+    maxHeight: "75vh",
+    borderRadius: "16px",
+    background: "white",
+    objectFit: "contain",
+  },
+  modalTitle: {
+    color: "white",
+    fontSize: "16px",
+    fontWeight: "bold",
+    margin: "12px 0",
+  },
+  closeButton: {
+    border: "none",
+    borderRadius: "12px",
+    background: "white",
+    color: "#0f172a",
+    fontSize: "15px",
+    fontWeight: "bold",
+    padding: "10px 18px",
   },
 };
