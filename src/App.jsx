@@ -1,516 +1,252 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ShoppingCart, Trash2, Send, Search, ImageOff } from "lucide-react";
 import { departments, hiddenProductsRaw } from "./products";
-import { productImages } from "./productImages";
 
 const WHATSAPP_NUMBER = "34670716744";
 
 const normalizeForCompare = (text) =>
-  text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9ñ]+/gi, "").trim();
+  text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9ñ]+/gi, "")
+    .trim();
 
 const normalizeText = (text) =>
-  text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
 
 const productMatchesSearch = (product, searchText) => {
   const normalizedProduct = normalizeText(product);
-  const searchWords = normalizeText(searchText).split(/[^a-z0-9ñ]+/i).filter(Boolean);
+  const searchWords = normalizeText(searchText)
+    .split(/[^a-z0-9ñ]+/i)
+    .filter(Boolean);
+
   return searchWords.every((word) => normalizedProduct.includes(word));
 };
 
-const visibleProducts = departments.flatMap((department) =>
-  department.products.map((name) => ({
-    id: `${department.name}-${name}`,
-    name,
-    department: department.name,
-    hidden: false,
-  }))
-);
+// 🟢 GENERADOR AUTOMÁTICO DE NOMBRE DE IMAGEN
+const getImageFileName = (productName) =>
+  productName
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ñ/g, "n")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 
-const visibleProductNamesForCompare = new Set(
-  visibleProducts.map((product) => normalizeForCompare(product.name))
-);
+// 🟢 URL FINAL DE LA IMAGEN
+const getProductImageUrl = (productName) =>
+  `/images/${getImageFileName(productName)}.jpg`;
 
-const hiddenProductsUnique = [...new Set(hiddenProductsRaw)]
-  .filter((name) => !visibleProductNamesForCompare.has(normalizeForCompare(name)))
-  .sort((a, b) => a.localeCompare(b, "es"));
-
-const hiddenProductsFormatted = hiddenProductsUnique.map((name) => ({
-  id: `ARTÍCULOS BUSCADOS-${name}`,
-  name,
-  department: "ARTÍCULOS BUSCADOS",
-  hidden: true,
-}));
-
-const products = [...visibleProducts, ...hiddenProductsFormatted];
-
+// 🟢 COMPONENTE FOTO
 function ProductPhoto({ productName }) {
-  const imageUrl = productImages[productName];
+  const [error, setError] = useState(false);
+  const src = getProductImageUrl(productName);
 
-  if (!imageUrl) {
+  if (error) {
     return (
       <div style={styles.photoBox}>
-        <ImageOff size={24} />
-        <span>Foto</span>
+        <ImageOff size={20} />
       </div>
     );
   }
 
   return (
     <img
-      src={imageUrl}
+      src={src}
       alt={productName}
       style={styles.productImage}
-      loading="lazy"
+      onError={() => setError(true)}
     />
   );
 }
 
-export default function App() {
-  useEffect(() => {
-    let viewport = document.querySelector("meta[name=viewport]");
-    if (!viewport) {
-      viewport = document.createElement("meta");
-      viewport.setAttribute("name", "viewport");
-      document.head.appendChild(viewport);
-    }
-    viewport.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no");
-  }, []);
+const visibleProducts = departments.flatMap((dep) =>
+  dep.products.map((name) => ({
+    id: `${dep.name}-${name}`,
+    name,
+    department: dep.name
+  }))
+);
 
+const visibleProductNames = new Set(
+  visibleProducts.map((p) => normalizeForCompare(p.name))
+);
+
+const hiddenProducts = [...new Set(hiddenProductsRaw)]
+  .filter((p) => !visibleProductNames.has(normalizeForCompare(p)))
+  .sort((a, b) => a.localeCompare(b, "es"));
+
+const products = [
+  ...visibleProducts,
+  ...hiddenProducts.map((name) => ({
+    id: `hidden-${name}`,
+    name,
+    department: "BUSCADOS"
+  }))
+];
+
+export default function App() {
   const [quantities, setQuantities] = useState({});
-  const [customerName, setCustomerName] = useState("");
-  const [notes, setNotes] = useState("");
   const [search, setSearch] = useState("");
 
   const filteredDepartments = useMemo(() => {
-    const cleanSearch = search.trim();
+    const clean = search.trim();
 
-    const visibleDepartments = departments
-      .map((department) => ({
-        ...department,
-        products: cleanSearch
-          ? department.products.filter((product) => productMatchesSearch(product, cleanSearch))
-          : department.products,
+    const deps = departments
+      .map((d) => ({
+        ...d,
+        products: clean
+          ? d.products.filter((p) => productMatchesSearch(p, clean))
+          : d.products
       }))
-      .filter((department) => department.products.length > 0);
+      .filter((d) => d.products.length > 0);
 
-    if (!cleanSearch) return visibleDepartments;
+    if (clean) {
+      const hiddenMatches = hiddenProducts.filter((p) =>
+        productMatchesSearch(p, clean)
+      );
 
-    const hiddenMatches = hiddenProductsUnique.filter((product) =>
-      productMatchesSearch(product, cleanSearch)
-    );
-
-    if (hiddenMatches.length > 0) {
-      visibleDepartments.push({
-        name: "ARTÍCULOS BUSCADOS",
-        products: hiddenMatches,
-      });
+      if (hiddenMatches.length) {
+        deps.push({ name: "BUSCADOS", products: hiddenMatches });
+      }
     }
 
-    return visibleDepartments;
+    return deps;
   }, [search]);
 
-  const selectedItems = useMemo(() => {
-    return products
-      .map((product) => ({
-        ...product,
-        cajas: Number(quantities[product.id]?.cajas || 0),
-        unidades: Number(quantities[product.id]?.unidades || 0),
-      }))
-      .filter((product) => product.cajas > 0 || product.unidades > 0);
-  }, [quantities]);
-
-  const updateQuantity = (productId, field, value) => {
-    const cleanValue = value.replace(/[^0-9]/g, "");
-    setQuantities((current) => ({
-      ...current,
-      [productId]: {
-        ...current[productId],
-        [field]: cleanValue,
-      },
+  const updateQty = (id, field, val) => {
+    const clean = val.replace(/[^0-9]/g, "");
+    setQuantities((q) => ({
+      ...q,
+      [id]: { ...q[id], [field]: clean }
     }));
   };
 
-  const closeKeyboardOnEnter = (event) => {
-    if (event.key === "Enter") event.currentTarget.blur();
-  };
-
-  const clearOrder = () => {
-    setQuantities({});
-    setCustomerName("");
-    setNotes("");
-    setSearch("");
-  };
-
-  const createWhatsAppMessage = () => {
-    const lines = ["Nuevo pedido", ""];
-
-    if (customerName.trim()) {
-      lines.push(`Cliente: ${customerName.trim()}`, "");
-    }
-
-    selectedItems.forEach((item) => {
-      const parts = [];
-      if (item.cajas > 0) parts.push(`*${item.cajas} cajas*`);
-      if (item.unidades > 0) parts.push(`*${item.unidades} unidades*`);
-      lines.push(`- ${item.name}: ${parts.join(" / ")}`, "");
-    });
-
-    if (notes.trim()) {
-      lines.push(`Observaciones: ${notes.trim()}`, "");
-    }
-
-    lines.push("Enviado desde el formulario de pedidos");
-    return encodeURIComponent(lines.join("\n"));
-  };
+  const selected = products.filter((p) => {
+    const q = quantities[p.id] || {};
+    return Number(q.cajas || 0) > 0 || Number(q.unidades || 0) > 0;
+  });
 
   const sendOrder = () => {
-    if (selectedItems.length === 0) {
-      alert("Introduce al menos una cantidad antes de enviar el pedido.");
-      return;
-    }
+    if (!selected.length) return alert("Añade productos");
 
-    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${createWhatsAppMessage()}`, "_blank");
-    clearOrder();
+    const text = selected
+      .map((p) => {
+        const q = quantities[p.id];
+        return `${p.name} → ${q.cajas || 0} cajas / ${q.unidades || 0} uds`;
+      })
+      .join("\n");
+
+    window.open(
+      `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`,
+      "_blank"
+    );
   };
 
   return (
     <div style={styles.page}>
-      <div style={styles.container}>
-        <header style={styles.header}>
-          <div style={styles.iconBox}>
-            <ShoppingCart size={28} />
-          </div>
-          <div>
-            <h1 style={styles.title}>Pedido online Cash Lojo</h1>
-            <p style={styles.subtitle}>
-              Escribe cantidades en Unidades o Cajas y envía el pedido por WhatsApp.
-            </p>
-          </div>
-        </header>
+      <h1>Pedidos con Fotos</h1>
 
-        <div style={styles.cardSticky}>
-          <label style={styles.label}>Nombre o referencia del cliente</label>
-          <input
-            value={customerName}
-            onChange={(event) => setCustomerName(event.target.value)}
-            placeholder="Opcional"
-            style={styles.input}
-          />
+      <input
+        placeholder="Buscar..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        style={styles.search}
+      />
 
-          <label style={styles.label}>Buscar artículo</label>
-          <div style={styles.searchAndSendRow}>
-            <div style={styles.searchBoxCompact}>
-              <Search size={20} style={styles.searchIcon} />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar..."
-                style={styles.searchInput}
-              />
-            </div>
+      {filteredDepartments.map((dep) => (
+        <div key={dep.name}>
+          <h2>{dep.name}</h2>
 
-            <button onClick={sendOrder} style={styles.stickyWhatsappButton}>
-              <Send size={18} /> WhatsApp
-            </button>
-          </div>
-        </div>
+          {dep.products.map((name) => {
+            const id = `${dep.name}-${name}`;
+            return (
+              <div key={id} style={styles.row}>
+                <ProductPhoto productName={name} />
 
-        {filteredDepartments.map((department) => (
-          <section key={department.name} style={styles.section}>
-            <div style={styles.sectionHeader}>
-              <h2 style={styles.sectionTitle}>{department.name}</h2>
-            </div>
-
-            <div style={styles.gridHeader}>
-              <div>Cajas</div>
-              <div>Unid.</div>
-              <div>Foto</div>
-            </div>
-
-            {department.products.map((productName) => {
-              const productId = `${department.name}-${productName}`;
-
-              return (
-                <div key={productId} style={styles.productCard}>
-                  <div style={styles.productTopRow}>
-                    <input
-                      inputMode="numeric"
-                      enterKeyHint="done"
-                      value={quantities[productId]?.cajas || ""}
-                      onChange={(event) =>
-                        updateQuantity(productId, "cajas", event.target.value)
-                      }
-                      onKeyDown={closeKeyboardOnEnter}
-                      placeholder="0"
-                      style={styles.qtyInput}
-                    />
-
-                    <input
-                      inputMode="numeric"
-                      enterKeyHint="done"
-                      value={quantities[productId]?.unidades || ""}
-                      onChange={(event) =>
-                        updateQuantity(productId, "unidades", event.target.value)
-                      }
-                      onKeyDown={closeKeyboardOnEnter}
-                      placeholder="0"
-                      style={styles.qtyInput}
-                    />
-
-                    <ProductPhoto productName={productName} />
-                  </div>
-
-                  <p style={styles.productNameUnder}>{productName}</p>
+                <div style={styles.qtyRow}>
+                  <input
+                    placeholder="Cajas"
+                    value={quantities[id]?.cajas || ""}
+                    onChange={(e) =>
+                      updateQty(id, "cajas", e.target.value)
+                    }
+                  />
+                  <input
+                    placeholder="Unid"
+                    value={quantities[id]?.unidades || ""}
+                    onChange={(e) =>
+                      updateQty(id, "unidades", e.target.value)
+                    }
+                  />
                 </div>
-              );
-            })}
-          </section>
-        ))}
 
-        <div style={styles.card}>
-          <label style={styles.label}>Observaciones</label>
-          <textarea
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            placeholder="Opcional"
-            rows={3}
-            style={styles.textarea}
-          />
-
-          <div style={styles.summary}>
-            <strong>Resumen:</strong> {selectedItems.length} artículos con cantidad.
-          </div>
-
-          <button onClick={sendOrder} style={styles.primaryButton}>
-            <Send size={20} /> Enviar por WhatsApp
-          </button>
-
-          <button onClick={clearOrder} style={styles.secondaryButton}>
-            <Trash2 size={20} /> Borrar pedido
-          </button>
+                <div style={styles.name}>{name}</div>
+              </div>
+            );
+          })}
         </div>
-      </div>
+      ))}
+
+      <button onClick={sendOrder} style={styles.button}>
+        Enviar pedido
+      </button>
     </div>
   );
 }
 
 const styles = {
-  page: {
-    minHeight: "100vh",
-    background: "#f1f5f9",
-    padding: "16px",
-    color: "#0f172a",
-    fontFamily: "Arial, sans-serif",
-  },
-  container: {
-    maxWidth: "1100px",
-    margin: "0 auto",
-  },
-  header: {
-    background: "white",
-    padding: "20px",
-    borderRadius: "18px",
-    display: "flex",
-    gap: "14px",
-    alignItems: "center",
-    marginBottom: "16px",
-    boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
-  },
-  iconBox: {
-    background: "#0f172a",
-    color: "white",
-    borderRadius: "16px",
-    padding: "12px",
-    display: "flex",
-  },
-  title: { margin: 0, fontSize: "24px" },
-  subtitle: { margin: "6px 0 0", color: "#475569", fontSize: "14px" },
-  cardSticky: {
-    position: "sticky",
-    top: "8px",
-    zIndex: 10,
-    background: "white",
-    padding: "16px",
-    borderRadius: "18px",
-    marginBottom: "18px",
-    boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
-  },
-  card: {
-    background: "white",
-    padding: "18px",
-    borderRadius: "18px",
-    marginTop: "18px",
-    boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
-  },
-  label: {
-    display: "block",
-    fontWeight: "bold",
-    fontSize: "13px",
-    marginBottom: "6px",
-    marginTop: "8px",
-  },
-  input: {
+  page: { padding: 10, fontFamily: "Arial" },
+
+  search: {
     width: "100%",
-    padding: "11px",
-    borderRadius: "12px",
-    border: "1px solid #cbd5e1",
-    fontSize: "16px",
-    boxSizing: "border-box",
+    padding: 10,
+    marginBottom: 10
   },
-  searchAndSendRow: {
-    display: "grid",
-    gridTemplateColumns: "1fr 118px",
-    gap: "8px",
-    alignItems: "center",
+
+  row: {
+    border: "1px solid #ddd",
+    padding: 10,
+    marginBottom: 10,
+    borderRadius: 10
   },
-  searchBoxCompact: { position: "relative", minWidth: 0 },
-  searchIcon: {
-    position: "absolute",
-    left: "12px",
-    top: "11px",
-    color: "#64748b",
-  },
-  searchInput: {
-    width: "100%",
-    padding: "11px 12px 11px 40px",
-    borderRadius: "12px",
-    border: "1px solid #cbd5e1",
-    fontSize: "16px",
-    boxSizing: "border-box",
-  },
-  section: {
-    background: "white",
-    borderRadius: "18px",
-    overflow: "hidden",
-    marginBottom: "18px",
-    boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
-  },
-  sectionHeader: {
-    background: "#0f172a",
-    color: "white",
-    padding: "12px 16px",
-  },
-  sectionTitle: {
-    margin: 0,
-    fontSize: "18px",
-    textTransform: "uppercase",
-  },
-  gridHeader: {
-    display: "grid",
-    gridTemplateColumns: "80px 80px 1fr",
-    gap: "8px",
-    background: "#e2e8f0",
-    padding: "10px",
-    fontSize: "12px",
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-  productCard: {
-    padding: "10px",
-    borderTop: "1px solid #e2e8f0",
-  },
-  productTopRow: {
-    display: "grid",
-    gridTemplateColumns: "80px 80px 1fr",
-    gap: "8px",
-    alignItems: "center",
-  },
-  qtyInput: {
-    width: "100%",
-    height: "74px",
-    padding: "8px 4px",
-    borderRadius: "14px",
-    border: "1px solid #cbd5e1",
-    textAlign: "center",
-    fontWeight: "bold",
-    fontSize: "22px",
-    boxSizing: "border-box",
-  },
-  photoBox: {
-    height: "74px",
-    borderRadius: "14px",
-    background: "#f8fafc",
-    border: "1px dashed #cbd5e1",
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#64748b",
-    fontWeight: "bold",
-    fontSize: "13px",
-  },
+
   productImage: {
     width: "100%",
-    height: "74px",
+    height: 120,
     objectFit: "cover",
-    borderRadius: "14px",
-    border: "1px solid #cbd5e1",
-    background: "#f8fafc",
+    borderRadius: 10
   },
-  productNameUnder: {
-    margin: "8px 0 0",
-    fontSize: "15px",
-    fontWeight: "700",
-    lineHeight: 1.3,
+
+  photoBox: {
+    height: 120,
+    background: "#eee",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center"
   },
-  textarea: {
+
+  qtyRow: {
+    display: "flex",
+    gap: 10,
+    marginTop: 10
+  },
+
+  name: {
+    marginTop: 10,
+    fontWeight: "bold"
+  },
+
+  button: {
     width: "100%",
-    padding: "11px",
-    borderRadius: "12px",
-    border: "1px solid #cbd5e1",
-    fontSize: "16px",
-    boxSizing: "border-box",
-  },
-  summary: {
-    background: "#e2e8f0",
-    padding: "12px",
-    borderRadius: "12px",
-    margin: "14px 0",
-    fontSize: "14px",
-  },
-  primaryButton: {
-    width: "100%",
-    height: "50px",
-    border: "none",
-    borderRadius: "12px",
-    background: "#0f172a",
+    padding: 15,
+    background: "black",
     color: "white",
-    fontSize: "16px",
-    fontWeight: "bold",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "8px",
-    marginBottom: "10px",
-  },
-  stickyWhatsappButton: {
-    width: "100%",
-    height: "44px",
-    border: "none",
-    borderRadius: "12px",
-    background: "#22c55e",
-    color: "white",
-    fontSize: "13px",
-    fontWeight: "bold",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "6px",
-    whiteSpace: "nowrap",
-  },
-  secondaryButton: {
-    width: "100%",
-    height: "50px",
-    border: "1px solid #cbd5e1",
-    borderRadius: "12px",
-    background: "white",
-    color: "#0f172a",
-    fontSize: "16px",
-    fontWeight: "bold",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "8px",
-  },
+    borderRadius: 10
+  }
 };
