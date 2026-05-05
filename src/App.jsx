@@ -31,7 +31,7 @@ function ProductPhoto({ name, onClick }) {
   if (error) {
     return (
       <div style={styles.photoBox}>
-        <ImageOff size={34} />
+        <ImageOff size={30} />
         <span>Sin foto</span>
       </div>
     );
@@ -133,30 +133,34 @@ export default function App() {
 
             return (
               <div key={id} style={styles.card}>
-                <ProductPhoto name={name} onClick={setZoomImage} />
+                <div style={styles.productRow}>
+                  <ProductPhoto name={name} onClick={setZoomImage} />
 
-                <div style={styles.productName}>{name}</div>
+                  <div style={styles.productInfo}>
+                    <div style={styles.productName}>{name}</div>
 
-                <div style={styles.qtyRow}>
-                  <input
-                    placeholder="Cajas"
-                    value={qty[id]?.cajas || ""}
-                    onChange={(event) =>
-                      update(id, "cajas", event.target.value)
-                    }
-                    style={styles.qtyInput}
-                    inputMode="numeric"
-                  />
+                    <div style={styles.qtyRow}>
+                      <input
+                        placeholder="Cajas"
+                        value={qty[id]?.cajas || ""}
+                        onChange={(event) =>
+                          update(id, "cajas", event.target.value)
+                        }
+                        style={styles.qtyInput}
+                        inputMode="numeric"
+                      />
 
-                  <input
-                    placeholder="Unid."
-                    value={qty[id]?.unidades || ""}
-                    onChange={(event) =>
-                      update(id, "unidades", event.target.value)
-                    }
-                    style={styles.qtyInput}
-                    inputMode="numeric"
-                  />
+                      <input
+                        placeholder="Unid."
+                        value={qty[id]?.unidades || ""}
+                        onChange={(event) =>
+                          update(id, "unidades", event.target.value)
+                        }
+                        style={styles.qtyInput}
+                        inputMode="numeric"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             );
@@ -188,7 +192,7 @@ const styles = {
 
   title: {
     margin: "0 0 8px",
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "900",
   },
 
@@ -197,7 +201,7 @@ const styles = {
     top: 0,
     zIndex: 20,
     display: "grid",
-    gridTemplateColumns: "1fr 105px",
+    gridTemplateColumns: "1fr 108px",
     gap: 6,
     background: "#f1f5f9",
     padding: "6px 0 10px",
@@ -205,17 +209,17 @@ const styles = {
 
   search: {
     width: "100%",
-    height: 52,
+    height: 56,
     borderRadius: 12,
     border: "1px solid #cbd5e1",
     padding: "0 12px",
-    fontSize: 17,
-    fontWeight: "600",
+    fontSize: 18,
+    fontWeight: "700",
     boxSizing: "border-box",
   },
 
   whatsappButton: {
-    height: 52,
+    height: 56,
     border: "none",
     borderRadius: 12,
     background: "#22c55e",
@@ -238,7 +242,7 @@ const styles = {
     color: "white",
     padding: "10px 12px",
     borderRadius: 12,
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: "900",
   },
 
@@ -246,13 +250,20 @@ const styles = {
     background: "white",
     borderRadius: 14,
     padding: 8,
-    marginBottom: 10,
+    marginBottom: 9,
     boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
   },
 
+  productRow: {
+    display: "grid",
+    gridTemplateColumns: "112px 1fr",
+    gap: 10,
+    alignItems: "stretch",
+  },
+
   productImage: {
-    width: "100%",
-    height: 170,
+    width: "112px",
+    height: "112px",
     objectFit: "contain",
     borderRadius: 12,
     background: "#f8fafc",
@@ -262,28 +273,34 @@ const styles = {
   },
 
   photoBox: {
-    width: "100%",
-    height: 170,
+    width: "112px",
+    height: "112px",
     borderRadius: 12,
     background: "#f8fafc",
     border: "1px dashed #cbd5e1",
     color: "#64748b",
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "800",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 4,
     boxSizing: "border-box",
   },
 
+  productInfo: {
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    minWidth: 0,
+  },
+
   productName: {
-    marginTop: 8,
-    marginBottom: 8,
     fontSize: 18,
     fontWeight: "900",
     lineHeight: 1.25,
+    marginBottom: 8,
   },
 
   qtyRow: {
@@ -294,11 +311,11 @@ const styles = {
 
   qtyInput: {
     width: "100%",
-    height: 54,
+    height: 52,
     borderRadius: 12,
     border: "1px solid #cbd5e1",
     textAlign: "center",
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: "900",
     boxSizing: "border-box",
   },
