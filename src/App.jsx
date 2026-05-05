@@ -1493,9 +1493,10 @@ const styles = {
   page: {
     minHeight: "100vh",
     background: "#f1f5f9",
-    padding: "16px",
+    padding: "10px",
     color: "#0f172a",
     fontFamily: "Arial, sans-serif",
+    boxSizing: "border-box",
   },
   container: {
     maxWidth: "1100px",
@@ -1503,7 +1504,7 @@ const styles = {
   },
   header: {
     background: "white",
-    padding: "20px",
+    padding: "16px",
     borderRadius: "18px",
     display: "flex",
     gap: "14px",
@@ -1518,14 +1519,14 @@ const styles = {
     padding: "12px",
     display: "flex",
   },
-  title: { margin: 0, fontSize: "24px" },
+  title: { margin: 0, fontSize: "22px" },
   subtitle: { margin: "6px 0 0", color: "#475569", fontSize: "14px" },
   cardSticky: {
     position: "sticky",
     top: "8px",
     zIndex: 10,
     background: "white",
-    padding: "16px",
+    padding: "14px",
     borderRadius: "18px",
     marginBottom: "18px",
     boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
@@ -1554,7 +1555,7 @@ const styles = {
   },
   searchAndSendRow: {
     display: "grid",
-    gridTemplateColumns: "1fr 118px",
+    gridTemplateColumns: "1fr 112px",
     gap: "8px",
     alignItems: "center",
   },
@@ -1590,10 +1591,11 @@ const styles = {
     fontSize: "18px",
     textTransform: "uppercase",
   },
+
   row: {
     display: "grid",
-    gridTemplateColumns: "240px 1fr",
-    gap: "12px",
+    gridTemplateColumns: "minmax(118px, 38vw) 1fr",
+    gap: "10px",
     alignItems: "start",
     padding: "10px",
     borderTop: "1px solid #e2e8f0",
@@ -1602,10 +1604,11 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: "8px",
+    minWidth: 0,
   },
   imageBox: {
     width: "100%",
-    height: "180px",
+    height: "clamp(105px, 32vw, 180px)",
     borderRadius: "14px",
     background: "#ffffff",
     border: "1px solid #cbd5e1",
@@ -1628,7 +1631,7 @@ const styles = {
   qtyRow: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: "8px",
+    gap: "6px",
   },
   qtyLabel: {
     display: "block",
@@ -1640,7 +1643,7 @@ const styles = {
   },
   qtyInput: {
     width: "100%",
-    padding: "8px 4px",
+    padding: "8px 3px",
     borderRadius: "12px",
     border: "1px solid #cbd5e1",
     textAlign: "center",
@@ -1654,6 +1657,9 @@ const styles = {
     fontWeight: "600",
     lineHeight: "1.3",
     paddingTop: "4px",
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
+    minWidth: 0,
   },
   textarea: {
     width: "100%",
@@ -1752,4 +1758,3 @@ const styles = {
     padding: "10px 18px",
   },
 };
-
