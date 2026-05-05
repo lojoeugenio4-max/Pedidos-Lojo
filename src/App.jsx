@@ -31,7 +31,7 @@ function ProductPhoto({ name, onClick }) {
   if (error) {
     return (
       <div style={styles.photoBox}>
-        <ImageOff size={28} />
+        <ImageOff size={34} />
         <span>Sin foto</span>
       </div>
     );
@@ -60,7 +60,9 @@ export default function App() {
       .map((department) => ({
         ...department,
         products: clean
-          ? department.products.filter((product) => matchesSearch(product, clean))
+          ? department.products.filter((product) =>
+              matchesSearch(product, clean)
+            )
           : department.products,
       }))
       .filter((department) => department.products.length > 0);
@@ -131,33 +133,31 @@ export default function App() {
 
             return (
               <div key={id} style={styles.card}>
-                <div style={styles.productLayout}>
-                  <div style={styles.qtyColumn}>
-                    <input
-                      placeholder="Cajas"
-                      value={qty[id]?.cajas || ""}
-                      onChange={(event) =>
-                        update(id, "cajas", event.target.value)
-                      }
-                      style={styles.qtyInput}
-                      inputMode="numeric"
-                    />
-
-                    <input
-                      placeholder="Unid."
-                      value={qty[id]?.unidades || ""}
-                      onChange={(event) =>
-                        update(id, "unidades", event.target.value)
-                      }
-                      style={styles.qtyInput}
-                      inputMode="numeric"
-                    />
-                  </div>
-
-                  <ProductPhoto name={name} onClick={setZoomImage} />
-                </div>
+                <ProductPhoto name={name} onClick={setZoomImage} />
 
                 <div style={styles.productName}>{name}</div>
+
+                <div style={styles.qtyRow}>
+                  <input
+                    placeholder="Cajas"
+                    value={qty[id]?.cajas || ""}
+                    onChange={(event) =>
+                      update(id, "cajas", event.target.value)
+                    }
+                    style={styles.qtyInput}
+                    inputMode="numeric"
+                  />
+
+                  <input
+                    placeholder="Unid."
+                    value={qty[id]?.unidades || ""}
+                    onChange={(event) =>
+                      update(id, "unidades", event.target.value)
+                    }
+                    style={styles.qtyInput}
+                    inputMode="numeric"
+                  />
+                </div>
               </div>
             );
           })}
@@ -205,7 +205,7 @@ const styles = {
 
   search: {
     width: "100%",
-    height: 50,
+    height: 52,
     borderRadius: 12,
     border: "1px solid #cbd5e1",
     padding: "0 12px",
@@ -215,7 +215,7 @@ const styles = {
   },
 
   whatsappButton: {
-    height: 50,
+    height: 52,
     border: "none",
     borderRadius: 12,
     background: "#22c55e",
@@ -246,64 +246,61 @@ const styles = {
     background: "white",
     borderRadius: 14,
     padding: 8,
-    marginBottom: 8,
+    marginBottom: 10,
     boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
-  },
-
-  productLayout: {
-    display: "grid",
-    gridTemplateColumns: "64px 1fr",
-    gap: 8,
-    alignItems: "stretch",
-  },
-
-  qtyColumn: {
-    display: "grid",
-    gridTemplateRows: "1fr 1fr",
-    gap: 6,
-  },
-
-  qtyInput: {
-    width: "100%",
-    minHeight: 54,
-    borderRadius: 12,
-    border: "1px solid #cbd5e1",
-    textAlign: "center",
-    fontSize: 16,
-    fontWeight: "900",
-    boxSizing: "border-box",
   },
 
   productImage: {
     width: "100%",
-    height: 116,
+    height: 170,
     objectFit: "contain",
     borderRadius: 12,
     background: "#f8fafc",
     border: "1px solid #cbd5e1",
     boxSizing: "border-box",
+    display: "block",
   },
 
   photoBox: {
-    height: 116,
+    width: "100%",
+    height: 170,
     borderRadius: 12,
     background: "#f8fafc",
     border: "1px dashed #cbd5e1",
     color: "#64748b",
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "800",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
+    gap: 6,
+    boxSizing: "border-box",
   },
 
   productName: {
-    marginTop: 7,
-    fontSize: 17,
+    marginTop: 8,
+    marginBottom: 8,
+    fontSize: 18,
     fontWeight: "900",
     lineHeight: 1.25,
+  },
+
+  qtyRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+  },
+
+  qtyInput: {
+    width: "100%",
+    height: 54,
+    borderRadius: 12,
+    border: "1px solid #cbd5e1",
+    textAlign: "center",
+    fontSize: 17,
+    fontWeight: "900",
+    boxSizing: "border-box",
   },
 
   overlay: {
