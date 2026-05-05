@@ -1,36 +1,26 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ShoppingCart, Trash2, Send, Search, ImageOff } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { Send, ImageOff } from "lucide-react";
 import { departments, hiddenProductsRaw } from "./products";
 
 const WHATSAPP_NUMBER = "34670716744";
 
-const normalizeForCompare = (text) =>
+// 🔍 NORMALIZAR TEXTO
+const normalize = (text) =>
   text
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9ñ]+/gi, "")
-    .trim();
+    .replace(/[\u0300-\u036f]/g, "");
 
-const normalizeText = (text) =>
-  text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim();
-
-const productMatchesSearch = (product, searchText) => {
-  const normalizedProduct = normalizeText(product);
-  const searchWords = normalizeText(searchText)
-    .split(/[^a-z0-9ñ]+/i)
-    .filter(Boolean);
-
-  return searchWords.every((word) => normalizedProduct.includes(word));
+// 🔍 BUSCADOR
+const matchesSearch = (product, search) => {
+  const p = normalize(product);
+  const words = normalize(search).split(/\s+/);
+  return words.every((w) => p.includes(w));
 };
 
-// 🟢 GENERADOR AUTOMÁTICO DE NOMBRE DE IMAGEN
-const getImageFileName = (productName) =>
-  productName
+// 📸 GENERAR NOMBRE DE IMAGEN
+const getImageFileName = (name) =>
+  name
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -38,14 +28,14 @@ const getImageFileName = (productName) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-// 🟢 URL FINAL DE LA IMAGEN
-const getProductImageUrl = (productName) =>
-  `/images/${getImageFileName(productName)}.jpg`;
+// 📸 URL IMAGEN
+const getImageUrl = (name) =>
+  `/images/${getImageFileName(name)}.jpg`;
 
-// 🟢 COMPONENTE FOTO
-function ProductPhoto({ productName }) {
+// 📸 COMPONENTE FOTO
+function ProductPhoto({ name }) {
   const [error, setError] = useState(false);
-  const src = getProductImageUrl(productName);
+  const src = getImageUrl(name);
 
   if (error) {
     return (
@@ -58,92 +48,55 @@ function ProductPhoto({ productName }) {
   return (
     <img
       src={src}
-      alt={productName}
+      alt={name}
       style={styles.productImage}
       onError={() => setError(true)}
     />
   );
 }
 
-const visibleProducts = departments.flatMap((dep) =>
-  dep.products.map((name) => ({
-    id: `${dep.name}-${name}`,
-    name,
-    department: dep.name
-  }))
-);
-
-const visibleProductNames = new Set(
-  visibleProducts.map((p) => normalizeForCompare(p.name))
-);
-
-const hiddenProducts = [...new Set(hiddenProductsRaw)]
-  .filter((p) => !visibleProductNames.has(normalizeForCompare(p)))
-  .sort((a, b) => a.localeCompare(b, "es"));
-
-const products = [
-  ...visibleProducts,
-  ...hiddenProducts.map((name) => ({
-    id: `hidden-${name}`,
-    name,
-    department: "BUSCADOS"
-  }))
-];
-
 export default function App() {
-  const [quantities, setQuantities] = useState({});
   const [search, setSearch] = useState("");
+  const [qty, setQty] = useState({});
 
-  const filteredDepartments = useMemo(() => {
+  const filtered = useMemo(() => {
     const clean = search.trim();
 
-    const deps = departments
+    return departments
       .map((d) => ({
         ...d,
         products: clean
-          ? d.products.filter((p) => productMatchesSearch(p, clean))
+          ? d.products.filter((p) => matchesSearch(p, clean))
           : d.products
       }))
       .filter((d) => d.products.length > 0);
-
-    if (clean) {
-      const hiddenMatches = hiddenProducts.filter((p) =>
-        productMatchesSearch(p, clean)
-      );
-
-      if (hiddenMatches.length) {
-        deps.push({ name: "BUSCADOS", products: hiddenMatches });
-      }
-    }
-
-    return deps;
   }, [search]);
 
-  const updateQty = (id, field, val) => {
+  const update = (id, field, val) => {
     const clean = val.replace(/[^0-9]/g, "");
-    setQuantities((q) => ({
+    setQty((q) => ({
       ...q,
       [id]: { ...q[id], [field]: clean }
     }));
   };
 
-  const selected = products.filter((p) => {
-    const q = quantities[p.id] || {};
-    return Number(q.cajas || 0) > 0 || Number(q.unidades || 0) > 0;
-  });
+  const send = () => {
+    const lines = [];
 
-  const sendOrder = () => {
-    if (!selected.length) return alert("Añade productos");
+    Object.entries(qty).forEach(([id, val]) => {
+      if (val?.cajas || val?.unidades) {
+        lines.push(
+          `${id} → ${val.cajas || 0} cajas / ${val.unidades || 0} uds`
+        );
+      }
+    });
 
-    const text = selected
-      .map((p) => {
-        const q = quantities[p.id];
-        return `${p.name} → ${q.cajas || 0} cajas / ${q.unidades || 0} uds`;
-      })
-      .join("\n");
+    if (!lines.length) return alert("Añade productos");
 
     window.open(
-      `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`,
+      `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
+        lines.join("\n")
+      )}`,
       "_blank"
     );
   };
@@ -159,31 +112,35 @@ export default function App() {
         style={styles.search}
       />
 
-      {filteredDepartments.map((dep) => (
+      {filtered.map((dep) => (
         <div key={dep.name}>
           <h2>{dep.name}</h2>
 
           {dep.products.map((name) => {
             const id = `${dep.name}-${name}`;
+
             return (
               <div key={id} style={styles.row}>
-                <ProductPhoto productName={name} />
-
-                <div style={styles.qtyRow}>
+                <div style={styles.topRow}>
                   <input
                     placeholder="Cajas"
-                    value={quantities[id]?.cajas || ""}
+                    value={qty[id]?.cajas || ""}
                     onChange={(e) =>
-                      updateQty(id, "cajas", e.target.value)
+                      update(id, "cajas", e.target.value)
                     }
+                    style={styles.qtyInput}
                   />
+
                   <input
                     placeholder="Unid"
-                    value={quantities[id]?.unidades || ""}
+                    value={qty[id]?.unidades || ""}
                     onChange={(e) =>
-                      updateQty(id, "unidades", e.target.value)
+                      update(id, "unidades", e.target.value)
                     }
+                    style={styles.qtyInput}
                   />
+
+                  <ProductPhoto name={name} />
                 </div>
 
                 <div style={styles.name}>{name}</div>
@@ -193,60 +150,86 @@ export default function App() {
         </div>
       ))}
 
-      <button onClick={sendOrder} style={styles.button}>
-        Enviar pedido
+      <button onClick={send} style={styles.button}>
+        <Send size={18} /> Enviar por WhatsApp
       </button>
     </div>
   );
 }
 
+// 🎨 ESTILOS
 const styles = {
-  page: { padding: 10, fontFamily: "Arial" },
+  page: {
+    padding: 12,
+    fontFamily: "Arial",
+    background: "#f1f5f9"
+  },
 
   search: {
     width: "100%",
     padding: 10,
-    marginBottom: 10
+    marginBottom: 12,
+    borderRadius: 10,
+    border: "1px solid #ccc"
   },
 
   row: {
-    border: "1px solid #ddd",
+    background: "white",
     padding: 10,
+    borderRadius: 12,
     marginBottom: 10,
-    borderRadius: 10
+    boxShadow: "0 1px 4px rgba(0,0,0,0.1)"
+  },
+
+  topRow: {
+    display: "grid",
+    gridTemplateColumns: "70px 70px 1fr",
+    gap: 8,
+    alignItems: "center"
   },
 
   productImage: {
     width: "100%",
-    height: 120,
-    objectFit: "cover",
-    borderRadius: 10
+    height: 76,
+    objectFit: "contain",
+    borderRadius: 10,
+    background: "#f8fafc",
+    border: "1px solid #ddd"
   },
 
   photoBox: {
-    height: 120,
+    height: 76,
     background: "#eee",
+    borderRadius: 10,
     display: "flex",
     alignItems: "center",
     justifyContent: "center"
   },
 
-  qtyRow: {
-    display: "flex",
-    gap: 10,
-    marginTop: 10
+  qtyInput: {
+    width: "100%",
+    height: 76,
+    borderRadius: 10,
+    border: "1px solid #ccc",
+    textAlign: "center",
+    fontSize: 16,
+    fontWeight: "bold"
   },
 
   name: {
-    marginTop: 10,
-    fontWeight: "bold"
+    marginTop: 8,
+    fontWeight: "bold",
+    fontSize: 14
   },
 
   button: {
     width: "100%",
-    padding: 15,
-    background: "black",
+    padding: 14,
+    background: "#0f172a",
     color: "white",
-    borderRadius: 10
+    borderRadius: 12,
+    border: "none",
+    fontSize: 16,
+    marginTop: 12
   }
 };
