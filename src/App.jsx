@@ -9,10 +9,9 @@ const fixedProduct = (idnum, name, offerText = "") => ({
   offerText,
 });
 
-/* PEGA AQUÍ TU LISTADO DE DEPARTAMENTOS */
+/* PEGA AQUÍ TU LISTADO DE DEPARTAMENTOS COMPLETO */
 const departments = [
-  {
-    name: "AGUA",
+  name: "AGUA",
     products: [
       fixedProduct(1, "AGUA FUENTELAJARA 1.5L","Comprando 10 cajas REGALO 1 caja "),
       fixedProduct(2, "AGUA LANJARON 1.5L PACK 6"),
@@ -371,8 +370,7 @@ const departments = [
   },
 ];
 
-
-/* PEGA AQUÍ TU LISTADO DE ARTÍCULOS OCULTOS */
+/* PEGA AQUÍ TU LISTADO DE ARTÍCULOS OCULTOS COMPLETO */
 const hiddenProductsRaw = [
 fixedProduct(283, "1/2 LONCHA JAMON CUR.NAVIDUL 50GR"),
 fixedProduct(284, "15 x 30 BOLSA TRAMPARENTE"),
@@ -1164,7 +1162,6 @@ const productImagesByIdnum = Object.fromEntries(
     const idnum = Number(
       fileName.toLowerCase().replace(/\.(jpg|jpeg|png|webp)$/, "")
     );
-
     return [idnum, src];
   })
 );
@@ -1213,8 +1210,9 @@ const visibleProductNamesForCompare = new Set(
 const hiddenProductsUnique = Array.from(
   new Map(
     hiddenProductsRaw
-      .filter((product) =>
-        !visibleProductNamesForCompare.has(normalizeForCompare(product.name))
+      .filter(
+        (product) =>
+          !visibleProductNamesForCompare.has(normalizeForCompare(product.name))
       )
       .map((product) => [normalizeForCompare(product.name), product])
   ).values()
@@ -1373,7 +1371,7 @@ export default function App() {
           </div>
         </header>
 
-        <div style={styles.cardSticky}>
+        <div style={styles.card}>
           <label style={styles.label}>Nombre o referencia del cliente</label>
           <input
             value={customerName}
@@ -1381,7 +1379,9 @@ export default function App() {
             placeholder="Opcional"
             style={styles.input}
           />
+        </div>
 
+        <div style={styles.cardSticky}>
           <label style={styles.label}>Buscar artículo</label>
           <div style={styles.searchAndSendRow}>
             <div style={styles.searchBoxCompact}>
@@ -1455,11 +1455,7 @@ export default function App() {
                           enterKeyHint="done"
                           value={quantities[productId]?.unidades || ""}
                           onChange={(event) =>
-                            updateQuantity(
-                              productId,
-                              "unidades",
-                              event.target.value
-                            )
+                            updateQuantity(productId, "unidades", event.target.value)
                           }
                           onKeyDown={closeKeyboardOnEnter}
                           placeholder="0"
@@ -1580,7 +1576,7 @@ const styles = {
     top: "8px",
     zIndex: 10,
     background: "white",
-    padding: "14px",
+    padding: "10px",
     borderRadius: "18px",
     marginBottom: "18px",
     boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
@@ -1589,7 +1585,7 @@ const styles = {
     background: "white",
     padding: "18px",
     borderRadius: "18px",
-    marginTop: "18px",
+    marginBottom: "18px",
     boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
   },
   label: {
@@ -1648,16 +1644,14 @@ const styles = {
     fontSize: "18px",
     textTransform: "uppercase",
   },
- row: {
-  display: "grid",
-  gridTemplateColumns: "minmax(118px, 38vw) 1fr",
-  gap: "10px",
-  alignItems: "start",
-  padding: "10px",
-  borderTop: "1px solid #e2e8f0",
-
-  scrollMarginTop: "340px",
-},
+  row: {
+    display: "grid",
+    gridTemplateColumns: "minmax(118px, 38vw) 1fr",
+    gap: "10px",
+    alignItems: "start",
+    padding: "10px",
+    borderTop: "1px solid #e2e8f0",
+  },
   leftColumn: {
     display: "flex",
     flexDirection: "column",
