@@ -32,13 +32,13 @@ const departments = [
       "AQUARIUS LIMON LATA 33CL",
       "SEVEN UP LATA 33CL",
       "PEPSI COLA LATA 33CL",
-      "NESTEA MARACUYA LATA",
-      "NESTEA LIMON LATA",
-      "NESTEA FRUTOS ROJOS LATA",
+      "NESTEA MARACUYA LATA 33CL",
+      "NESTEA LIMON LATA 33CL",
+      "NESTEA FRUTOS ROJOS LATA 33CL",
       "TONICA LATA 33CL",
       "SIMON LIFE NARANJA LATA 33CL",
       "SIMON LIFE MANGO LATA 33CL",
-      "T. VERANO LIMON CASERA LATA",
+      "TINTO VERANO LIMON CASERA LATA",
     ],
   },
   {
@@ -1145,7 +1145,8 @@ const hiddenProductsRaw = [
 
 
 /* =========================
-   📸 IMÁGENES AUTOMÁTICAS (FIX ORDEN)
+   📸 IMÁGENES POR IDNUM
+   Si el artículo tiene idnum 23, su foto debe llamarse 23.jpg, 23.png, 23.webp, etc.
 ========================= */
 const imageModules = import.meta.glob("./assets/productos/*.{jpg,jpeg,png,webp}", {
   eager: true,
@@ -1153,17 +1154,39 @@ const imageModules = import.meta.glob("./assets/productos/*.{jpg,jpeg,png,webp}"
   import: "default",
 });
 
-const productImages = Object.entries(imageModules)
-  .sort(([a], [b]) => {
-    const fileA = a.split("/").pop();
-    const fileB = b.split("/").pop();
-
-    const numA = Number(fileA.match(/\d+/)?.[0] || 0);
-    const numB = Number(fileB.match(/\d+/)?.[0] || 0);
-
-    return numA - numB;
+const productImagesByIdnum = Object.fromEntries(
+  Object.entries(imageModules).map(([path, src]) => {
+    const fileName = path.split("/").pop();
+    const idnum = Number(fileName.replace(/\.[^/.]+$/, ""));
+    return [idnum, src];
   })
-  .map(([, src]) => src);
+);
+
+/* =========================
+   ✅ SISTEMA FIJO DE IDNUM
+
+   Ahora puedes escribir los productos de dos formas:
+
+   1) Forma recomendada, con idnum fijo:
+      { idnum: 1, name: "AGUA FUENTELAJARA 1.5L" }
+
+   2) Forma antigua, solo texto:
+      "AGUA FUENTELAJARA 1.5L"
+
+   Si usas la forma recomendada, puedes mover el artículo de sitio
+   y seguirá conservando su foto.
+
+   Ejemplo:
+      { idnum: 23, name: "COCA COLA 2L" }
+
+   Foto correspondiente:
+      23.jpg / 23.png / 23.webp
+========================= */
+const getProductName = (product) =>
+  typeof product === "string" ? product : product.name;
+
+const getProductIdnum = (product, fallbackIdnum) =>
+  typeof product === "string" ? fallbackIdnum : product.idnum;
 
 const normalizeForCompare = (text) =>
   text
@@ -1191,584 +1214,84 @@ const productMatchesSearch = (product, searchText) => {
   );
 };
 
-const visibleProducts = departments.flatMap((department) =>
-  department.products.map((name) => ({
-    id: `${department.name}-${name}`,
-    name,
-    department: department.name,
-    hidden: false,
-  }))
+let autoIdnum = 1;
+
+const visibleProductsBase = departments.flatMap((department) =>
+  department.products.map((productEntry) => {
+    const name = getProductName(productEntry);
+    const idnum = getProductIdnum(productEntry, autoIdnum);
+    autoIdnum += 1;
+
+    return {
+      id: `${department.name}-${name}`,
+      idnum,
+      name,
+      department: department.name,
+      hidden: false,
+    };
+  })
 );
 
 const visibleProductNamesForCompare = new Set(
-  visibleProducts.map((product) => normalizeForCompare(product.name))
+  visibleProductsBase.map((product) => normalizeForCompare(product.name))
 );
 
 const hiddenProductsUnique = [...new Set(hiddenProductsRaw)]
   .filter((name) => !visibleProductNamesForCompare.has(normalizeForCompare(name)))
   .sort((a, b) => a.localeCompare(b, "es"));
 
-const hiddenProductsFormatted = hiddenProductsUnique.map((name) => ({
-  id: `ARTÍCULOS BUSCADOS-${name}`,
-  name,
-  department: "ARTÍCULOS BUSCADOS",
-  hidden: true,
-}));
+const hiddenProductsFormattedBase = hiddenProductsUnique.map((name) => {
+  const idnum = autoIdnum;
+  autoIdnum += 1;
 
-const products = [...visibleProducts, ...hiddenProductsFormatted];
-
-export default function App() {
-  useEffect(() => {
-    let viewport = document.querySelector("meta[name=viewport]");
-
-    if (!viewport) {
-      viewport = document.createElement("meta");
-      viewport.setAttribute("name", "viewport");
-      document.head.appendChild(viewport);
-    }
-
-    viewport.setAttribute(
-      "content",
-      "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
-    );
-  }, []);
-
-  const [quantities, setQuantities] = useState({});
-  const [customerName, setCustomerName] = useState("");
-  const [notes, setNotes] = useState("");
-  const [search, setSearch] = useState("");
-  const [selectedImage, setSelectedImage] = useState(null);
-
-  const filteredDepartments = useMemo(() => {
-    const cleanSearch = search.trim();
-
-    const visibleDepartments = departments
-      .map((department) => ({
-        ...department,
-        products: cleanSearch
-          ? department.products.filter((product) =>
-              productMatchesSearch(product, cleanSearch)
-            )
-          : department.products,
-      }))
-      .filter((department) => department.products.length > 0);
-
-    if (!cleanSearch) return visibleDepartments;
-
-    const hiddenMatches = hiddenProductsUnique.filter((product) =>
-      productMatchesSearch(product, cleanSearch)
-    );
-
-    if (hiddenMatches.length > 0) {
-      visibleDepartments.push({
-        name: "ARTÍCULOS BUSCADOS",
-        products: hiddenMatches,
-      });
-    }
-
-    return visibleDepartments;
-  }, [search]);
-
-  const selectedItems = useMemo(() => {
-    return products
-      .map((product) => ({
-        ...product,
-        cajas: Number(quantities[product.id]?.cajas || 0),
-        unidades: Number(quantities[product.id]?.unidades || 0),
-      }))
-      .filter((product) => product.cajas > 0 || product.unidades > 0);
-  }, [quantities]);
-
-  const updateQuantity = (productId, field, value) => {
-    const cleanValue = value.replace(/[^0-9]/g, "");
-    setQuantities((current) => ({
-      ...current,
-      [productId]: {
-        ...current[productId],
-        [field]: cleanValue,
-      },
-    }));
+  return {
+    id: `ARTÍCULOS BUSCADOS-${name}`,
+    idnum,
+    name,
+    department: "ARTÍCULOS BUSCADOS",
+    hidden: true,
   };
+});
 
-  const closeKeyboardOnEnter = (event) => {
-    if (event.key === "Enter") {
-      event.currentTarget.blur();
-    }
-  };
+const products = [...visibleProductsBase, ...hiddenProductsFormattedBase];
 
-  const clearOrder = () => {
-    setQuantities({});
-    setCustomerName("");
-    setNotes("");
-    setSearch("");
-  };
+// Lista para consultar qué foto corresponde a cada artículo.
+// Abre la consola del navegador y verás: idnum, artículo y departamento.
+console.table(
+  products.map((product) => ({
+    idnum: product.idnum,
+    foto: `${product.idnum}.jpg`,
+    articulo: product.name,
+    departamento: product.department,
+  }))
+);
 
-  const createWhatsAppMessage = () => {
-    const lines = ["Nuevo pedido", ""];
+/* =========================
+   🔧 CONVERTIDOR AUTOMÁTICO A SISTEMA FIJO
 
-    if (customerName.trim()) {
-      lines.push(`Cliente: ${customerName.trim()}`, "");
-    }
+   1. Abre la consola del navegador (F12)
+   2. Ejecuta:
 
-    selectedItems.forEach((item) => {
-      const parts = [];
-      if (item.cajas > 0) parts.push(`*${item.cajas} cajas*`);
-      if (item.unidades > 0) parts.push(`*${item.unidades} unidades*`);
+      exportFixedProducts()
 
-      lines.push(`- ${item.name}: ${parts.join(" / ")}`);
-      lines.push("");
-    });
+   3. Copia el resultado
+   4. Sustituye tus departments actuales por el resultado
 
-    if (notes.trim()) {
-      lines.push(`Observaciones: ${notes.trim()}`, "");
-    }
+   El sistema convertirá automáticamente:
 
-    lines.push("Enviado desde el formulario de pedidos");
-    return encodeURIComponent(lines.join("\n"));
-  };
+      "COCA COLA 2L"
 
-  const sendOrder = () => {
-    if (selectedItems.length === 0) {
-      alert("Introduce al menos una cantidad antes de enviar el pedido.");
-      return;
-    }
+   en:
 
-    window.open(
-      `https://wa.me/${WHATSAPP_NUMBER}?text=${createWhatsAppMessage()}`,
-      "_blank"
-    );
+      { idnum: 25, name: "COCA COLA 2L" }
 
-    clearOrder();
-  };
+========================= */
+window.exportFixedProducts = () => {
+  let counter = 1;
 
-  return (
-    <div style={styles.page}>
-      <div style={styles.container}>
-        <header style={styles.header}>
-          <div style={styles.iconBox}>
-            <ShoppingCart size={28} />
-          </div>
-          <div>
-            <h1 style={styles.title}>Pedido online Cash Lojo</h1>
-            <p style={styles.subtitle}>
-              Escribe cantidades en Unidades o Cajas y envía el pedido por WhatsApp.
-            </p>
-          </div>
-        </header>
-
-        <div style={styles.cardSticky}>
-          <label style={styles.label}>Nombre o referencia del cliente</label>
-          <input
-            value={customerName}
-            onChange={(event) => setCustomerName(event.target.value)}
-            placeholder="Opcional"
-            style={styles.input}
-          />
-
-          <label style={styles.label}>Buscar artículo</label>
-          <div style={styles.searchAndSendRow}>
-            <div style={styles.searchBoxCompact}>
-              <Search size={20} style={styles.searchIcon} />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar..."
-                style={styles.searchInput}
-              />
-            </div>
-
-            <button onClick={sendOrder} style={styles.stickyWhatsappButton}>
-              <Send size={18} /> WhatsApp
-            </button>
-          </div>
-        </div>
-
-        {filteredDepartments.map((department) => (
-          <section key={department.name} style={styles.section}>
-            <div style={styles.sectionHeader}>
-              <h2 style={styles.sectionTitle}>{department.name}</h2>
-            </div>
-
-            {department.products.map((productName) => {
-              const productId = `${department.name}-${productName}`;
-              const productIndex = products.findIndex(
-                (product) => product.name === productName
-              );
-              const imageSrc = productImages[productIndex];
-
-              return (
-                <div key={productId} style={styles.row}>
-                  <div style={styles.leftColumn}>
-                    <div style={styles.imageBox}>
-                      {imageSrc ? (
-                        <img
-                          src={imageSrc}
-                          alt={productName}
-                          style={styles.productImage}
-                          onClick={() =>
-                            setSelectedImage({
-                              src: imageSrc,
-                              name: productName,
-                            })
-                          }
-                        />
-                      ) : (
-                        "Sin foto"
-                      )}
-                    </div>
-
-                    <div style={styles.qtyRow}>
-                      <div>
-                        <label style={styles.qtyLabel}>Cajas</label>
-                        <input
-                          inputMode="numeric"
-                          enterKeyHint="done"
-                          value={quantities[productId]?.cajas || ""}
-                          onChange={(event) =>
-                            updateQuantity(productId, "cajas", event.target.value)
-                          }
-                          onKeyDown={closeKeyboardOnEnter}
-                          placeholder="0"
-                          style={styles.qtyInput}
-                        />
-                      </div>
-
-                      <div>
-                        <label style={styles.qtyLabel}>Unid.</label>
-                        <input
-                          inputMode="numeric"
-                          enterKeyHint="done"
-                          value={quantities[productId]?.unidades || ""}
-                          onChange={(event) =>
-                            updateQuantity(productId, "unidades", event.target.value)
-                          }
-                          onKeyDown={closeKeyboardOnEnter}
-                          placeholder="0"
-                          style={styles.qtyInput}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <p style={styles.productName}>{productName}</p>
-                </div>
-              );
-            })}
-          </section>
-        ))}
-
-        <div style={styles.card}>
-          <label style={styles.label}>Observaciones</label>
-          <textarea
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            placeholder="Opcional"
-            rows={3}
-            style={styles.textarea}
-          />
-
-          <div style={styles.summary}>
-            <strong>Resumen:</strong> {selectedItems.length} artículos con cantidad.
-          </div>
-
-          <button onClick={sendOrder} style={styles.primaryButton}>
-            <Send size={20} /> Enviar por WhatsApp
-          </button>
-
-          <button onClick={clearOrder} style={styles.secondaryButton}>
-            <Trash2 size={20} /> Borrar pedido
-          </button>
-        </div>
-      </div>
-
-      {selectedImage && (
-        <div style={styles.modal} onClick={() => setSelectedImage(null)}>
-          <div style={styles.modalContent}>
-            <img
-              src={selectedImage.src}
-              alt={selectedImage.name}
-              style={styles.modalImage}
-              onClick={(event) => event.stopPropagation()}
-            />
-            <p style={styles.modalTitle}>{selectedImage.name}</p>
-            <button
-              onClick={() => setSelectedImage(null)}
-              style={styles.closeButton}
-            >
-              Cerrar
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    background: "#f1f5f9",
-    padding: "10px",
-    color: "#0f172a",
-    fontFamily: "Arial, sans-serif",
-    boxSizing: "border-box",
-  },
-  container: {
-    maxWidth: "1100px",
-    margin: "0 auto",
-  },
-  header: {
-    background: "white",
-    padding: "16px",
-    borderRadius: "18px",
-    display: "flex",
-    gap: "14px",
-    alignItems: "center",
-    marginBottom: "16px",
-    boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
-  },
-  iconBox: {
-    background: "#0f172a",
-    color: "white",
-    borderRadius: "16px",
-    padding: "12px",
-    display: "flex",
-  },
-  title: { margin: 0, fontSize: "22px" },
-  subtitle: { margin: "6px 0 0", color: "#475569", fontSize: "14px" },
-  cardSticky: {
-    position: "sticky",
-    top: "8px",
-    zIndex: 10,
-    background: "white",
-    padding: "14px",
-    borderRadius: "18px",
-    marginBottom: "18px",
-    boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
-  },
-  card: {
-    background: "white",
-    padding: "18px",
-    borderRadius: "18px",
-    marginTop: "18px",
-    boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
-  },
-  label: {
-    display: "block",
-    fontWeight: "bold",
-    fontSize: "13px",
-    marginBottom: "6px",
-    marginTop: "8px",
-  },
-  input: {
-    width: "100%",
-    padding: "11px",
-    borderRadius: "12px",
-    border: "1px solid #cbd5e1",
-    fontSize: "16px",
-    boxSizing: "border-box",
-  },
-  searchAndSendRow: {
-    display: "grid",
-    gridTemplateColumns: "1fr 112px",
-    gap: "8px",
-    alignItems: "center",
-  },
-  searchBoxCompact: { position: "relative", minWidth: 0 },
-  searchIcon: {
-    position: "absolute",
-    left: "12px",
-    top: "11px",
-    color: "#64748b",
-  },
-  searchInput: {
-    width: "100%",
-    padding: "11px 12px 11px 40px",
-    borderRadius: "12px",
-    border: "1px solid #cbd5e1",
-    fontSize: "16px",
-    boxSizing: "border-box",
-  },
-  section: {
-    background: "white",
-    borderRadius: "18px",
-    overflow: "hidden",
-    marginBottom: "18px",
-    boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
-  },
-  sectionHeader: {
-    background: "#0f172a",
-    color: "white",
-    padding: "12px 16px",
-  },
-  sectionTitle: {
-    margin: 0,
-    fontSize: "18px",
-    textTransform: "uppercase",
-  },
-  row: {
-    display: "grid",
-    gridTemplateColumns: "minmax(118px, 38vw) 1fr",
-    gap: "10px",
-    alignItems: "start",
-    padding: "10px",
-    borderTop: "1px solid #e2e8f0",
-  },
-  leftColumn: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-    minWidth: 0,
-  },
-  imageBox: {
-    width: "100%",
-    height: "clamp(105px, 32vw, 180px)",
-    borderRadius: "14px",
-    background: "#ffffff",
-    border: "1px solid #cbd5e1",
-    overflow: "hidden",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#64748b",
-    fontSize: "13px",
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-  productImage: {
-    width: "100%",
-    height: "100%",
-    objectFit: "contain",
-    display: "block",
-    cursor: "pointer",
-  },
-  qtyRow: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: "6px",
-  },
-  qtyLabel: {
-    display: "block",
-    fontSize: "11px",
-    fontWeight: "bold",
-    marginBottom: "4px",
-    textAlign: "center",
-    color: "#475569",
-  },
-  qtyInput: {
-    width: "100%",
-    padding: "8px 3px",
-    borderRadius: "12px",
-    border: "1px solid #cbd5e1",
-    textAlign: "center",
-    fontWeight: "bold",
-    fontSize: "16px",
-    boxSizing: "border-box",
-  },
-  productName: {
-    margin: 0,
-    fontSize: "16px",
-    fontWeight: "600",
-    lineHeight: "1.3",
-    paddingTop: "4px",
-    wordBreak: "break-word",
-    overflowWrap: "anywhere",
-    minWidth: 0,
-  },
-  textarea: {
-    width: "100%",
-    padding: "11px",
-    borderRadius: "12px",
-    border: "1px solid #cbd5e1",
-    fontSize: "16px",
-    boxSizing: "border-box",
-  },
-  summary: {
-    background: "#e2e8f0",
-    padding: "12px",
-    borderRadius: "12px",
-    margin: "14px 0",
-    fontSize: "14px",
-  },
-  primaryButton: {
-    width: "100%",
-    height: "50px",
-    border: "none",
-    borderRadius: "12px",
-    background: "#0f172a",
-    color: "white",
-    fontSize: "16px",
-    fontWeight: "bold",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "8px",
-    marginBottom: "10px",
-  },
-  stickyWhatsappButton: {
-    width: "100%",
-    height: "44px",
-    border: "none",
-    borderRadius: "12px",
-    background: "#22c55e",
-    color: "white",
-    fontSize: "13px",
-    fontWeight: "bold",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "6px",
-    whiteSpace: "nowrap",
-  },
-  secondaryButton: {
-    width: "100%",
-    height: "50px",
-    border: "1px solid #cbd5e1",
-    borderRadius: "12px",
-    background: "white",
-    color: "#0f172a",
-    fontSize: "16px",
-    fontWeight: "bold",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "8px",
-  },
-  modal: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.82)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 9999,
-    padding: "18px",
-  },
-  modalContent: {
-    maxWidth: "95vw",
-    maxHeight: "95vh",
-    textAlign: "center",
-  },
-  modalImage: {
-    maxWidth: "100%",
-    maxHeight: "75vh",
-    borderRadius: "16px",
-    background: "white",
-    objectFit: "contain",
-  },
-  modalTitle: {
-    color: "white",
-    fontSize: "16px",
-    fontWeight: "bold",
-    margin: "12px 0",
-  },
-  closeButton: {
-    border: "none",
-    borderRadius: "12px",
-    background: "white",
-    color: "#0f172a",
-    fontSize: "15px",
-    fontWeight: "bold",
-    padding: "10px 18px",
-  },
-};
+  const converted = departments.map((department) => ({
+    name: department.name,
+    products: department.products.map((product) => {
+      if (typeof product === "string") {
+        return {
+          idnum: counter++,
