@@ -3,13 +3,18 @@ import { ShoppingCart, Trash2, Send, Search } from "lucide-react";
 
 const WHATSAPP_NUMBER = "34670716744";
 
-const fixedProduct = (idnum, name) => ({ idnum, name });
+const fixedProduct = (idnum, name, offerText = "") => ({
+  idnum,
+  name,
+  offerText,
+});
 
-const departments = [
+/* PEGA AQUÍ TU LISTADO DE DEPARTAMENTOS */
+const departments = 
   {
     name: "AGUA",
     products: [
-      fixedProduct(1, "AGUA FUENTELAJARA 1.5L"),
+      fixedProduct(1, "AGUA FUENTELAJARA 1.5L","Comprando 10 cajas REGALO 1 caja "),
       fixedProduct(2, "AGUA LANJARON 1.5L PACK 6"),
       fixedProduct(3, "AGUA FUENTELAJARA 0.5L"),
       fixedProduct(4, "AGUA LANJARON 0.5L"),
@@ -366,6 +371,8 @@ const departments = [
   },
 ];
 
+
+/* PEGA AQUÍ TU LISTADO DE ARTÍCULOS OCULTOS */
 const hiddenProductsRaw = [
   fixedProduct(283, "1/2 LONCHA JAMON CUR.NAVIDUL 50GR"),
 fixedProduct(284, "15 x 30 BOLSA TRAMPARENTE"),
@@ -1140,7 +1147,7 @@ fixedProduct(1052, "ZUMO DON SIMON NARANJA 200 P-6 (3039)"),
 fixedProduct(1053, "ZUMO D.SIMON MELOCOTON P6 200 (3575)"),
 fixedProduct(1054, "ZUMO D SIMON PIÑA 200 P6 (3574)"),
 fixedProduct(1055, "ZUMO JUVER PIÑA 850ML"),
-  ];
+];
 
 const imageModules = import.meta.glob(
   "./assets/productos/*.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP}",
@@ -1193,6 +1200,7 @@ const visibleProducts = departments.flatMap((department) =>
     id: `${department.name}-${product.idnum}-${product.name}`,
     idnum: product.idnum,
     name: product.name,
+    offerText: product.offerText || "",
     department: department.name,
     hidden: false,
   }))
@@ -1216,6 +1224,7 @@ const hiddenProductsFormatted = hiddenProductsUnique.map((product) => ({
   id: `ARTÍCULOS BUSCADOS-${product.idnum}-${product.name}`,
   idnum: product.idnum,
   name: product.name,
+  offerText: product.offerText || "",
   department: "ARTÍCULOS BUSCADOS",
   hidden: true,
 }));
@@ -1261,15 +1270,15 @@ export default function App() {
     if (!cleanSearch) return visibleDepartments;
 
     const hiddenMatches = hiddenProductsUnique.filter((product) =>
-  productMatchesSearch(product.name, cleanSearch)
-);
+      productMatchesSearch(product.name, cleanSearch)
+    );
 
-if (hiddenMatches.length > 0) {
-  visibleDepartments.push({
-    name: "ARTÍCULOS BUSCADOS",
-    products: hiddenMatches,
-  });
-}
+    if (hiddenMatches.length > 0) {
+      visibleDepartments.push({
+        name: "ARTÍCULOS BUSCADOS",
+        products: hiddenMatches,
+      });
+    }
 
     return visibleDepartments;
   }, [search]);
@@ -1286,6 +1295,7 @@ if (hiddenMatches.length > 0) {
 
   const updateQuantity = (productId, field, value) => {
     const cleanValue = value.replace(/[^0-9]/g, "");
+
     setQuantities((current) => ({
       ...current,
       [productId]: {
@@ -1317,6 +1327,7 @@ if (hiddenMatches.length > 0) {
 
     selectedItems.forEach((item) => {
       const parts = [];
+
       if (item.cajas > 0) parts.push(`*${item.cajas} cajas*`);
       if (item.unidades > 0) parts.push(`*${item.unidades} unidades*`);
 
@@ -1353,6 +1364,7 @@ if (hiddenMatches.length > 0) {
           <div style={styles.iconBox}>
             <ShoppingCart size={28} />
           </div>
+
           <div>
             <h1 style={styles.title}>Pedido online Cash Lojo</h1>
             <p style={styles.subtitle}>
@@ -1443,7 +1455,11 @@ if (hiddenMatches.length > 0) {
                           enterKeyHint="done"
                           value={quantities[productId]?.unidades || ""}
                           onChange={(event) =>
-                            updateQuantity(productId, "unidades", event.target.value)
+                            updateQuantity(
+                              productId,
+                              "unidades",
+                              event.target.value
+                            )
                           }
                           onKeyDown={closeKeyboardOnEnter}
                           placeholder="0"
@@ -1453,10 +1469,16 @@ if (hiddenMatches.length > 0) {
                     </div>
                   </div>
 
-                  <p style={styles.productName}>
-                    <span style={styles.idnum}>#{product.idnum}</span>
-                    {product.name}
-                  </p>
+                  <div>
+                    <p style={styles.productName}>
+                      <span style={styles.idnum}>#{product.idnum}</span>
+                      {product.name}
+                    </p>
+
+                    {product.offerText && (
+                      <div style={styles.offerText}>{product.offerText}</div>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -1496,9 +1518,11 @@ if (hiddenMatches.length > 0) {
               style={styles.modalImage}
               onClick={(event) => event.stopPropagation()}
             />
+
             <p style={styles.modalTitle}>
               #{selectedImage.idnum} {selectedImage.name}
             </p>
+
             <button
               onClick={() => setSelectedImage(null)}
               style={styles.closeButton}
@@ -1542,8 +1566,15 @@ const styles = {
     padding: "12px",
     display: "flex",
   },
-  title: { margin: 0, fontSize: "22px" },
-  subtitle: { margin: "6px 0 0", color: "#475569", fontSize: "14px" },
+  title: {
+    margin: 0,
+    fontSize: "22px",
+  },
+  subtitle: {
+    margin: "6px 0 0",
+    color: "#475569",
+    fontSize: "14px",
+  },
   cardSticky: {
     position: "sticky",
     top: "8px",
@@ -1582,7 +1613,10 @@ const styles = {
     gap: "8px",
     alignItems: "center",
   },
-  searchBoxCompact: { position: "relative", minWidth: 0 },
+  searchBoxCompact: {
+    position: "relative",
+    minWidth: 0,
+  },
   searchIcon: {
     position: "absolute",
     left: "12px",
@@ -1688,6 +1722,17 @@ const styles = {
     marginRight: "8px",
     color: "#64748b",
     fontWeight: "bold",
+  },
+  offerText: {
+    marginTop: "6px",
+    fontSize: "13px",
+    fontWeight: "bold",
+    color: "#dc2626",
+    background: "#fef2f2",
+    padding: "6px 8px",
+    borderRadius: "8px",
+    border: "1px solid #fecaca",
+    lineHeight: "1.3",
   },
   textarea: {
     width: "100%",
