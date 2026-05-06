@@ -1656,7 +1656,7 @@ const styles = {
   padding: "10px",
   borderTop: "1px solid #e2e8f0",
 
-  scrollMarginTop: "220px",
+  scrollMarginTop: "340px",
 },
   leftColumn: {
     display: "flex",
