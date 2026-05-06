@@ -1307,3 +1307,13 @@ window.exportFixedProducts = () => {
   console.log(JSON.stringify(converted, null, 2));
   return converted;
 };
+
+function App() {
+  return (
+    <div>
+      App funcionando
+    </div>
+  );
+}
+
+export default App;
