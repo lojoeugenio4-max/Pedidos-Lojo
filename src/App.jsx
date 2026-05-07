@@ -10,6 +10,8 @@ const fixedProduct = (idnum, name, offerText = "") => ({
   offerText,
 });
 
+// AQUÍ DEJA TU ARRAY departments COMPLETO TAL COMO LO TIENES
+// No hace falta cambiar nada dentro de departments
 const departments = [
   {
     name: "AGUA",
@@ -475,7 +477,10 @@ export default function App() {
   const [quantities, setQuantities] = useState({});
   const [customerName, setCustomerName] = useState("");
   const [notes, setNotes] = useState("");
+
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+
   const [selectedDepartment, setSelectedDepartment] = useState("TODOS");
   const [selectedImage, setSelectedImage] = useState(null);
   const [compactHeader, setCompactHeader] = useState(false);
@@ -571,6 +576,14 @@ export default function App() {
     }
   };
 
+  const searchOnEnter = (event) => {
+    if (event.key === "Enter") {
+      setSearch(searchInput);
+      setSelectedDepartment("TODOS");
+      event.currentTarget.blur();
+    }
+  };
+
   useEffect(() => {
     const handleScroll = () => {
       if (window.scrollY > 120) {
@@ -591,6 +604,7 @@ export default function App() {
     setQuantities({});
     setCustomerName("");
     setNotes("");
+    setSearchInput("");
     setSearch("");
     setSelectedDepartment("TODOS");
   };
@@ -638,19 +652,19 @@ export default function App() {
     <div style={styles.page}>
       <div style={styles.container}>
         {!compactHeader && (
-        <header style={styles.header}>
-          <div style={styles.iconBox}>
-            <ShoppingCart size={28} />
-          </div>
+          <header style={styles.header}>
+            <div style={styles.iconBox}>
+              <ShoppingCart size={28} />
+            </div>
 
-          <div>
-            <h1 style={styles.title}>Pedido online Cash Lojo</h1>
-            <p style={styles.subtitle}>
-              Escribe cantidades en Unidades o Cajas y envía el pedido por WhatsApp.
-            </p>
-          </div>
-        </header>
-      )}
+            <div>
+              <h1 style={styles.title}>Pedido online Cash Lojo</h1>
+              <p style={styles.subtitle}>
+                Escribe cantidades en Unidades o Cajas y envía el pedido por WhatsApp.
+              </p>
+            </div>
+          </header>
+        )}
 
         <div style={styles.cardSticky}>
           {!compactHeader && (
@@ -669,18 +683,20 @@ export default function App() {
           )}
 
           <label style={styles.label}>Buscar artículo</label>
+
           <div style={styles.searchAndSendRow}>
             <div style={styles.searchBoxCompact}>
               <Search size={20} style={styles.searchIcon} />
+
               <input
-  value={search}
-  onChange={(event) => {
-    setSearch(event.target.value);
-    setSelectedDepartment("TODOS");
-  }}
-  placeholder="Buscar artículo..."
-  style={styles.searchInput}
-/>
+                value={searchInput}
+                onChange={(event) => {
+                  setSearchInput(event.target.value);
+                }}
+                onKeyDown={searchOnEnter}
+                placeholder="Buscar artículo..."
+                style={styles.searchInput}
+              />
             </div>
 
             <button onClick={sendOrder} style={styles.stickyWhatsappButton}>
@@ -689,25 +705,24 @@ export default function App() {
           </div>
 
           <label style={styles.label}>Departamento</label>
-          <select
-  value={selectedDepartment}
-  onChange={(event) => {
-    setSelectedDepartment(event.target.value);
-    setSearch("");
-  }}
-  style={styles.select}
->
-  <option value="TODOS">Todos los departamentos</option>
 
-  {departments.map((department) => (
-    <option
-      key={department.name}
-      value={department.name}
-    >
-      {department.name}
-    </option>
-  ))}
-</select>
+          <select
+            value={selectedDepartment}
+            onChange={(event) => {
+              setSelectedDepartment(event.target.value);
+              setSearchInput("");
+              setSearch("");
+            }}
+            style={styles.select}
+          >
+            <option value="TODOS">Todos los departamentos</option>
+
+            {departments.map((department) => (
+              <option key={department.name} value={department.name}>
+                {department.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         {filteredDepartments.map((department) => (
@@ -751,12 +766,17 @@ export default function App() {
                     <div style={styles.qtyRow}>
                       <div>
                         <label style={styles.qtyLabel}>Cajas</label>
+
                         <input
                           inputMode="numeric"
                           enterKeyHint="done"
                           value={quantities[productId]?.cajas || ""}
                           onChange={(event) =>
-                            updateQuantity(productId, "cajas", event.target.value)
+                            updateQuantity(
+                              productId,
+                              "cajas",
+                              event.target.value
+                            )
                           }
                           onKeyDown={closeKeyboardOnEnter}
                           placeholder="0"
@@ -766,12 +786,17 @@ export default function App() {
 
                       <div>
                         <label style={styles.qtyLabel}>Unid.</label>
+
                         <input
                           inputMode="numeric"
                           enterKeyHint="done"
                           value={quantities[productId]?.unidades || ""}
                           onChange={(event) =>
-                            updateQuantity(productId, "unidades", event.target.value)
+                            updateQuantity(
+                              productId,
+                              "unidades",
+                              event.target.value
+                            )
                           }
                           onKeyDown={closeKeyboardOnEnter}
                           placeholder="0"
@@ -799,6 +824,7 @@ export default function App() {
 
         <div style={styles.card}>
           <label style={styles.label}>Observaciones</label>
+
           <textarea
             value={notes}
             onChange={(event) => setNotes(event.target.value)}
@@ -835,7 +861,10 @@ export default function App() {
               #{selectedImage.idnum} {selectedImage.name}
             </p>
 
-            <button onClick={() => setSelectedImage(null)} style={styles.closeButton}>
+            <button
+              onClick={() => setSelectedImage(null)}
+              style={styles.closeButton}
+            >
               Cerrar
             </button>
           </div>
