@@ -574,24 +574,23 @@ export default function App() {
     }
   };
 
+  const applySearch = () => {
+    const cleanValue = searchInput.trim();
+
+    setSearch(cleanValue);
+    setSelectedDepartment("TODOS");
+  };
+
   const searchOnEnter = (event) => {
     if (event.key === "Enter") {
-      const cleanValue = searchInput.trim();
-
-      setSearch(cleanValue);
-      setSelectedDepartment("TODOS");
-
+      applySearch();
       event.currentTarget.blur();
     }
   };
 
   useEffect(() => {
     const handleScroll = () => {
-      if (window.scrollY > 120) {
-        setCompactHeader(true);
-      } else {
-        setCompactHeader(false);
-      }
+      setCompactHeader(window.scrollY > 120);
     };
 
     window.addEventListener("scroll", handleScroll);
@@ -695,6 +694,7 @@ export default function App() {
                   setSearchInput(event.target.value);
                 }}
                 onKeyDown={searchOnEnter}
+                onBlur={applySearch}
                 inputMode="search"
                 enterKeyHint="done"
                 placeholder="Buscar artículo..."
