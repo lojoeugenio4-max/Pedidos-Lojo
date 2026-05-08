@@ -17,9 +17,8 @@ const fixedProduct = (idnum, name, offerText = "") => ({
   offerText,
 });
 
-
 const departments = [
-{
+  {
     name: "AGUA",
     products: [
       fixedProduct(1, "AGUA FUENTELAJARA 1.5L", "Comprando 10 cajas REGALO 1 caja "),
@@ -376,8 +375,6 @@ const departments = [
       fixedProduct(241, "ESTUCHES DE LOS REYES"),
     ],
   },
-  
-  
 ];
 
 const imageModules = import.meta.glob(
@@ -478,7 +475,6 @@ export default function App() {
   const [compactHeader, setCompactHeader] = useState(false);
 
   const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
-  const [departmentSearch, setDepartmentSearch] = useState("");
 
   useEffect(() => {
     let viewport = document.querySelector("meta[name=viewport]");
@@ -515,7 +511,7 @@ export default function App() {
   }, []);
 
   const departmentOptions = useMemo(() => {
-    const options = [
+    return [
       {
         name: "TODOS",
         label: "Todos los departamentos",
@@ -527,15 +523,7 @@ export default function App() {
         count: department.products.length,
       })),
     ];
-
-    const cleanSearch = normalizeText(departmentSearch);
-
-    if (!cleanSearch) return options;
-
-    return options.filter((option) =>
-      normalizeText(option.label).includes(cleanSearch)
-    );
-  }, [departmentSearch]);
+  }, []);
 
   const filteredDepartments = useMemo(() => {
     const cleanSearch = search.trim();
@@ -641,6 +629,37 @@ export default function App() {
     }
   };
 
+  const openDepartmentDropdown = () => {
+    setDepartmentDropdownOpen((open) => {
+      const nextOpen = !open;
+
+      if (nextOpen) {
+        setTimeout(() => {
+          departmentDropdownRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }, 50);
+      }
+
+      return nextOpen;
+    });
+  };
+
+  const selectDepartment = (departmentName) => {
+    setSelectedDepartment(departmentName);
+    setSearchInput("");
+    setSearch("");
+    setDepartmentDropdownOpen(false);
+
+    setTimeout(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    }, 80);
+  };
+
   useEffect(() => {
     const handleScroll = () => {
       setCompactHeader(window.scrollY > 120);
@@ -660,7 +679,6 @@ export default function App() {
     setSearchInput("");
     setSearch("");
     setSelectedDepartment("TODOS");
-    setDepartmentSearch("");
     setDepartmentDropdownOpen(false);
   };
 
@@ -766,7 +784,7 @@ export default function App() {
           <div ref={departmentDropdownRef} style={styles.departmentSelector}>
             <button
               type="button"
-              onClick={() => setDepartmentDropdownOpen((open) => !open)}
+              onClick={openDepartmentDropdown}
               style={styles.departmentButton}
             >
               <div>
@@ -794,60 +812,34 @@ export default function App() {
 
             {departmentDropdownOpen && (
               <div style={styles.departmentDropdown}>
-                <div style={styles.departmentSearchBox}>
-                  <Search size={18} style={styles.departmentSearchIcon} />
-
-                  <input
-                    value={departmentSearch}
-                    onChange={(event) =>
-                      setDepartmentSearch(event.target.value)
-                    }
-                    placeholder="Buscar departamento..."
-                    style={styles.departmentSearchInput}
-                    autoFocus
-                  />
-                </div>
-
                 <div style={styles.departmentList}>
-                  {departmentOptions.length > 0 ? (
-                    departmentOptions.map((option) => {
-                      const isActive = selectedDepartment === option.name;
+                  {departmentOptions.map((option) => {
+                    const isActive = selectedDepartment === option.name;
 
-                      return (
-                        <button
-                          key={option.name}
-                          type="button"
-                          onClick={() => {
-                            setSelectedDepartment(option.name);
-                            setSearchInput("");
-                            setSearch("");
-                            setDepartmentSearch("");
-                            setDepartmentDropdownOpen(false);
-                          }}
-                          style={{
-                            ...styles.departmentOption,
-                            ...(isActive ? styles.departmentOptionActive : {}),
-                          }}
-                        >
-                          <div>
-                            <div style={styles.departmentOptionName}>
-                              {option.label}
-                            </div>
-
-                            <div style={styles.departmentOptionCount}>
-                              {option.count} artículos
-                            </div>
+                    return (
+                      <button
+                        key={option.name}
+                        type="button"
+                        onClick={() => selectDepartment(option.name)}
+                        style={{
+                          ...styles.departmentOption,
+                          ...(isActive ? styles.departmentOptionActive : {}),
+                        }}
+                      >
+                        <div>
+                          <div style={styles.departmentOptionName}>
+                            {option.label}
                           </div>
 
-                          {isActive && <Check size={18} />}
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <div style={styles.departmentEmpty}>
-                      No hay departamentos con ese nombre.
-                    </div>
-                  )}
+                          <div style={styles.departmentOptionCount}>
+                            {option.count} artículos
+                          </div>
+                        </div>
+
+                        {isActive && <Check size={18} />}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1145,26 +1137,6 @@ const styles = {
     padding: "10px",
     boxSizing: "border-box",
   },
-  departmentSearchBox: {
-    position: "relative",
-    marginBottom: "8px",
-  },
-  departmentSearchIcon: {
-    position: "absolute",
-    left: "12px",
-    top: "11px",
-    color: "#64748b",
-  },
-  departmentSearchInput: {
-    width: "100%",
-    padding: "11px 12px 11px 38px",
-    borderRadius: "12px",
-    border: "1px solid #cbd5e1",
-    fontSize: "15px",
-    fontWeight: "600",
-    boxSizing: "border-box",
-    outline: "none",
-  },
   departmentList: {
     maxHeight: "290px",
     overflowY: "auto",
@@ -1198,13 +1170,6 @@ const styles = {
     fontSize: "12px",
     fontWeight: "600",
     opacity: 0.75,
-  },
-  departmentEmpty: {
-    padding: "14px",
-    textAlign: "center",
-    color: "#64748b",
-    fontSize: "14px",
-    fontWeight: "600",
   },
   section: {
     background: "white",
