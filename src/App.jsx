@@ -1,5 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ShoppingCart, Trash2, Send, Search } from "lucide-react";
+import {
+  ShoppingCart,
+  Trash2,
+  Send,
+  Search,
+  ChevronDown,
+  Check,
+} from "lucide-react";
 import hiddenProductsRaw from "./hiddenProducts";
 
 const WHATSAPP_NUMBER = "34670716744";
@@ -10,8 +17,9 @@ const fixedProduct = (idnum, name, offerText = "") => ({
   offerText,
 });
 
+
 const departments = [
-  {
+{
     name: "AGUA",
     products: [
       fixedProduct(1, "AGUA FUENTELAJARA 1.5L", "Comprando 10 cajas REGALO 1 caja "),
@@ -456,6 +464,21 @@ const products = [...visibleProducts, ...hiddenProductsFormatted];
 
 export default function App() {
   const rowRefs = useRef({});
+  const departmentDropdownRef = useRef(null);
+
+  const [quantities, setQuantities] = useState({});
+  const [customerName, setCustomerName] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+
+  const [selectedDepartment, setSelectedDepartment] = useState("TODOS");
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [compactHeader, setCompactHeader] = useState(false);
+
+  const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
+  const [departmentSearch, setDepartmentSearch] = useState("");
 
   useEffect(() => {
     let viewport = document.querySelector("meta[name=viewport]");
@@ -472,16 +495,47 @@ export default function App() {
     );
   }, []);
 
-  const [quantities, setQuantities] = useState({});
-  const [customerName, setCustomerName] = useState("");
-  const [notes, setNotes] = useState("");
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        departmentDropdownRef.current &&
+        !departmentDropdownRef.current.contains(event.target)
+      ) {
+        setDepartmentDropdownOpen(false);
+      }
+    };
 
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
 
-  const [selectedDepartment, setSelectedDepartment] = useState("TODOS");
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [compactHeader, setCompactHeader] = useState(false);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
+  }, []);
+
+  const departmentOptions = useMemo(() => {
+    const options = [
+      {
+        name: "TODOS",
+        label: "Todos los departamentos",
+        count: visibleProducts.length,
+      },
+      ...departments.map((department) => ({
+        name: department.name,
+        label: department.name,
+        count: department.products.length,
+      })),
+    ];
+
+    const cleanSearch = normalizeText(departmentSearch);
+
+    if (!cleanSearch) return options;
+
+    return options.filter((option) =>
+      normalizeText(option.label).includes(cleanSearch)
+    );
+  }, [departmentSearch]);
 
   const filteredDepartments = useMemo(() => {
     const cleanSearch = search.trim();
@@ -576,7 +630,6 @@ export default function App() {
 
   const applySearch = () => {
     const cleanValue = searchInput.trim();
-
     setSearch(cleanValue);
     setSelectedDepartment("TODOS");
   };
@@ -607,6 +660,8 @@ export default function App() {
     setSearchInput("");
     setSearch("");
     setSelectedDepartment("TODOS");
+    setDepartmentSearch("");
+    setDepartmentDropdownOpen(false);
   };
 
   const createWhatsAppMessage = () => {
@@ -660,7 +715,8 @@ export default function App() {
             <div>
               <h1 style={styles.title}>Pedido online Cash Lojo</h1>
               <p style={styles.subtitle}>
-                Escribe cantidades en Unidades o Cajas y envía el pedido por WhatsApp.
+                Escribe cantidades en Unidades o Cajas y envía el pedido por
+                WhatsApp.
               </p>
             </div>
           </header>
@@ -690,9 +746,7 @@ export default function App() {
 
               <input
                 value={searchInput}
-                onChange={(event) => {
-                  setSearchInput(event.target.value);
-                }}
+                onChange={(event) => setSearchInput(event.target.value)}
                 onKeyDown={searchOnEnter}
                 onBlur={applySearch}
                 inputMode="search"
@@ -709,23 +763,95 @@ export default function App() {
 
           <label style={styles.label}>Departamento</label>
 
-          <select
-            value={selectedDepartment}
-            onChange={(event) => {
-              setSelectedDepartment(event.target.value);
-              setSearchInput("");
-              setSearch("");
-            }}
-            style={styles.select}
-          >
-            <option value="TODOS">Todos los departamentos</option>
+          <div ref={departmentDropdownRef} style={styles.departmentSelector}>
+            <button
+              type="button"
+              onClick={() => setDepartmentDropdownOpen((open) => !open)}
+              style={styles.departmentButton}
+            >
+              <div>
+                <div style={styles.departmentButtonLabel}>
+                  {selectedDepartment === "TODOS"
+                    ? "Todos los departamentos"
+                    : selectedDepartment}
+                </div>
 
-            {departments.map((department) => (
-              <option key={department.name} value={department.name}>
-                {department.name}
-              </option>
-            ))}
-          </select>
+                <div style={styles.departmentButtonHint}>
+                  Toca para cambiar de departamento
+                </div>
+              </div>
+
+              <ChevronDown
+                size={20}
+                style={{
+                  ...styles.departmentChevron,
+                  transform: departmentDropdownOpen
+                    ? "rotate(180deg)"
+                    : "rotate(0deg)",
+                }}
+              />
+            </button>
+
+            {departmentDropdownOpen && (
+              <div style={styles.departmentDropdown}>
+                <div style={styles.departmentSearchBox}>
+                  <Search size={18} style={styles.departmentSearchIcon} />
+
+                  <input
+                    value={departmentSearch}
+                    onChange={(event) =>
+                      setDepartmentSearch(event.target.value)
+                    }
+                    placeholder="Buscar departamento..."
+                    style={styles.departmentSearchInput}
+                    autoFocus
+                  />
+                </div>
+
+                <div style={styles.departmentList}>
+                  {departmentOptions.length > 0 ? (
+                    departmentOptions.map((option) => {
+                      const isActive = selectedDepartment === option.name;
+
+                      return (
+                        <button
+                          key={option.name}
+                          type="button"
+                          onClick={() => {
+                            setSelectedDepartment(option.name);
+                            setSearchInput("");
+                            setSearch("");
+                            setDepartmentSearch("");
+                            setDepartmentDropdownOpen(false);
+                          }}
+                          style={{
+                            ...styles.departmentOption,
+                            ...(isActive ? styles.departmentOptionActive : {}),
+                          }}
+                        >
+                          <div>
+                            <div style={styles.departmentOptionName}>
+                              {option.label}
+                            </div>
+
+                            <div style={styles.departmentOptionCount}>
+                              {option.count} artículos
+                            </div>
+                          </div>
+
+                          {isActive && <Check size={18} />}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div style={styles.departmentEmpty}>
+                      No hay departamentos con ese nombre.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {filteredDepartments.map((department) => (
@@ -837,7 +963,8 @@ export default function App() {
           />
 
           <div style={styles.summary}>
-            <strong>Resumen:</strong> {selectedItems.length} artículos con cantidad.
+            <strong>Resumen:</strong> {selectedItems.length} artículos con
+            cantidad.
           </div>
 
           <button onClick={sendOrder} style={styles.primaryButton}>
@@ -948,15 +1075,6 @@ const styles = {
     fontSize: "16px",
     boxSizing: "border-box",
   },
-  select: {
-    width: "100%",
-    padding: "11px",
-    borderRadius: "12px",
-    border: "1px solid #cbd5e1",
-    fontSize: "16px",
-    boxSizing: "border-box",
-    background: "white",
-  },
   searchAndSendRow: {
     display: "grid",
     gridTemplateColumns: "1fr 112px",
@@ -980,6 +1098,113 @@ const styles = {
     border: "1px solid #cbd5e1",
     fontSize: "16px",
     boxSizing: "border-box",
+  },
+  departmentSelector: {
+    position: "relative",
+  },
+  departmentButton: {
+    width: "100%",
+    padding: "12px 14px",
+    borderRadius: "14px",
+    border: "1px solid #cbd5e1",
+    background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    textAlign: "left",
+    boxSizing: "border-box",
+    boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+  },
+  departmentButtonLabel: {
+    fontSize: "16px",
+    fontWeight: "800",
+    color: "#0f172a",
+  },
+  departmentButtonHint: {
+    marginTop: "2px",
+    fontSize: "12px",
+    fontWeight: "600",
+    color: "#64748b",
+  },
+  departmentChevron: {
+    color: "#334155",
+    transition: "transform 0.18s ease",
+    flexShrink: 0,
+  },
+  departmentDropdown: {
+    position: "absolute",
+    top: "calc(100% + 8px)",
+    left: 0,
+    right: 0,
+    zIndex: 50,
+    background: "white",
+    border: "1px solid #e2e8f0",
+    borderRadius: "16px",
+    boxShadow: "0 18px 45px rgba(15,23,42,0.18)",
+    padding: "10px",
+    boxSizing: "border-box",
+  },
+  departmentSearchBox: {
+    position: "relative",
+    marginBottom: "8px",
+  },
+  departmentSearchIcon: {
+    position: "absolute",
+    left: "12px",
+    top: "11px",
+    color: "#64748b",
+  },
+  departmentSearchInput: {
+    width: "100%",
+    padding: "11px 12px 11px 38px",
+    borderRadius: "12px",
+    border: "1px solid #cbd5e1",
+    fontSize: "15px",
+    fontWeight: "600",
+    boxSizing: "border-box",
+    outline: "none",
+  },
+  departmentList: {
+    maxHeight: "290px",
+    overflowY: "auto",
+    display: "grid",
+    gap: "6px",
+  },
+  departmentOption: {
+    width: "100%",
+    border: "none",
+    borderRadius: "12px",
+    background: "white",
+    padding: "11px 12px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
+    textAlign: "left",
+    color: "#0f172a",
+  },
+  departmentOptionActive: {
+    background: "#0f172a",
+    color: "white",
+  },
+  departmentOptionName: {
+    fontSize: "14px",
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  departmentOptionCount: {
+    marginTop: "2px",
+    fontSize: "12px",
+    fontWeight: "600",
+    opacity: 0.75,
+  },
+  departmentEmpty: {
+    padding: "14px",
+    textAlign: "center",
+    color: "#64748b",
+    fontSize: "14px",
+    fontWeight: "600",
   },
   section: {
     background: "white",
