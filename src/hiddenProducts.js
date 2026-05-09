@@ -76,8 +76,7 @@ fixedProduct(383, "BRANDY MAGNO 70 CL."),
 fixedProduct(384, "BROTES DE SOJA GOURMET 180G"),
 
 
-fixedProduct(388, "CABALLA ACEITE/V UBAGO 90"),
-fixedProduct(389, "CABALLA UBAGO TOMATE 90G"),
+
 fixedProduct(401, "CALLOS APIS LT 390 GR"),
 fixedProduct(410, "CASERA BLANCA LATA"),
 fixedProduct(445, "CHURRUCA PASARRATOS SENIOR 20UDS"),
