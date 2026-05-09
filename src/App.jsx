@@ -80,6 +80,12 @@ const departments = [
       fixedProduct(23, "TONICA LATA 33CL"),
       fixedProduct(25, "SIMON LIFE MANGO LATA 33CL"),
       fixedProduct(26, "TINTO VERANO LIMON CASERA LATA"),
+      fixedProduct(801, "PET AQUARIUS BLANCO 500 ML"),
+      fixedProduct(802, "PET AQUARIUS NARANJA 500 ML"),
+      fixedProduct(803, "PET COCA COLA 500 ML."),
+      fixedProduct(804, "PET COCA COLA ZERO 500 ML."),
+
+      
     ],
   },
   {
@@ -109,6 +115,7 @@ const departments = [
       fixedProduct(48, "TONICA SCHWEPPES 1L"),
       fixedProduct(49, "LIMON&NADA MINUTE MAID 1L"),
       fixedProduct(331, "AQUAPLUS LIMON 1.5 L VALTORRE"),
+      fixedProduct(955, "SUNNY DELIGHT FLORIDA 1.25 L"),
     ],
   },
   {
@@ -149,7 +156,10 @@ const departments = [
       fixedProduct(723, "MONSTERS LANDO NORRIS ZER LATA 50 CL"),
       fixedProduct(725, "MONSTERS REHAB PEACH LATA 50 CL"),
       fixedProduct(726, "MONSTERS RIPPER LATA 50 CL"),
-
+      fixedProduct(361, "BEBIDA ENERYETI DRAGON 500ML"),
+      fixedProduct(559, "FRESHYETI PINTALENGUAS 500ML"),
+      fixedProduct(727, "MONSTERS ULTRA STRAWBERRY DREAMS 500 CC"),
+      
     ],
   },
   {
@@ -179,6 +189,39 @@ const departments = [
       fixedProduct(142, "MINI WHISKY WHITE LABEL"),
       fixedProduct(143, "MINI RON BARCELO"),
       fixedProduct(144, "MINI BALLANTINES"),
+      fixedProduct(350, "BAILEYS ORIGINAL 70CL"),
+      fixedProduct(517, "EXOTICA GIN 1890 70CL"),
+      fixedProduct(578, "GINEBRA RIVES 0.70"),
+      fixedProduct(580, "GINEBRA SEAGRAM´S 70CL"),
+      fixedProduct(581, "GINEBRA TANQUERAY 70 CL"),
+      fixedProduct(583, "GIN PUERTO DE INDIAS 70CL"),
+      fixedProduct(610, "JAGERMEISTER HERB 0.70CL"),
+      fixedProduct(674, "LICOR 43 70CL"),
+      fixedProduct(676, "LICOR AMARETTO DISARONNO 70 CL"),
+      fixedProduct(677, "LICOR COCO-RON MALIBU 0.70"),
+      fixedProduct(679, "LICOR RUAVIEJA HIERBAS 70 CL"),
+      fixedProduct(889, "RON BRUGAL AÑEJO 0.70"),
+      fixedProduct(890, "RON LEGENDARIO ELIX 7 AÑOS 0.70"),
+      fixedProduct(891, "RON MIEL DORAMAS 70 CL."),
+      fixedProduct(894, "RON NEGRITA DORADO 0.70"),
+      fixedProduct(1015, "VINO TINTO D.O RIOJA CAMPOVIEJO 70C"),
+      fixedProduct(1025, "VODKA ABSOLUT 70 CL"),
+      fixedProduct(1026, "VODKA CARAMELO GECKO 0.70 L 30º"),
+      fixedProduct(1028, "VODKA ERISTOFF 70CL"),
+      fixedProduct(1029, "VVH VODK CARAMEL RIVES 70CL"),
+      fixedProduct(1031, "WALKER BLACK LABEL 70 CL"),
+      fixedProduct(1035, "WHISKY CHIVAS REGAL 0.70"),
+      fixedProduct(1036, "WHISKY DYC 5 AÑOS 70 CL"),
+      fixedProduct(885, "RON BACARDI 1L"),
+      fixedProduct(1032, "WALKER NEGRO 1L"),
+      fixedProduct(1033, "WALKER ROJO 1L"),
+      fixedProduct(289, "ABSOLUTE MINIATURA"),
+      fixedProduct(447, "COÑAC SOBERANO MINI"),
+      fixedProduct(575, "GINEBRA BEEFEATER MINIATURA"),
+      fixedProduct(615, "JHONY WALKER NEGRO MINIATURA"),
+
+
+      
     ],
   },
   {
@@ -218,8 +261,12 @@ const departments = [
       fixedProduct(720, "MINI STICK FUET CF 50G 12U"),
       fixedProduct(739, "MOZZARELLA OGGI 150GR ROJA"),
       fixedProduct(745, "OGGI RALLADO 4 QUESOS 150G"),
+      fixedProduct(789, "PAVO BRASEADO XJ 75 GR 1 E"),
+      fixedProduct(851, "QUESO LONCHA TRANCHETE 7 131.25X9"),
+      fixedProduct(478, "CUÑA QUESO SEMI NAVIDUL 170 GR"),
+      fixedProduct(846, "QUESO FRESCO 250GR LOS VAZQUEZ"),
+      fixedProduct(906, "SALCHICHAS POLLO MONTEALBOR 250 G"),
 
-      
     ],
   },
   {
@@ -243,6 +290,8 @@ const departments = [
       fixedProduct(201, "PALOMITA KETCHUP MOSTAZA 8U"),
       fixedProduct(304, "AGUASAL PIPAS (SEVILLANAS)"),
       fixedProduct(315, "ALTRAMUZ SALADITO BANDEJA 250GR C/10"),
+      fixedProduct(786, "PATATAS TRADICIONAL 180G 1.5€"),
+      fixedProduct(945, "SPIDERS 70G"),
     ],
   },
   {
@@ -269,6 +318,7 @@ const departments = [
       fixedProduct(163, "MARGARINA TULIPAN 400G"),
       fixedProduct(164, "NATA COCINA RENY PICOT 200ML"),
       fixedProduct(656, "LECHE COND LECHERA LATA 370"),
+      fixedProduct(660, "LECHE OFERTA ENTERA 1L","Por 5 Cajas REGALO 3 unidades"),
     ],
   },
   {
@@ -336,7 +386,34 @@ const departments = [
       fixedProduct(527, "FIDEOS GALLO Nº1 250 GR"),
       fixedProduct(587, "GUISANTE LOZANO LT 185"),
       fixedProduct(709, "MELVA CANUTERA PLAYA GIRASOL RR125"),
+      fixedProduct(811, "PIMIENTO PIQUILLO DIAMIR 185G"),
+      fixedProduct(316, "ALUBIA FRASCO 570 GR"),
+      fixedProduct(400, "CALDO GOURMET POLLO 1L"),
+      fixedProduct(442, "CHOVI ALIOLI 250 ML.(ALI-OLI)"),
+      fixedProduct(526, "FIDEOS GALLO Nº0 250 GR"),
+      fixedProduct(528, "FIDEOS GALLO Nº2 250 GR"),
+      fixedProduct(529, "FIDEOS GALLO Nº4 250 GR"),
+      fixedProduct(530, "FIDEOS GALLO PERLA 250 GR"),
+      fixedProduct(689, "MACARRONES GALLO Nº 6 250 GR"),
+      fixedProduct(690, "MACARRONES VEGETALES GALLO 250 GR"),
+      fixedProduct(764, "PASTA GALLO ESTRELLAS 250GR"),
+      fixedProduct(765, "PASTA GALLO FIDEUA 250 GR"),
+      fixedProduct(766, "PASTA GALLO HELICE C/VGET 250"),
+      fixedProduct(767, "PASTA GALLO LETRA 250GR"),
+      fixedProduct(770, "PASTA GALLO TALLARIN 250"),          
+      fixedProduct(917, "SALSA COCKTAIL YBARRA 250 GR"),
+      fixedProduct(944, "SPAGUETTI GALLO 250 GR"),
+      fixedProduct(960, "TIBURON GALLO N 0 250 GR"),
+      fixedProduct(336, "ARROZ CIGALA 500 GR."),
+      fixedProduct(425, "CHAMPIÑON NAT.LAMINADO L/500"),
+      fixedProduct(596, "HARINA PANAERAS FREIR 500"),
+      fixedProduct(598, "HARINA PANAERAS REPOSTER.500 G"),
+      fixedProduct(599, "HARINA YOLANDA REBOZAR 500"),
+      fixedProduct(768, "PASTA GALLO MACARR Nº6 500"),
+      fixedProduct(769, "PASTA GALLO SPAGHETTI 500"),
 
+
+      
     ],
   },
   {
@@ -377,7 +454,16 @@ const departments = [
       fixedProduct(667, "LEJIA ESTRELLA PINO 1.5 L."),
       fixedProduct(670, "LEJIA LIMON ESTRELLA 1.5L"),
       fixedProduct(681, "LIMPIAHOGAR BAÑOS 1.500 KIRIKO"),
-
+      fixedProduct(953, "SUAV SAN 1.5L AZUL (FLORAL)"),
+      fixedProduct(485, "DESENG NUCA MAX 1L PERFUMADO EL MILAGRITO"),
+      fixedProduct(544, "FREGASUELOS ASEVI CIAN 1L"),
+      fixedProduct(545, "FREGASUELOS ASEVI MIO 1L"),
+      fixedProduct(546, "FREGASUELOS ASEVI NARANJA 1L"),
+      fixedProduct(1002, "VINAGRE LIMPIEZA KIRIKO 1L"),
+      fixedProduct(536, "FLOTA PASTILLAS VERDE NORMAL 250 G"),
+      fixedProduct(606, "JABON DE MANOS COCINAS 500ML NAVINIA"),
+      fixedProduct(607, "JABON DE MANOS DERMO 500ML NAVINIA"),
+      fixedProduct(608, "JABON DE MANOS FRESA Y NATA 500ML NAVINIA"),
 
     ],
   },
@@ -426,6 +512,11 @@ const departments = [
       fixedProduct(240, "PASTILLAS ENCENDIDO"),
       fixedProduct(284, "15 x 30 BOLSA TRAMPARENTE"),
       fixedProduct(379, "BOLSAS 12X25 PURUÑUELA"),
+      fixedProduct(369, "BOLSA 30X40 ASA KG FUERTE CAMISETA B.O 70% SEGUN LEY"),
+      fixedProduct(318, "ALUMINIO DOMESTICO 30"),
+      fixedProduct(319, "ALUMINIO DOMESTICO 8 METROS"),
+      fixedProduct(365, "BOBINA P.V.C. 45X1500"),
+      
     ],
   },
 ];
