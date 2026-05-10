@@ -245,8 +245,10 @@ fixedProduct(1031, "WHISKY WALKER BLACK LABEL 70 CL"),
 fixedProduct(1032, "WHISKY WALKER NEGRO 1L"),
 fixedProduct(1033, "WHISKY WALKER ROJO 1L"),
 fixedProduct(132, "WHISKY WHITE LABEL 70CL", "Comprando 6 unidades PRECIO OFERTA"),
-
-      
+fixedProduct(1018, "VINO TINTO PROTOS COSECHA 3/4"),
+ fixedProduct(1019, "VINO TINTO SOLDEPEÑAS 1 L."),   
+fixedProduct(1027, "VODKA CIROC APLLE 0.7"),
+		
     ],
   },
   {
@@ -398,6 +400,8 @@ fixedProduct(980, "TOSTAITOS SEVILLANAS 100 G X 10"),
 fixedProduct(986, "TRISKYS FAM 16U"),
 fixedProduct(830, "POPITAS MANTEQUILLA MICRO BORGES 100 MICRO"),
 fixedProduct(831, "POPITAS UNIDAD BORGES 100 MICRO"),
+fixedProduct(1044, "YOGO ICE 10UDS","Por 1 caja REGALO 2 unidades"),
+fixedProduct(1045, "ZAMBA FRUTAS SURTIDAS P10"),
 
 
       
@@ -466,8 +470,8 @@ fixedProduct(45, "SIMON LIFE MANDARINA 1.5L"),
 fixedProduct(936, "SIMON LIFE MANDARINA P-4 (4314)"),
 fixedProduct(44, "SIMON LIFE NARANJA 1.5L"),
 fixedProduct(937, "SIMON LIFE NARANJA P-4 (4313)"),
-fixedProduct(380, "ZUMO BOTELLIN JUVER MELOCOTON"),
-fixedProduct(381, "ZUMO BOTELLIN JUVER PIÑA"),
+fixedProduct(380, "ZUMO BOTELLIN JUVER MELOCOTON 200 ML"),
+fixedProduct(381, "ZUMO BOTELLIN JUVER PIÑA 200 ML"),
 fixedProduct(1052, "ZUMO D.SIMON NARANJA 200 P-6 (3039)"),
 fixedProduct(58, "ZUMO D.SIMON MELOCOTON P6 200"),
 fixedProduct(57, "ZUMO D.SIMON PIÑA P6 200"),
