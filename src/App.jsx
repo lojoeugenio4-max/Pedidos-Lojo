@@ -160,7 +160,7 @@ fixedProduct(100, "POWERADE BLOOD 50CL"),
 fixedProduct(99, "POWERADE ICE 50CL"),
 fixedProduct(82, "RED BULL 250ML"),
 fixedProduct(83, "RED BULL SIN AZUCAR 250ML"),
-
+fixedProduct(558, "FRESHYETI CANDI PLATANO 500 ML"),
     ],
   },
   {
@@ -403,7 +403,7 @@ fixedProduct(830, "POPITAS MANTEQUILLA MICRO BORGES 100 MICRO"),
 fixedProduct(831, "POPITAS UNIDAD BORGES 100 MICRO"),
 fixedProduct(1044, "YOGO ICE 10UDS","Por 1 caja REGALO 2 unidades"),
 fixedProduct(1045, "ZAMBA FRUTAS SURTIDAS P10"),
-
+fixedProduct(445, "CHURRUCA PASARRATOS SENIOR 20UDS"),
 
       
     ],
