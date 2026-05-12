@@ -21,6 +21,12 @@ const fixedProduct = (idnum, name, offerText = "") => ({
 
 const departments = [
   {
+    name: "NOVEDAD",
+    products: [
+		fixedProduct(1056, "ATUN A.VEGETAL BOLSA 1 K", "SUPER PRECIO.Hasta Fin de Existencias "),
+	],
+  },
+{
     name: "AGUA",
     products: [
 fixedProduct(3, "AGUA FUENTELAJARA 0.5L", "Comprando 10 cajas REGALO 1 caja "),
@@ -815,6 +821,7 @@ fixedProduct(993, "VASO POREX 7 OZ 200CC B/50"),
 fixedProduct(1024, "VIVO PERRO POLLO LT 830"),
     ],
   },
+  
 ];
 
 const imageModules = import.meta.glob(
@@ -945,45 +952,32 @@ export default function App() {
   const [showOrderSummary, setShowOrderSummary] = useState(false);
 
   useEffect(() => {
+    const style = document.createElement("style");
+    style.innerHTML = `
+      @keyframes novedadBlink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.25; }
+      }
+    `;
+    document.head.appendChild(style);
+
+    return () => document.head.removeChild(style);
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem(
       ORDER_STORAGE_KEY,
-      JSON.stringify({
-        quantities,
-        customerName,
-        notes,
-      })
+      JSON.stringify({ quantities, customerName, notes })
     );
   }, [quantities, customerName, notes]);
 
   useEffect(() => {
-    let viewport = document.querySelector("meta[name=viewport]");
-
-    if (!viewport) {
-      viewport = document.createElement("meta");
-      viewport.setAttribute("name", "viewport");
-      document.head.appendChild(viewport);
-    }
-
-    viewport.setAttribute("content", "width=device-width, initial-scale=1");
-  }, []);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (
-        departmentDropdownRef.current &&
-        !departmentDropdownRef.current.contains(event.target)
-      ) {
-        setDepartmentDropdownOpen(false);
-      }
+    const handleScroll = () => {
+      setCompactHeader(window.scrollY > 120);
     };
 
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("touchstart", handleClickOutside);
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("touchstart", handleClickOutside);
-    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   const departmentOptions = useMemo(() => {
@@ -1018,7 +1012,10 @@ export default function App() {
             )
           : department.products,
       }))
-      .filter((department) => department.products.length > 0);
+      .filter(
+        (department) =>
+          department.name === "NOVEDAD" || department.products.length > 0
+      );
 
     if (!cleanSearch || selectedDepartment !== "TODOS") {
       return visibleDepartments;
@@ -1037,25 +1034,6 @@ export default function App() {
 
     return visibleDepartments;
   }, [search, selectedDepartment]);
-
-  useEffect(() => {
-    if (!filteredDepartments.length) return;
-
-    const firstDepartment = filteredDepartments[0];
-    if (!firstDepartment?.products?.length) return;
-
-    const firstProduct = firstDepartment.products[0];
-    const firstProductId = `${firstDepartment.name}-${firstProduct.idnum}-${firstProduct.name}`;
-
-    const timer = setTimeout(() => {
-      rowRefs.current[firstProductId]?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    }, 120);
-
-    return () => clearTimeout(timer);
-  }, [filteredDepartments]);
 
   const selectedItems = useMemo(() => {
     return products
@@ -1077,92 +1055,12 @@ export default function App() {
         [field]: cleanValue,
       },
     }));
-
-    setTimeout(() => {
-      rowRefs.current[productId]?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    }, 100);
-  };
-
-  const closeKeyboardOnEnter = (event) => {
-    if (event.key === "Enter") {
-      event.currentTarget.blur();
-
-      setTimeout(() => {
-        stickyCardRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-
-        searchInputRef.current?.focus();
-      }, 120);
-    }
   };
 
   const applySearch = () => {
-    const cleanValue = searchInput.trim();
-    setSearch(cleanValue);
+    setSearch(searchInput.trim());
     setSelectedDepartment("TODOS");
   };
-
-  const searchOnEnter = (event) => {
-    if (event.key === "Enter") {
-      applySearch();
-      event.currentTarget.blur();
-
-      setTimeout(() => {
-        stickyCardRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      }, 80);
-    }
-  };
-
-  const openDepartmentDropdown = () => {
-    setDepartmentDropdownOpen((open) => {
-      const nextOpen = !open;
-
-      if (nextOpen) {
-        setTimeout(() => {
-          departmentDropdownRef.current?.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
-        }, 50);
-      }
-
-      return nextOpen;
-    });
-  };
-
-  const selectDepartment = (departmentName) => {
-    setSelectedDepartment(departmentName);
-    setSearchInput("");
-    setSearch("");
-    setDepartmentDropdownOpen(false);
-
-    setTimeout(() => {
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
-    }, 80);
-  };
-
-  useEffect(() => {
-    const handleScroll = () => {
-      setCompactHeader(window.scrollY > 120);
-    };
-
-    window.addEventListener("scroll", handleScroll);
-
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-    };
-  }, []);
 
   const clearOrder = () => {
     setQuantities({});
@@ -1207,11 +1105,8 @@ export default function App() {
       return;
     }
 
-    const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${createWhatsAppMessage()}`;
-
+    window.location.href = `https://wa.me/${WHATSAPP_NUMBER}?text=${createWhatsAppMessage()}`;
     clearOrder();
-
-    window.location.href = whatsappUrl;
   };
 
   return (
@@ -1237,7 +1132,6 @@ export default function App() {
           {!compactHeader && (
             <>
               <label style={styles.label}>Nombre o referencia del cliente</label>
-
               <input
                 value={customerName}
                 onChange={(event) => setCustomerName(event.target.value)}
@@ -1257,10 +1151,7 @@ export default function App() {
                 ref={searchInputRef}
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
-                onKeyDown={searchOnEnter}
                 onBlur={applySearch}
-                inputMode="search"
-                enterKeyHint="done"
                 placeholder="Buscar..."
                 style={styles.searchInput}
               />
@@ -1285,11 +1176,20 @@ export default function App() {
           <div ref={departmentDropdownRef} style={styles.departmentSelector}>
             <button
               type="button"
-              onClick={openDepartmentDropdown}
+              onClick={() =>
+                setDepartmentDropdownOpen(!departmentDropdownOpen)
+              }
               style={styles.departmentButton}
             >
               <div>
-                <div style={styles.departmentButtonLabel}>
+                <div
+                  style={{
+                    ...styles.departmentButtonLabel,
+                    ...(selectedDepartment === "NOVEDAD"
+                      ? styles.novedadText
+                      : {}),
+                  }}
+                >
                   {selectedDepartment === "TODOS"
                     ? "Todos los departamentos"
                     : selectedDepartment}
@@ -1300,15 +1200,7 @@ export default function App() {
                 </div>
               </div>
 
-              <ChevronDown
-                size={20}
-                style={{
-                  ...styles.departmentChevron,
-                  transform: departmentDropdownOpen
-                    ? "rotate(180deg)"
-                    : "rotate(0deg)",
-                }}
-              />
+              <ChevronDown size={20} />
             </button>
 
             {departmentDropdownOpen && (
@@ -1322,7 +1214,12 @@ export default function App() {
                       <button
                         key={option.name}
                         type="button"
-                        onClick={() => selectDepartment(option.name)}
+                        onClick={() => {
+                          setSelectedDepartment(option.name);
+                          setSearchInput("");
+                          setSearch("");
+                          setDepartmentDropdownOpen(false);
+                        }}
                         style={{
                           ...styles.departmentOption,
                           ...(isActive ? styles.departmentOptionActive : {}),
@@ -1342,7 +1239,14 @@ export default function App() {
                           )}
 
                           <div>
-                            <div style={styles.departmentOptionName}>
+                            <div
+                              style={{
+                                ...styles.departmentOptionName,
+                                ...(option.name === "NOVEDAD"
+                                  ? styles.novedadText
+                                  : {}),
+                              }}
+                            >
                               {option.label}
                             </div>
 
@@ -1365,104 +1269,98 @@ export default function App() {
         {filteredDepartments.map((department) => (
           <section key={department.name} style={styles.section}>
             <div style={styles.sectionHeader}>
-              <h2 style={styles.sectionTitle}>{department.name}</h2>
+              <h2
+                style={{
+                  ...styles.sectionTitle,
+                  ...(department.name === "NOVEDAD"
+                    ? styles.novedadText
+                    : {}),
+                }}
+              >
+                {department.name}
+              </h2>
             </div>
 
-            {department.products.map((product) => {
-              const productId = `${department.name}-${product.idnum}-${product.name}`;
-              const imageSrc = productImagesByIdnum[product.idnum];
+            {department.products.length === 0 ? (
+              <div style={styles.emptyDepartment}>Sin artículos</div>
+            ) : (
+              department.products.map((product) => {
+                const productId = `${department.name}-${product.idnum}-${product.name}`;
+                const imageSrc = productImagesByIdnum[product.idnum];
 
-              const isSelected =
-                Number(quantities[productId]?.cajas || 0) > 0 ||
-                Number(quantities[productId]?.unidades || 0) > 0;
+                return (
+                  <div key={productId} style={styles.row}>
+                    <div style={styles.leftColumn}>
+                      <div style={styles.imageBox}>
+                        {imageSrc ? (
+                          <img
+                            src={imageSrc}
+                            alt={product.name}
+                            style={styles.productImage}
+                            onClick={() =>
+                              setSelectedImage({
+                                src: imageSrc,
+                                name: product.name,
+                                idnum: product.idnum,
+                              })
+                            }
+                          />
+                        ) : (
+                          `Sin foto #${product.idnum}`
+                        )}
+                      </div>
 
-              return (
-                <div
-                  key={productId}
-                  ref={(element) => {
-                    rowRefs.current[productId] = element;
-                  }}
-                  style={{
-                    ...styles.row,
-                    ...(isSelected ? styles.rowSelected : {}),
-                  }}
-                >
-                  <div style={styles.leftColumn}>
-                    <div style={styles.imageBox}>
-                      {imageSrc ? (
-                        <img
-                          src={imageSrc}
-                          alt={product.name}
-                          style={styles.productImage}
-                          onClick={() =>
-                            setSelectedImage({
-                              src: imageSrc,
-                              name: product.name,
-                              idnum: product.idnum,
-                            })
-                          }
-                        />
-                      ) : (
-                        `Sin foto #${product.idnum}`
+                      <div style={styles.qtyRow}>
+                        <div>
+                          <label style={styles.qtyLabel}>Cajas</label>
+                          <input
+                            inputMode="numeric"
+                            value={quantities[productId]?.cajas || ""}
+                            onChange={(event) =>
+                              updateQuantity(
+                                productId,
+                                "cajas",
+                                event.target.value
+                              )
+                            }
+                            placeholder="0"
+                            style={styles.qtyInput}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={styles.qtyLabel}>Unid.</label>
+                          <input
+                            inputMode="numeric"
+                            value={quantities[productId]?.unidades || ""}
+                            onChange={(event) =>
+                              updateQuantity(
+                                productId,
+                                "unidades",
+                                event.target.value
+                              )
+                            }
+                            placeholder="0"
+                            style={styles.qtyInput}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p style={styles.productName}>
+                        <span style={styles.idnum}>#{product.idnum}</span>
+                        {product.name}
+                      </p>
+
+                      {product.offerText && (
+                        <div style={styles.offerText}>{product.offerText}</div>
                       )}
                     </div>
-
-                    <div style={styles.qtyRow}>
-                      <div>
-                        <label style={styles.qtyLabel}>Cajas</label>
-
-                        <input
-                          inputMode="numeric"
-                          enterKeyHint="done"
-                          value={quantities[productId]?.cajas || ""}
-                          onChange={(event) =>
-                            updateQuantity(
-                              productId,
-                              "cajas",
-                              event.target.value
-                            )
-                          }
-                          onKeyDown={closeKeyboardOnEnter}
-                          placeholder="0"
-                          style={styles.qtyInput}
-                        />
-                      </div>
-
-                      <div>
-                        <label style={styles.qtyLabel}>Unid.</label>
-
-                        <input
-                          inputMode="numeric"
-                          enterKeyHint="done"
-                          value={quantities[productId]?.unidades || ""}
-                          onChange={(event) =>
-                            updateQuantity(
-                              productId,
-                              "unidades",
-                              event.target.value
-                            )
-                          }
-                          onKeyDown={closeKeyboardOnEnter}
-                          placeholder="0"
-                          style={styles.qtyInput}
-                        />
-                      </div>
-                    </div>
                   </div>
-
-                  <div>
-                    <p style={styles.productName}>
-                      <span style={styles.idnum}>#{product.idnum}</span>
-                      {product.name}
-                    </p>
-
-                    {product.offerText && (
-                      <div style={styles.offerText}>{product.offerText}</div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </section>
         ))}
 
@@ -1507,40 +1405,18 @@ export default function App() {
           >
             <h2 style={styles.orderModalTitle}>Resumen del pedido</h2>
 
-            {customerName.trim() && (
-              <p style={styles.orderCustomer}>
-                Cliente: <strong>{customerName.trim()}</strong>
-              </p>
-            )}
+            {selectedItems.map((item) => (
+              <div key={item.id} style={styles.orderItem}>
+                <div style={styles.orderItemName}>
+                  #{item.idnum} {item.name}
+                </div>
 
-            {selectedItems.length === 0 ? (
-              <p>No hay artículos con cantidad.</p>
-            ) : (
-              <div style={styles.orderItemsList}>
-                {selectedItems.map((item) => (
-                  <div key={item.id} style={styles.orderItem}>
-                    <div style={styles.orderItemName}>
-                      #{item.idnum} {item.name}
-                    </div>
-
-                    <div style={styles.orderItemQty}>
-                      {item.cajas > 0 && <span>{item.cajas} cajas</span>}
-                      {item.unidades > 0 && (
-                        <span>{item.unidades} unidades</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                <div style={styles.orderItemQty}>
+                  {item.cajas > 0 && <span>{item.cajas} cajas</span>}
+                  {item.unidades > 0 && <span>{item.unidades} unidades</span>}
+                </div>
               </div>
-            )}
-
-            {notes.trim() && (
-              <div style={styles.orderNotes}>
-                <strong>Observaciones:</strong>
-                <br />
-                {notes.trim()}
-              </div>
-            )}
+            ))}
 
             <button onClick={sendOrder} style={styles.whatsappButton}>
               <Send size={20} /> Enviar por WhatsApp
@@ -1550,7 +1426,7 @@ export default function App() {
               onClick={() => setShowOrderSummary(false)}
               style={styles.secondaryButton}
             >
-              <ArrowLeft size={18} /> ↩ Volver
+              <ArrowLeft size={18} /> Volver
             </button>
           </div>
         </div>
@@ -1563,7 +1439,6 @@ export default function App() {
               src={selectedImage.src}
               alt={selectedImage.name}
               style={styles.modalImage}
-              onClick={(event) => event.stopPropagation()}
             />
 
             <p style={styles.modalTitle}>
@@ -1662,7 +1537,6 @@ const styles = {
   },
   searchBoxCompact: {
     position: "relative",
-    minWidth: 0,
   },
   searchIcon: {
     position: "absolute",
@@ -1687,31 +1561,18 @@ const styles = {
     padding: "12px 14px",
     borderRadius: "14px",
     border: "1px solid #cbd5e1",
-    background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+    background: "white",
     display: "flex",
-    alignItems: "center",
     justifyContent: "space-between",
-    gap: "12px",
-    textAlign: "left",
-    boxSizing: "border-box",
-    boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
     cursor: "pointer",
   },
   departmentButtonLabel: {
     fontSize: "16px",
     fontWeight: "800",
-    color: "#0f172a",
   },
   departmentButtonHint: {
-    marginTop: "2px",
     fontSize: "12px",
-    fontWeight: "600",
     color: "#64748b",
-  },
-  departmentChevron: {
-    color: "#334155",
-    transition: "transform 0.18s ease",
-    flexShrink: 0,
   },
   departmentDropdown: {
     position: "absolute",
@@ -1720,11 +1581,9 @@ const styles = {
     right: 0,
     zIndex: 50,
     background: "white",
-    border: "1px solid #e2e8f0",
     borderRadius: "16px",
-    boxShadow: "0 18px 45px rgba(15,23,42,0.18)",
     padding: "10px",
-    boxSizing: "border-box",
+    boxShadow: "0 18px 45px rgba(15,23,42,0.18)",
   },
   departmentList: {
     maxHeight: "320px",
@@ -1739,11 +1598,7 @@ const styles = {
     background: "white",
     padding: "9px 10px",
     display: "flex",
-    alignItems: "center",
     justifyContent: "space-between",
-    gap: "10px",
-    textAlign: "left",
-    color: "#0f172a",
     cursor: "pointer",
   },
   departmentOptionActive: {
@@ -1754,7 +1609,6 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "10px",
-    minWidth: 0,
   },
   departmentMiniImage: {
     width: "46px",
@@ -1763,19 +1617,15 @@ const styles = {
     objectFit: "contain",
     background: "white",
     border: "1px solid #cbd5e1",
-    flexShrink: 0,
   },
   departmentMiniPlaceholder: {
     width: "46px",
     height: "46px",
     borderRadius: "12px",
     background: "#e2e8f0",
-    border: "1px solid #cbd5e1",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: "22px",
-    flexShrink: 0,
   },
   departmentOptionName: {
     fontSize: "14px",
@@ -1783,9 +1633,7 @@ const styles = {
     textTransform: "uppercase",
   },
   departmentOptionCount: {
-    marginTop: "2px",
     fontSize: "12px",
-    fontWeight: "600",
     opacity: 0.75,
   },
   section: {
@@ -1805,24 +1653,23 @@ const styles = {
     fontSize: "18px",
     textTransform: "uppercase",
   },
+  emptyDepartment: {
+    padding: "20px",
+    textAlign: "center",
+    color: "#64748b",
+    fontWeight: "bold",
+  },
   row: {
     display: "grid",
     gridTemplateColumns: "minmax(118px, 38vw) 1fr",
     gap: "10px",
-    alignItems: "start",
     padding: "10px",
     borderTop: "1px solid #e2e8f0",
-    scrollMarginTop: "170px",
-  },
-  rowSelected: {
-    background: "#ecfdf5",
-    borderLeft: "5px solid #22c55e",
   },
   leftColumn: {
     display: "flex",
     flexDirection: "column",
     gap: "8px",
-    minWidth: 0,
   },
   imageBox: {
     width: "100%",
@@ -1843,7 +1690,6 @@ const styles = {
     width: "100%",
     height: "100%",
     objectFit: "contain",
-    display: "block",
     cursor: "pointer",
   },
   qtyRow: {
@@ -1876,8 +1722,6 @@ const styles = {
     lineHeight: "1.3",
     paddingTop: "4px",
     wordBreak: "break-word",
-    overflowWrap: "anywhere",
-    minWidth: 0,
   },
   idnum: {
     display: "inline-block",
@@ -1894,7 +1738,6 @@ const styles = {
     padding: "6px 8px",
     borderRadius: "8px",
     border: "1px solid #fecaca",
-    lineHeight: "1.3",
   },
   textarea: {
     width: "100%",
@@ -1939,10 +1782,6 @@ const styles = {
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: "1px",
-    lineHeight: "1.05",
-    textAlign: "center",
-    padding: "4px",
   },
   whatsappButton: {
     width: "100%",
@@ -2017,28 +1856,17 @@ const styles = {
     background: "white",
     borderRadius: "18px",
     padding: "18px",
-    boxSizing: "border-box",
   },
   orderModalTitle: {
     margin: "0 0 12px",
     fontSize: "22px",
-  },
-  orderCustomer: {
-    background: "#f1f5f9",
-    padding: "10px",
-    borderRadius: "12px",
-    marginBottom: "12px",
-  },
-  orderItemsList: {
-    display: "grid",
-    gap: "8px",
-    marginBottom: "14px",
   },
   orderItem: {
     border: "1px solid #e2e8f0",
     borderRadius: "12px",
     padding: "10px",
     background: "#f8fafc",
+    marginBottom: "8px",
   },
   orderItemName: {
     fontSize: "14px",
@@ -2053,12 +1881,9 @@ const styles = {
     fontWeight: "bold",
     color: "#16a34a",
   },
-  orderNotes: {
-    background: "#fff7ed",
-    border: "1px solid #fed7aa",
-    borderRadius: "12px",
-    padding: "10px",
-    marginBottom: "14px",
-    fontSize: "14px",
+  novedadText: {
+    color: "#ff0000",
+    fontWeight: "900",
+    animation: "novedadBlink 0.8s infinite",
   },
 };
