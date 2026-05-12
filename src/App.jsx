@@ -1,13 +1,25 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ShoppingCart, Trash2, Send, Search } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ShoppingCart,
+  Trash2,
+  Send,
+  Search,
+  ChevronDown,
+  Check,
+  ArrowLeft,
+} from "lucide-react";
+import hiddenProductsRaw from "./hiddenProducts";
 
 const WHATSAPP_NUMBER = "34670716744";
+const ORDER_STORAGE_KEY = "cash-lojo-pedido";
+
+const fixedProduct = (idnum, name, offerText = "") => ({
+  idnum,
+  name,
+  offerText,
+});
 
 const departments = [
-  {
-    name: "NOVEDAD",
-    fixedProduct(1056, "ATUN ACEITE VEGETAL DORNA BOLSA 1 K","SUPERPRECIO.Hasta Fin de Existencia"),
-  },
   {
     name: "AGUA",
     products: [
@@ -805,10 +817,42 @@ fixedProduct(1024, "VIVO PERRO POLLO LT 830"),
   },
 ];
 
-const hiddenProductsRaw = [];
+const imageModules = import.meta.glob(
+  "./assets/productos/*.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP}",
+  {
+    eager: true,
+    query: "?url",
+    import: "default",
+  }
+);
+
+const productImagesByIdnum = Object.fromEntries(
+  Object.entries(imageModules).map(([path, src]) => {
+    const fileName = path.split("/").pop();
+    const idnum = Number(
+      fileName.toLowerCase().replace(/\.(jpg|jpeg|png|webp)$/, "")
+    );
+    return [idnum, src];
+  })
+);
+
+const departmentImages = Object.fromEntries(
+  departments.map((department) => {
+    const firstProductWithImage = department.products.find(
+      (product) => productImagesByIdnum[product.idnum]
+    );
+
+    return [
+      department.name,
+      firstProductWithImage
+        ? productImagesByIdnum[firstProductWithImage.idnum]
+        : null,
+    ];
+  })
+);
 
 const normalizeForCompare = (text) =>
-  text
+  String(text)
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -816,14 +860,14 @@ const normalizeForCompare = (text) =>
     .trim();
 
 const normalizeText = (text) =>
-  text
+  String(text)
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
 
-const productMatchesSearch = (product, searchText) => {
-  const normalizedProduct = normalizeText(product);
+const productMatchesSearch = (productName, searchText) => {
+  const normalizedProduct = normalizeText(productName);
   const searchWords = normalizeText(searchText)
     .split(/[^a-z0-9ñ]+/i)
     .filter(Boolean);
@@ -834,9 +878,11 @@ const productMatchesSearch = (product, searchText) => {
 };
 
 const visibleProducts = departments.flatMap((department) =>
-  department.products.map((name) => ({
-    id: `${department.name}-${name}`,
-    name,
+  department.products.map((product) => ({
+    id: `${department.name}-${product.idnum}-${product.name}`,
+    idnum: product.idnum,
+    name: product.name,
+    offerText: product.offerText || "",
     department: department.name,
     hidden: false,
   }))
@@ -846,13 +892,22 @@ const visibleProductNamesForCompare = new Set(
   visibleProducts.map((product) => normalizeForCompare(product.name))
 );
 
-const hiddenProductsUnique = [...new Set(hiddenProductsRaw)]
-  .filter((name) => !visibleProductNamesForCompare.has(normalizeForCompare(name)))
-  .sort((a, b) => a.localeCompare(b, "es"));
+const hiddenProductsUnique = Array.from(
+  new Map(
+    hiddenProductsRaw
+      .filter(
+        (product) =>
+          !visibleProductNamesForCompare.has(normalizeForCompare(product.name))
+      )
+      .map((product) => [normalizeForCompare(product.name), product])
+  ).values()
+);
 
-const hiddenProductsFormatted = hiddenProductsUnique.map((name) => ({
-  id: `ARTÍCULOS BUSCADOS-${name}`,
-  name,
+const hiddenProductsFormatted = hiddenProductsUnique.map((product) => ({
+  id: `ARTÍCULOS BUSCADOS-${product.idnum}-${product.name}`,
+  idnum: product.idnum,
+  name: product.name,
+  offerText: product.offerText || "",
   department: "ARTÍCULOS BUSCADOS",
   hidden: true,
 }));
@@ -860,6 +915,46 @@ const hiddenProductsFormatted = hiddenProductsUnique.map((name) => ({
 const products = [...visibleProducts, ...hiddenProductsFormatted];
 
 export default function App() {
+  const rowRefs = useRef({});
+  const departmentDropdownRef = useRef(null);
+  const searchInputRef = useRef(null);
+  const stickyCardRef = useRef(null);
+
+  const getSavedOrder = () => {
+    try {
+      const saved = localStorage.getItem(ORDER_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const [quantities, setQuantities] = useState(
+    () => getSavedOrder().quantities || {}
+  );
+  const [customerName, setCustomerName] = useState(
+    () => getSavedOrder().customerName || ""
+  );
+  const [notes, setNotes] = useState(() => getSavedOrder().notes || "");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState("TODOS");
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [compactHeader, setCompactHeader] = useState(false);
+  const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
+  const [showOrderSummary, setShowOrderSummary] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem(
+      ORDER_STORAGE_KEY,
+      JSON.stringify({
+        quantities,
+        customerName,
+        notes,
+      })
+    );
+  }, [quantities, customerName, notes]);
+
   useEffect(() => {
     let viewport = document.querySelector("meta[name=viewport]");
 
@@ -869,53 +964,98 @@ export default function App() {
       document.head.appendChild(viewport);
     }
 
-    viewport.setAttribute(
-      "content",
-      "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
-    );
+    viewport.setAttribute("content", "width=device-width, initial-scale=1");
   }, []);
 
   useEffect(() => {
-    const style = document.createElement("style");
-
-    style.innerHTML = `
-      @keyframes blink {
-        0%, 50%, 100% { opacity: 1; }
-        25%, 75% { opacity: 0; }
+    const handleClickOutside = (event) => {
+      if (
+        departmentDropdownRef.current &&
+        !departmentDropdownRef.current.contains(event.target)
+      ) {
+        setDepartmentDropdownOpen(false);
       }
-    `;
+    };
 
-    document.head.appendChild(style);
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
 
     return () => {
-      document.head.removeChild(style);
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
     };
   }, []);
 
-  const [quantities, setQuantities] = useState({});
-  const [customerName, setCustomerName] = useState("");
-  const [notes, setNotes] = useState("");
-  const [search, setSearch] = useState("");
+  const departmentOptions = useMemo(() => {
+    return [
+      {
+        name: "TODOS",
+        label: "Todos los departamentos",
+        count: visibleProducts.length,
+      },
+      ...departments.map((department) => ({
+        name: department.name,
+        label: department.name,
+        count: department.products.length,
+      })),
+    ];
+  }, []);
 
   const filteredDepartments = useMemo(() => {
     const cleanSearch = search.trim();
 
     const visibleDepartments = departments
+      .filter(
+        (department) =>
+          selectedDepartment === "TODOS" ||
+          department.name === selectedDepartment
+      )
       .map((department) => ({
         ...department,
         products: cleanSearch
           ? department.products.filter((product) =>
-              productMatchesSearch(product, cleanSearch)
+              productMatchesSearch(product.name, cleanSearch)
             )
           : department.products,
       }))
-      .filter(
-        (department) =>
-          department.products.length > 0 || department.name === "NOVEDAD"
-      );
+      .filter((department) => department.products.length > 0);
+
+    if (!cleanSearch || selectedDepartment !== "TODOS") {
+      return visibleDepartments;
+    }
+
+    const hiddenMatches = hiddenProductsUnique.filter((product) =>
+      productMatchesSearch(product.name, cleanSearch)
+    );
+
+    if (hiddenMatches.length > 0) {
+      visibleDepartments.push({
+        name: "ARTÍCULOS BUSCADOS",
+        products: hiddenMatches,
+      });
+    }
 
     return visibleDepartments;
-  }, [search]);
+  }, [search, selectedDepartment]);
+
+  useEffect(() => {
+    if (!filteredDepartments.length) return;
+
+    const firstDepartment = filteredDepartments[0];
+    if (!firstDepartment?.products?.length) return;
+
+    const firstProduct = firstDepartment.products[0];
+    const firstProductId = `${firstDepartment.name}-${firstProduct.idnum}-${firstProduct.name}`;
+
+    const timer = setTimeout(() => {
+      rowRefs.current[firstProductId]?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 120);
+
+    return () => clearTimeout(timer);
+  }, [filteredDepartments]);
 
   const selectedItems = useMemo(() => {
     return products
@@ -937,19 +1077,103 @@ export default function App() {
         [field]: cleanValue,
       },
     }));
+
+    setTimeout(() => {
+      rowRefs.current[productId]?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 100);
   };
 
   const closeKeyboardOnEnter = (event) => {
     if (event.key === "Enter") {
       event.currentTarget.blur();
+
+      setTimeout(() => {
+        stickyCardRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+
+        searchInputRef.current?.focus();
+      }, 120);
     }
   };
+
+  const applySearch = () => {
+    const cleanValue = searchInput.trim();
+    setSearch(cleanValue);
+    setSelectedDepartment("TODOS");
+  };
+
+  const searchOnEnter = (event) => {
+    if (event.key === "Enter") {
+      applySearch();
+      event.currentTarget.blur();
+
+      setTimeout(() => {
+        stickyCardRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 80);
+    }
+  };
+
+  const openDepartmentDropdown = () => {
+    setDepartmentDropdownOpen((open) => {
+      const nextOpen = !open;
+
+      if (nextOpen) {
+        setTimeout(() => {
+          departmentDropdownRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }, 50);
+      }
+
+      return nextOpen;
+    });
+  };
+
+  const selectDepartment = (departmentName) => {
+    setSelectedDepartment(departmentName);
+    setSearchInput("");
+    setSearch("");
+    setDepartmentDropdownOpen(false);
+
+    setTimeout(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    }, 80);
+  };
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setCompactHeader(window.scrollY > 120);
+    };
+
+    window.addEventListener("scroll", handleScroll);
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
 
   const clearOrder = () => {
     setQuantities({});
     setCustomerName("");
     setNotes("");
+    setSearchInput("");
     setSearch("");
+    setSelectedDepartment("TODOS");
+    setDepartmentDropdownOpen(false);
+    setShowOrderSummary(false);
+    localStorage.removeItem(ORDER_STORAGE_KEY);
   };
 
   const createWhatsAppMessage = () => {
@@ -974,7 +1198,6 @@ export default function App() {
     }
 
     lines.push("Enviado desde el formulario de pedidos");
-
     return encodeURIComponent(lines.join("\n"));
   };
 
@@ -984,40 +1207,45 @@ export default function App() {
       return;
     }
 
-    window.open(
-      `https://wa.me/${WHATSAPP_NUMBER}?text=${createWhatsAppMessage()}`,
-      "_blank"
-    );
+    const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${createWhatsAppMessage()}`;
 
     clearOrder();
+
+    window.location.href = whatsappUrl;
   };
 
   return (
     <div style={styles.page}>
       <div style={styles.container}>
-        <header style={styles.header}>
-          <div style={styles.iconBox}>
-            <ShoppingCart size={28} />
-          </div>
+        {!compactHeader && (
+          <header style={styles.header}>
+            <div style={styles.iconBox}>
+              <ShoppingCart size={28} />
+            </div>
 
-          <div>
-            <h1 style={styles.title}>Pedido online Cash Lojo</h1>
+            <div>
+              <h1 style={styles.title}>Pedido online Cash Lojo</h1>
+              <p style={styles.subtitle}>
+                Escribe cantidades en Unidades o Cajas, revisa el pedido y
+                envíalo por WhatsApp.
+              </p>
+            </div>
+          </header>
+        )}
 
-            <p style={styles.subtitle}>
-              Escribe cantidades en Unidades o Cajas y envía el pedido por WhatsApp.
-            </p>
-          </div>
-        </header>
+        <div ref={stickyCardRef} style={styles.cardSticky}>
+          {!compactHeader && (
+            <>
+              <label style={styles.label}>Nombre o referencia del cliente</label>
 
-        <div style={styles.cardSticky}>
-          <label style={styles.label}>Nombre o referencia del cliente</label>
-
-          <input
-            value={customerName}
-            onChange={(event) => setCustomerName(event.target.value)}
-            placeholder="Opcional"
-            style={styles.input}
-          />
+              <input
+                value={customerName}
+                onChange={(event) => setCustomerName(event.target.value)}
+                placeholder="Opcional"
+                style={styles.input}
+              />
+            </>
+          )}
 
           <label style={styles.label}>Buscar artículo</label>
 
@@ -1026,70 +1254,212 @@ export default function App() {
               <Search size={20} style={styles.searchIcon} />
 
               <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                ref={searchInputRef}
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                onKeyDown={searchOnEnter}
+                onBlur={applySearch}
+                inputMode="search"
+                enterKeyHint="done"
                 placeholder="Buscar..."
                 style={styles.searchInput}
               />
             </div>
 
-            <button onClick={sendOrder} style={styles.stickyWhatsappButton}>
-              <Send size={18} /> WhatsApp
+            <button
+              type="button"
+              onClick={() => setShowOrderSummary(true)}
+              style={{
+                ...styles.stickyWhatsappButton,
+                opacity: selectedItems.length === 0 ? 0.5 : 1,
+              }}
+              disabled={selectedItems.length === 0}
+            >
+              <span>Revisar</span>
+              <span>y Enviar</span>
             </button>
+          </div>
+
+          <label style={styles.label}>Departamento</label>
+
+          <div ref={departmentDropdownRef} style={styles.departmentSelector}>
+            <button
+              type="button"
+              onClick={openDepartmentDropdown}
+              style={styles.departmentButton}
+            >
+              <div>
+                <div style={styles.departmentButtonLabel}>
+                  {selectedDepartment === "TODOS"
+                    ? "Todos los departamentos"
+                    : selectedDepartment}
+                </div>
+
+                <div style={styles.departmentButtonHint}>
+                  Toca para cambiar de departamento
+                </div>
+              </div>
+
+              <ChevronDown
+                size={20}
+                style={{
+                  ...styles.departmentChevron,
+                  transform: departmentDropdownOpen
+                    ? "rotate(180deg)"
+                    : "rotate(0deg)",
+                }}
+              />
+            </button>
+
+            {departmentDropdownOpen && (
+              <div style={styles.departmentDropdown}>
+                <div style={styles.departmentList}>
+                  {departmentOptions.map((option) => {
+                    const isActive = selectedDepartment === option.name;
+                    const departmentImage = departmentImages[option.name];
+
+                    return (
+                      <button
+                        key={option.name}
+                        type="button"
+                        onClick={() => selectDepartment(option.name)}
+                        style={{
+                          ...styles.departmentOption,
+                          ...(isActive ? styles.departmentOptionActive : {}),
+                        }}
+                      >
+                        <div style={styles.departmentOptionContent}>
+                          {option.name !== "TODOS" && departmentImage ? (
+                            <img
+                              src={departmentImage}
+                              alt={option.label}
+                              style={styles.departmentMiniImage}
+                            />
+                          ) : (
+                            <div style={styles.departmentMiniPlaceholder}>
+                              📋
+                            </div>
+                          )}
+
+                          <div>
+                            <div style={styles.departmentOptionName}>
+                              {option.label}
+                            </div>
+
+                            <div style={styles.departmentOptionCount}>
+                              {option.count} artículos
+                            </div>
+                          </div>
+                        </div>
+
+                        {isActive && <Check size={18} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {filteredDepartments.map((department) => (
           <section key={department.name} style={styles.section}>
             <div style={styles.sectionHeader}>
-              <h2
-                style={{
-                  ...styles.sectionTitle,
-                  ...(department.name === "NOVEDAD"
-                    ? styles.novedadTitle
-                    : {}),
-                }}
-              >
-                {department.name}
-              </h2>
+              <h2 style={styles.sectionTitle}>{department.name}</h2>
             </div>
 
-            <div style={styles.gridHeader}>
-              <div>Cajas</div>
-              <div>Unid.</div>
-              <div style={{ textAlign: "left" }}>Artículo</div>
-            </div>
+            {department.products.map((product) => {
+              const productId = `${department.name}-${product.idnum}-${product.name}`;
+              const imageSrc = productImagesByIdnum[product.idnum];
 
-            {department.products.map((productName) => {
-              const productId = `${department.name}-${productName}`;
+              const isSelected =
+                Number(quantities[productId]?.cajas || 0) > 0 ||
+                Number(quantities[productId]?.unidades || 0) > 0;
 
               return (
-                <div key={productId} style={styles.row}>
-                  <input
-                    inputMode="numeric"
-                    enterKeyHint="done"
-                    value={quantities[productId]?.cajas || ""}
-                    onChange={(event) =>
-                      updateQuantity(productId, "cajas", event.target.value)
-                    }
-                    onKeyDown={closeKeyboardOnEnter}
-                    placeholder="0"
-                    style={styles.qtyInput}
-                  />
+                <div
+                  key={productId}
+                  ref={(element) => {
+                    rowRefs.current[productId] = element;
+                  }}
+                  style={{
+                    ...styles.row,
+                    ...(isSelected ? styles.rowSelected : {}),
+                  }}
+                >
+                  <div style={styles.leftColumn}>
+                    <div style={styles.imageBox}>
+                      {imageSrc ? (
+                        <img
+                          src={imageSrc}
+                          alt={product.name}
+                          style={styles.productImage}
+                          onClick={() =>
+                            setSelectedImage({
+                              src: imageSrc,
+                              name: product.name,
+                              idnum: product.idnum,
+                            })
+                          }
+                        />
+                      ) : (
+                        `Sin foto #${product.idnum}`
+                      )}
+                    </div>
 
-                  <input
-                    inputMode="numeric"
-                    enterKeyHint="done"
-                    value={quantities[productId]?.unidades || ""}
-                    onChange={(event) =>
-                      updateQuantity(productId, "unidades", event.target.value)
-                    }
-                    onKeyDown={closeKeyboardOnEnter}
-                    placeholder="0"
-                    style={styles.qtyInput}
-                  />
+                    <div style={styles.qtyRow}>
+                      <div>
+                        <label style={styles.qtyLabel}>Cajas</label>
 
-                  <p style={styles.productName}>{productName}</p>
+                        <input
+                          inputMode="numeric"
+                          enterKeyHint="done"
+                          value={quantities[productId]?.cajas || ""}
+                          onChange={(event) =>
+                            updateQuantity(
+                              productId,
+                              "cajas",
+                              event.target.value
+                            )
+                          }
+                          onKeyDown={closeKeyboardOnEnter}
+                          placeholder="0"
+                          style={styles.qtyInput}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={styles.qtyLabel}>Unid.</label>
+
+                        <input
+                          inputMode="numeric"
+                          enterKeyHint="done"
+                          value={quantities[productId]?.unidades || ""}
+                          onChange={(event) =>
+                            updateQuantity(
+                              productId,
+                              "unidades",
+                              event.target.value
+                            )
+                          }
+                          onKeyDown={closeKeyboardOnEnter}
+                          placeholder="0"
+                          style={styles.qtyInput}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p style={styles.productName}>
+                      <span style={styles.idnum}>#{product.idnum}</span>
+                      {product.name}
+                    </p>
+
+                    {product.offerText && (
+                      <div style={styles.offerText}>{product.offerText}</div>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -1108,11 +1478,19 @@ export default function App() {
           />
 
           <div style={styles.summary}>
-            <strong>Resumen:</strong> {selectedItems.length} artículos con cantidad.
+            <strong>Resumen:</strong> {selectedItems.length} artículos con
+            cantidad.
           </div>
 
-          <button onClick={sendOrder} style={styles.primaryButton}>
-            <Send size={20} /> Enviar por WhatsApp
+          <button
+            onClick={() => setShowOrderSummary(true)}
+            style={{
+              ...styles.primaryButton,
+              opacity: selectedItems.length === 0 ? 0.5 : 1,
+            }}
+            disabled={selectedItems.length === 0}
+          >
+            <ShoppingCart size={20} /> Revisar y Enviar
           </button>
 
           <button onClick={clearOrder} style={styles.secondaryButton}>
@@ -1120,6 +1498,87 @@ export default function App() {
           </button>
         </div>
       </div>
+
+      {showOrderSummary && (
+        <div style={styles.modal} onClick={() => setShowOrderSummary(false)}>
+          <div
+            style={styles.orderModalContent}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 style={styles.orderModalTitle}>Resumen del pedido</h2>
+
+            {customerName.trim() && (
+              <p style={styles.orderCustomer}>
+                Cliente: <strong>{customerName.trim()}</strong>
+              </p>
+            )}
+
+            {selectedItems.length === 0 ? (
+              <p>No hay artículos con cantidad.</p>
+            ) : (
+              <div style={styles.orderItemsList}>
+                {selectedItems.map((item) => (
+                  <div key={item.id} style={styles.orderItem}>
+                    <div style={styles.orderItemName}>
+                      #{item.idnum} {item.name}
+                    </div>
+
+                    <div style={styles.orderItemQty}>
+                      {item.cajas > 0 && <span>{item.cajas} cajas</span>}
+                      {item.unidades > 0 && (
+                        <span>{item.unidades} unidades</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {notes.trim() && (
+              <div style={styles.orderNotes}>
+                <strong>Observaciones:</strong>
+                <br />
+                {notes.trim()}
+              </div>
+            )}
+
+            <button onClick={sendOrder} style={styles.whatsappButton}>
+              <Send size={20} /> Enviar por WhatsApp
+            </button>
+
+            <button
+              onClick={() => setShowOrderSummary(false)}
+              style={styles.secondaryButton}
+            >
+              <ArrowLeft size={18} /> ↩ Volver
+            </button>
+          </div>
+        </div>
+      )}
+
+      {selectedImage && (
+        <div style={styles.modal} onClick={() => setSelectedImage(null)}>
+          <div style={styles.modalContent}>
+            <img
+              src={selectedImage.src}
+              alt={selectedImage.name}
+              style={styles.modalImage}
+              onClick={(event) => event.stopPropagation()}
+            />
+
+            <p style={styles.modalTitle}>
+              #{selectedImage.idnum} {selectedImage.name}
+            </p>
+
+            <button
+              onClick={() => setSelectedImage(null)}
+              style={styles.closeButton}
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1128,19 +1587,18 @@ const styles = {
   page: {
     minHeight: "100vh",
     background: "#f1f5f9",
-    padding: "16px",
+    padding: "10px",
     color: "#0f172a",
     fontFamily: "Arial, sans-serif",
+    boxSizing: "border-box",
   },
-
   container: {
     maxWidth: "1100px",
     margin: "0 auto",
   },
-
   header: {
     background: "white",
-    padding: "20px",
+    padding: "16px",
     borderRadius: "18px",
     display: "flex",
     gap: "14px",
@@ -1148,7 +1606,6 @@ const styles = {
     marginBottom: "16px",
     boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
   },
-
   iconBox: {
     background: "#0f172a",
     color: "white",
@@ -1156,29 +1613,25 @@ const styles = {
     padding: "12px",
     display: "flex",
   },
-
   title: {
     margin: 0,
-    fontSize: "24px",
+    fontSize: "22px",
   },
-
   subtitle: {
     margin: "6px 0 0",
     color: "#475569",
     fontSize: "14px",
   },
-
   cardSticky: {
     position: "sticky",
     top: "8px",
     zIndex: 10,
     background: "white",
-    padding: "16px",
+    padding: "14px",
     borderRadius: "18px",
     marginBottom: "18px",
     boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
   },
-
   card: {
     background: "white",
     padding: "18px",
@@ -1186,7 +1639,6 @@ const styles = {
     marginTop: "18px",
     boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
   },
-
   label: {
     display: "block",
     fontWeight: "bold",
@@ -1194,7 +1646,6 @@ const styles = {
     marginBottom: "6px",
     marginTop: "8px",
   },
-
   input: {
     width: "100%",
     padding: "11px",
@@ -1203,35 +1654,140 @@ const styles = {
     fontSize: "16px",
     boxSizing: "border-box",
   },
-
   searchAndSendRow: {
     display: "grid",
-    gridTemplateColumns: "1fr 118px",
+    gridTemplateColumns: "minmax(0, 1fr) 104px",
     gap: "8px",
     alignItems: "center",
   },
-
   searchBoxCompact: {
     position: "relative",
     minWidth: 0,
   },
-
   searchIcon: {
     position: "absolute",
     left: "12px",
-    top: "11px",
+    top: "16px",
     color: "#64748b",
   },
-
   searchInput: {
     width: "100%",
-    padding: "11px 12px 11px 40px",
+    height: "52px",
+    padding: "13px 12px 13px 40px",
     borderRadius: "12px",
     border: "1px solid #cbd5e1",
     fontSize: "16px",
     boxSizing: "border-box",
   },
-
+  departmentSelector: {
+    position: "relative",
+  },
+  departmentButton: {
+    width: "100%",
+    padding: "12px 14px",
+    borderRadius: "14px",
+    border: "1px solid #cbd5e1",
+    background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    textAlign: "left",
+    boxSizing: "border-box",
+    boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+    cursor: "pointer",
+  },
+  departmentButtonLabel: {
+    fontSize: "16px",
+    fontWeight: "800",
+    color: "#0f172a",
+  },
+  departmentButtonHint: {
+    marginTop: "2px",
+    fontSize: "12px",
+    fontWeight: "600",
+    color: "#64748b",
+  },
+  departmentChevron: {
+    color: "#334155",
+    transition: "transform 0.18s ease",
+    flexShrink: 0,
+  },
+  departmentDropdown: {
+    position: "absolute",
+    top: "calc(100% + 8px)",
+    left: 0,
+    right: 0,
+    zIndex: 50,
+    background: "white",
+    border: "1px solid #e2e8f0",
+    borderRadius: "16px",
+    boxShadow: "0 18px 45px rgba(15,23,42,0.18)",
+    padding: "10px",
+    boxSizing: "border-box",
+  },
+  departmentList: {
+    maxHeight: "320px",
+    overflowY: "auto",
+    display: "grid",
+    gap: "6px",
+  },
+  departmentOption: {
+    width: "100%",
+    border: "none",
+    borderRadius: "12px",
+    background: "white",
+    padding: "9px 10px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
+    textAlign: "left",
+    color: "#0f172a",
+    cursor: "pointer",
+  },
+  departmentOptionActive: {
+    background: "#0f172a",
+    color: "white",
+  },
+  departmentOptionContent: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    minWidth: 0,
+  },
+  departmentMiniImage: {
+    width: "46px",
+    height: "46px",
+    borderRadius: "12px",
+    objectFit: "contain",
+    background: "white",
+    border: "1px solid #cbd5e1",
+    flexShrink: 0,
+  },
+  departmentMiniPlaceholder: {
+    width: "46px",
+    height: "46px",
+    borderRadius: "12px",
+    background: "#e2e8f0",
+    border: "1px solid #cbd5e1",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "22px",
+    flexShrink: 0,
+  },
+  departmentOptionName: {
+    fontSize: "14px",
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  departmentOptionCount: {
+    marginTop: "2px",
+    fontSize: "12px",
+    fontWeight: "600",
+    opacity: 0.75,
+  },
   section: {
     background: "white",
     borderRadius: "18px",
@@ -1239,48 +1795,73 @@ const styles = {
     marginBottom: "18px",
     boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
   },
-
   sectionHeader: {
     background: "#0f172a",
     color: "white",
     padding: "12px 16px",
   },
-
   sectionTitle: {
     margin: 0,
     fontSize: "18px",
     textTransform: "uppercase",
   },
-
-  novedadTitle: {
-    color: "red",
-    animation: "blink 1s infinite",
-    fontWeight: "bold",
-  },
-
-  gridHeader: {
+  row: {
     display: "grid",
-    gridTemplateColumns: "80px 80px 1fr",
-    gap: "8px",
-    background: "#e2e8f0",
+    gridTemplateColumns: "minmax(118px, 38vw) 1fr",
+    gap: "10px",
+    alignItems: "start",
     padding: "10px",
-    fontSize: "12px",
+    borderTop: "1px solid #e2e8f0",
+    scrollMarginTop: "170px",
+  },
+  rowSelected: {
+    background: "#ecfdf5",
+    borderLeft: "5px solid #22c55e",
+  },
+  leftColumn: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    minWidth: 0,
+  },
+  imageBox: {
+    width: "100%",
+    height: "clamp(105px, 32vw, 180px)",
+    borderRadius: "14px",
+    background: "#ffffff",
+    border: "1px solid #cbd5e1",
+    overflow: "hidden",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#64748b",
+    fontSize: "13px",
     fontWeight: "bold",
     textAlign: "center",
   },
-
-  row: {
-    display: "grid",
-    gridTemplateColumns: "80px 80px 1fr",
-    gap: "8px",
-    alignItems: "center",
-    padding: "9px 10px",
-    borderTop: "1px solid #e2e8f0",
+  productImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    display: "block",
+    cursor: "pointer",
   },
-
+  qtyRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: "6px",
+  },
+  qtyLabel: {
+    display: "block",
+    fontSize: "11px",
+    fontWeight: "bold",
+    marginBottom: "4px",
+    textAlign: "center",
+    color: "#475569",
+  },
   qtyInput: {
     width: "100%",
-    padding: "8px 4px",
+    padding: "8px 3px",
     borderRadius: "12px",
     border: "1px solid #cbd5e1",
     textAlign: "center",
@@ -1288,13 +1869,33 @@ const styles = {
     fontSize: "16px",
     boxSizing: "border-box",
   },
-
   productName: {
     margin: 0,
     fontSize: "16px",
     fontWeight: "600",
+    lineHeight: "1.3",
+    paddingTop: "4px",
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
+    minWidth: 0,
   },
-
+  idnum: {
+    display: "inline-block",
+    marginRight: "8px",
+    color: "#64748b",
+    fontWeight: "bold",
+  },
+  offerText: {
+    marginTop: "6px",
+    fontSize: "13px",
+    fontWeight: "bold",
+    color: "#dc2626",
+    background: "#fef2f2",
+    padding: "6px 8px",
+    borderRadius: "8px",
+    border: "1px solid #fecaca",
+    lineHeight: "1.3",
+  },
   textarea: {
     width: "100%",
     padding: "11px",
@@ -1303,7 +1904,6 @@ const styles = {
     fontSize: "16px",
     boxSizing: "border-box",
   },
-
   summary: {
     background: "#e2e8f0",
     padding: "12px",
@@ -1311,7 +1911,6 @@ const styles = {
     margin: "14px 0",
     fontSize: "14px",
   },
-
   primaryButton: {
     width: "100%",
     height: "50px",
@@ -1327,23 +1926,39 @@ const styles = {
     gap: "8px",
     marginBottom: "10px",
   },
-
   stickyWhatsappButton: {
     width: "100%",
-    height: "44px",
+    height: "52px",
+    border: "none",
+    borderRadius: "12px",
+    background: "#0f172a",
+    color: "white",
+    fontSize: "12px",
+    fontWeight: "bold",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "1px",
+    lineHeight: "1.05",
+    textAlign: "center",
+    padding: "4px",
+  },
+  whatsappButton: {
+    width: "100%",
+    height: "50px",
     border: "none",
     borderRadius: "12px",
     background: "#22c55e",
     color: "white",
-    fontSize: "13px",
+    fontSize: "16px",
     fontWeight: "bold",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: "6px",
-    whiteSpace: "nowrap",
+    gap: "8px",
+    marginBottom: "10px",
   },
-
   secondaryButton: {
     width: "100%",
     height: "50px",
@@ -1357,5 +1972,93 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     gap: "8px",
+  },
+  modal: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.82)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 9999,
+    padding: "18px",
+  },
+  modalContent: {
+    maxWidth: "95vw",
+    maxHeight: "95vh",
+    textAlign: "center",
+  },
+  modalImage: {
+    maxWidth: "100%",
+    maxHeight: "75vh",
+    borderRadius: "16px",
+    background: "white",
+    objectFit: "contain",
+  },
+  modalTitle: {
+    color: "white",
+    fontSize: "16px",
+    fontWeight: "bold",
+    margin: "12px 0",
+  },
+  closeButton: {
+    border: "none",
+    borderRadius: "12px",
+    background: "white",
+    color: "#0f172a",
+    fontSize: "15px",
+    fontWeight: "bold",
+    padding: "10px 18px",
+  },
+  orderModalContent: {
+    width: "min(520px, 95vw)",
+    maxHeight: "88vh",
+    overflowY: "auto",
+    background: "white",
+    borderRadius: "18px",
+    padding: "18px",
+    boxSizing: "border-box",
+  },
+  orderModalTitle: {
+    margin: "0 0 12px",
+    fontSize: "22px",
+  },
+  orderCustomer: {
+    background: "#f1f5f9",
+    padding: "10px",
+    borderRadius: "12px",
+    marginBottom: "12px",
+  },
+  orderItemsList: {
+    display: "grid",
+    gap: "8px",
+    marginBottom: "14px",
+  },
+  orderItem: {
+    border: "1px solid #e2e8f0",
+    borderRadius: "12px",
+    padding: "10px",
+    background: "#f8fafc",
+  },
+  orderItemName: {
+    fontSize: "14px",
+    fontWeight: "800",
+    marginBottom: "6px",
+  },
+  orderItemQty: {
+    display: "flex",
+    gap: "8px",
+    flexWrap: "wrap",
+    fontSize: "14px",
+    fontWeight: "bold",
+    color: "#16a34a",
+  },
+  orderNotes: {
+    background: "#fff7ed",
+    border: "1px solid #fed7aa",
+    borderRadius: "12px",
+    padding: "10px",
+    marginBottom: "14px",
+    fontSize: "14px",
   },
 };
