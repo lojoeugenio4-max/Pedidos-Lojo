@@ -42,7 +42,7 @@ fixedProduct(7, "AGUA SOLAN CABRAS 1.5L", "OFERTA"),
 fixedProduct(8, "AGUA SOLAN DE CABRAS S/G 5L GFA"),
 fixedProduct(5, "AGUA VALTORRE 0.5L PITORRO"),
 fixedProduct(6, "AGUA VALTORRE GARRAFA 5L"),
-fixedProduct(305, "AGUA VALTORRE TREKKING 0.75"," Por 5 cajas REGALO 1 unidades"),
+fixedProduct(305, "AGUA VALTORRE TREKKING 0.75"," Por 5 cajas REGALO 1 caja"),
 
     ],
   },
