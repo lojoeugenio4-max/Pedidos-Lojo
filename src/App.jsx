@@ -30,8 +30,8 @@ const departments = [
   {
     name: "AGUA",
     products: [
-fixedProduct(3, "AGUA FUENTELAJARA 0.5L", "Comprando 10 cajas REGALO 1 caja "),
-fixedProduct(1, "AGUA FUENTELAJARA 1.5L", "Comprando 10 cajas REGALO 1 caja "),
+fixedProduct(3, "AGUA FUENTELAJARA 0.5L", "OFERTA:Comprando 10 cajas REGALO 1 caja "),
+fixedProduct(1, "AGUA FUENTELAJARA 1.5L", "OFERTA:Comprando 10 cajas REGALO 1 caja "),
 fixedProduct(9, "AGUA GOURMET CON GAS 0.5L"),
 fixedProduct(10, "AGUA GOURMET CON GAS 1.5L"),
 fixedProduct(4, "AGUA LANJARON 0.5L"),
@@ -42,7 +42,7 @@ fixedProduct(7, "AGUA SOLAN CABRAS 1.5L", "OFERTA"),
 fixedProduct(8, "AGUA SOLAN DE CABRAS S/G 5L GFA"),
 fixedProduct(5, "AGUA VALTORRE 0.5L PITORRO"),
 fixedProduct(6, "AGUA VALTORRE GARRAFA 5L"),
-fixedProduct(305, "AGUA VALTORRE TREKKING 0.75"," Por 5 cajas REGALO 1 caja"),
+fixedProduct(305, "OFERTA:AGUA VALTORRE TREKKING 0.75"," Por 5 cajas REGALO 1 caja"),
 
     ],
   },
@@ -847,21 +847,6 @@ const productImagesByIdnum = Object.fromEntries(
   })
 );
 
-const departmentImages = Object.fromEntries(
-  departments.map((department) => {
-    const firstProductWithImage = department.products.find(
-      (product) => productImagesByIdnum[product.idnum]
-    );
-
-    return [
-      department.name,
-      firstProductWithImage
-        ? productImagesByIdnum[firstProductWithImage.idnum]
-        : null,
-    ];
-  })
-);
-
 const normalizeForCompare = (text) =>
   String(text)
     .toLowerCase()
@@ -877,8 +862,10 @@ const normalizeText = (text) =>
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
 
-const productMatchesSearch = (productName, searchText) => {
-  const normalizedProduct = normalizeText(productName);
+const productMatchesSearch = (product, searchText) => {
+  const normalizedProduct = normalizeText(
+    `${product.name} ${product.offerText || ""}`
+  );
   const searchWords = normalizeText(searchText)
     .split(/[^a-z0-9ñ]+/i)
     .filter(Boolean);
@@ -887,6 +874,44 @@ const productMatchesSearch = (productName, searchText) => {
     normalizedProduct.includes(searchWord)
   );
 };
+
+const productHasOffer = (product) =>
+  normalizeText(`${product.name} ${product.offerText || ""}`)
+    .split(/[^a-z0-9ñ]+/i)
+    .includes("oferta");
+
+const offerProducts = departments.flatMap((department) =>
+  department.products
+    .filter(productHasOffer)
+    .map((product) => ({
+      ...product,
+      id: `${department.name}-${product.idnum}-${product.name}`,
+      sourceDepartment: department.name,
+    }))
+);
+
+const catalogDepartments = [
+  {
+    name: "OFERTAS",
+    products: offerProducts,
+  },
+  ...departments,
+];
+
+const departmentImages = Object.fromEntries(
+  catalogDepartments.map((department) => {
+    const firstProductWithImage = department.products.find(
+      (product) => productImagesByIdnum[product.idnum]
+    );
+
+    return [
+      department.name,
+      firstProductWithImage
+        ? productImagesByIdnum[firstProductWithImage.idnum]
+        : null,
+    ];
+  })
+);
 
 const visibleProducts = departments.flatMap((department) =>
   department.products.map((product) => ({
@@ -1021,7 +1046,7 @@ export default function App() {
         label: "Todos los departamentos",
         count: visibleProducts.length,
       },
-      ...departments.map((department) => ({
+      ...catalogDepartments.map((department) => ({
         name: department.name,
         label: department.name,
         count: department.products.length,
@@ -1032,7 +1057,7 @@ export default function App() {
   const filteredDepartments = useMemo(() => {
     const cleanSearch = search.trim();
 
-    const visibleDepartments = departments
+    const visibleDepartments = catalogDepartments
       .filter(
         (department) =>
           selectedDepartment === "TODOS" ||
@@ -1042,13 +1067,15 @@ export default function App() {
         ...department,
         products: cleanSearch
           ? department.products.filter((product) =>
-              productMatchesSearch(product.name, cleanSearch)
+              productMatchesSearch(product, cleanSearch)
             )
           : department.products,
       }))
       .filter(
         (department) =>
-          department.name === "NOVEDAD" || department.products.length > 0
+          department.name === "NOVEDAD" ||
+          department.name === "OFERTAS" ||
+          department.products.length > 0
       );
 
     if (!cleanSearch || selectedDepartment !== "TODOS") {
@@ -1056,7 +1083,7 @@ export default function App() {
     }
 
     const hiddenMatches = hiddenProductsUnique.filter((product) =>
-      productMatchesSearch(product.name, cleanSearch)
+      productMatchesSearch(product, cleanSearch)
     );
 
     if (hiddenMatches.length > 0) {
@@ -1076,7 +1103,9 @@ export default function App() {
     if (!firstDepartment?.products?.length) return;
 
     const firstProduct = firstDepartment.products[0];
-    const firstProductId = `${firstDepartment.name}-${firstProduct.idnum}-${firstProduct.name}`;
+    const firstProductId =
+      firstProduct.id ||
+      `${firstDepartment.name}-${firstProduct.idnum}-${firstProduct.name}`;
 
     const timer = setTimeout(() => {
       rowRefs.current[firstProductId]?.scrollIntoView({
@@ -1428,7 +1457,9 @@ export default function App() {
               <div style={styles.emptyDepartment}>Sin artículos</div>
             ) : (
               department.products.map((product) => {
-                const productId = `${department.name}-${product.idnum}-${product.name}`;
+                const productId =
+                  product.id ||
+                  `${department.name}-${product.idnum}-${product.name}`;
                 const imageSrc = productImagesByIdnum[product.idnum];
 
                 const isSelected =
