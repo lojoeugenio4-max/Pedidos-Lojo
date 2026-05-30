@@ -50,6 +50,26 @@ const translations = {
     newOrder: "Nuevo pedido",
     sentFrom: "Enviado desde el formulario de pedidos",
     alertEmpty: "Introduce al menos una cantidad antes de enviar el pedido.",
+    departmentNames: {
+      OFERTAS: "OFERTAS",
+      NOVEDAD: "NOVEDAD",
+      AGUA: "AGUA",
+      CERVEZAS: "CERVEZAS",
+      "REFRESCOS LATAS": "REFRESCOS LATAS",
+      "REFRESCOS 2L / 1.5L": "REFRESCOS 2L / 1.5L",
+      ENERGÉTICAS: "ENERGÉTICAS",
+      "VINOS Y LICORES": "VINOS Y LICORES",
+      PIZZAS: "PIZZAS",
+      "CHARCUTERÍA LONCHEADA": "CHARCUTERÍA LONCHEADA",
+      APERITIVOS: "APERITIVOS",
+      "LECHES Y BATIDOS/CAFÉS/LÁCTEOS": "LECHES Y BATIDOS/CAFÉS/LÁCTEOS",
+      ZUMOS: "ZUMOS",
+      ALIMENTACIÓN: "ALIMENTACIÓN",
+      DROGUERIA: "DROGUERIA",
+      "CHARCUTERÍA CORTE": "CHARCUTERÍA CORTE",
+      VARIOS: "VARIOS",
+      "ARTÍCULOS BUSCADOS": "ARTÍCULOS BUSCADOS",
+    },
   },
   zh: {
     language: "语言",
@@ -85,6 +105,26 @@ const translations = {
     newOrder: "新订单",
     sentFrom: "通过订货表单发送",
     alertEmpty: "发送订单前请至少输入一个数量。",
+    departmentNames: {
+      OFERTAS: "优惠",
+      NOVEDAD: "新品",
+      AGUA: "饮用水",
+      CERVEZAS: "啤酒",
+      "REFRESCOS LATAS": "罐装饮料",
+      "REFRESCOS 2L / 1.5L": "2L / 1.5L 饮料",
+      ENERGÉTICAS: "能量饮料",
+      "VINOS Y LICORES": "葡萄酒和烈酒",
+      PIZZAS: "披萨",
+      "CHARCUTERÍA LONCHEADA": "切片熟食",
+      APERITIVOS: "零食小吃",
+      "LECHES Y BATIDOS/CAFÉS/LÁCTEOS": "牛奶/奶昔/咖啡/乳制品",
+      ZUMOS: "果汁",
+      ALIMENTACIÓN: "食品",
+      DROGUERIA: "清洁用品",
+      "CHARCUTERÍA CORTE": "散装熟食",
+      VARIOS: "其他",
+      "ARTÍCULOS BUSCADOS": "搜索到的商品",
+    },
   },
 };
 
@@ -1058,6 +1098,11 @@ export default function App() {
 
   const t = translations[language];
 
+  const getDepartmentLabel = (departmentName) =>
+    departmentName === "TODOS"
+      ? t.allDepartments
+      : t.departmentNames?.[departmentName] || departmentName;
+
   useEffect(() => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
   }, [language]);
@@ -1125,16 +1170,16 @@ export default function App() {
     return [
       {
         name: "TODOS",
-        label: t.allDepartments,
+        label: getDepartmentLabel("TODOS"),
         count: visibleProducts.length,
       },
       ...catalogDepartments.map((department) => ({
         name: department.name,
-        label: department.name,
+        label: getDepartmentLabel(department.name),
         count: department.products.length,
       })),
     ];
-  }, [t.allDepartments]);
+  }, [language, t.allDepartments]);
 
   const filteredDepartments = useMemo(() => {
     const cleanSearch = search.trim();
@@ -1319,27 +1364,27 @@ export default function App() {
   };
 
   const createWhatsAppMessage = () => {
-    const lines = [t.newOrder, ""];
+    const lines = ["NUEVO PEDIDO", ""];
 
     if (customerName.trim()) {
-      lines.push(`${t.customer}: ${customerName.trim()}`, "");
+      lines.push(`Cliente: ${customerName.trim()}`, "");
     }
 
     selectedItems.forEach((item) => {
       const parts = [];
 
-      if (item.cajas > 0) parts.push(`*${item.cajas} ${t.boxesLower}*`);
-      if (item.unidades > 0) parts.push(`*${item.unidades} ${t.unitsLower}*`);
+      if (item.cajas > 0) parts.push(`*${item.cajas} cajas*`);
+      if (item.unidades > 0) parts.push(`*${item.unidades} unidades*`);
 
       lines.push(`- ${item.name}: ${parts.join(" / ")}`);
       lines.push("");
     });
 
     if (notes.trim()) {
-      lines.push(`${t.notes}: ${notes.trim()}`, "");
+      lines.push(`Observaciones: ${notes.trim()}`, "");
     }
 
-    lines.push(t.sentFrom);
+    lines.push("Enviado desde el formulario de pedidos");
     return encodeURIComponent(lines.join("\n"));
   };
 
@@ -1447,9 +1492,7 @@ export default function App() {
                       : {}),
                   }}
                 >
-                  {selectedDepartment === "TODOS"
-                    ? t.allDepartments
-                    : selectedDepartment}
+                  {getDepartmentLabel(selectedDepartment)}
                 </div>
 
                 <div style={styles.departmentButtonHint}>{t.tapToChangeDepartment}</div>
@@ -1535,7 +1578,7 @@ export default function App() {
                     : {}),
                 }}
               >
-                {department.name}
+                {getDepartmentLabel(department.name)}
               </h2>
             </div>
 
