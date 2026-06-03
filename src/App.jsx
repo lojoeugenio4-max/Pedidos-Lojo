@@ -970,16 +970,6 @@ const normalizeText = (text) =>
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
 
-const sortProductsAlphabetically = (products) =>
-  [...products].sort((a, b) => {
-    const nameA = normalizeForCompare(a.name);
-    const nameB = normalizeForCompare(b.name);
-
-    if (nameA < nameB) return -1;
-    if (nameA > nameB) return 1;
-    return 0;
-  });
-
 const productMatchesSearch = (product, searchText) => {
   const normalizedProduct = normalizeText(
     `${product.name} ${product.offerText || ""}`
@@ -1190,13 +1180,11 @@ export default function App() {
       )
       .map((department) => ({
         ...department,
-        products: sortProductsAlphabetically(
-          cleanSearch
-            ? department.products.filter((product) =>
-                productMatchesSearch(product, cleanSearch)
-              )
-            : department.products
-        ),
+        products: cleanSearch
+          ? department.products.filter((product) =>
+              productMatchesSearch(product, cleanSearch)
+            )
+          : department.products,
       }))
       .filter(
         (department) =>
@@ -1216,7 +1204,7 @@ export default function App() {
     if (hiddenMatches.length > 0) {
       visibleDepartments.push({
         name: "ARTÍCULOS BUSCADOS",
-        products: sortProductsAlphabetically(hiddenMatches),
+        products: hiddenMatches,
       });
     }
 
