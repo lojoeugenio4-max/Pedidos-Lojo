@@ -971,12 +971,14 @@ const normalizeText = (text) =>
     .trim();
 
 const sortProductsAlphabetically = (products) =>
-  [...products].sort((a, b) =>
-    a.name.localeCompare(b.name, "es", {
-      sensitivity: "base",
-      numeric: true,
-    })
-  );
+  [...products].sort((a, b) => {
+    const nameA = normalizeForCompare(a.name);
+    const nameB = normalizeForCompare(b.name);
+
+    if (nameA < nameB) return -1;
+    if (nameA > nameB) return 1;
+    return 0;
+  });
 
 const productMatchesSearch = (product, searchText) => {
   const normalizedProduct = normalizeText(
