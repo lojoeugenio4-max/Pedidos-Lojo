@@ -970,6 +970,14 @@ const normalizeText = (text) =>
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
 
+const sortProductsAlphabetically = (products) =>
+  [...products].sort((a, b) =>
+    a.name.localeCompare(b.name, "es", {
+      sensitivity: "base",
+      numeric: true,
+    })
+  );
+
 const productMatchesSearch = (product, searchText) => {
   const normalizedProduct = normalizeText(
     `${product.name} ${product.offerText || ""}`
@@ -1180,11 +1188,13 @@ export default function App() {
       )
       .map((department) => ({
         ...department,
-        products: cleanSearch
-          ? department.products.filter((product) =>
-              productMatchesSearch(product, cleanSearch)
-            )
-          : department.products,
+        products: sortProductsAlphabetically(
+          cleanSearch
+            ? department.products.filter((product) =>
+                productMatchesSearch(product, cleanSearch)
+              )
+            : department.products
+        ),
       }))
       .filter(
         (department) =>
@@ -1204,7 +1214,7 @@ export default function App() {
     if (hiddenMatches.length > 0) {
       visibleDepartments.push({
         name: "ARTÍCULOS BUSCADOS",
-        products: hiddenMatches,
+        products: sortProductsAlphabetically(hiddenMatches),
       });
     }
 
