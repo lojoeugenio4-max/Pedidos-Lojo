@@ -1226,7 +1226,7 @@ export default function App() {
     const timer = setTimeout(() => {
       rowRefs.current[firstProductId]?.scrollIntoView({
         behavior: "smooth",
-        block: "center",
+        block: "start",
       });
     }, 120);
 
@@ -2057,7 +2057,7 @@ const styles = {
     alignItems: "start",
     padding: "10px",
     borderTop: "1px solid #e2e8f0",
-    scrollMarginTop: "170px",
+    scrollMarginTop: "260px",
   },
   rowSelected: {
     background: "#F0F2FF",
