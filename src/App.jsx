@@ -1078,6 +1078,7 @@ export default function App() {
   const [customerName, setCustomerName] = useState(
     () => getSavedOrder().customerName || ""
   );
+  const [customerNameFocused, setCustomerNameFocused] = useState(false);
   const [notes, setNotes] = useState(() => getSavedOrder().notes || "");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -1330,15 +1331,16 @@ export default function App() {
 
   useEffect(() => {
     const handleScroll = () => {
-      setCompactHeader(window.scrollY > 120);
+      setCompactHeader(window.scrollY > 120 && !customerNameFocused);
     };
 
+    handleScroll();
     window.addEventListener("scroll", handleScroll);
 
     return () => {
       window.removeEventListener("scroll", handleScroll);
     };
-  }, []);
+  }, [customerNameFocused]);
 
   const clearOrder = () => {
     setQuantities({});
@@ -1424,6 +1426,14 @@ export default function App() {
               <input
                 value={customerName}
                 onChange={(event) => setCustomerName(event.target.value)}
+                onFocus={() => {
+                  setCustomerNameFocused(true);
+                  setCompactHeader(false);
+                }}
+                onBlur={() => {
+                  setCustomerNameFocused(false);
+                  setCompactHeader(window.scrollY > 120);
+                }}
                 placeholder={t.optional}
                 style={styles.input}
               />
