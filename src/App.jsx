@@ -99,6 +99,7 @@ const departments = [
   {
     name: "NOVEDAD",
     products: [
+		fixedProduct(1066, "CAFE SAIMAZA NATURAL 250 GR"),
 		fixedProduct(1056, "ATUN DORNA A.VEGETAL BOLSA 1 K", "SUPERPRECIO( hasta fin de existencias ) "),
 	],
   },
