@@ -99,6 +99,7 @@ const departments = [
   {
     name: "NOVEDAD",
     products: [
+		fixedProduct(1067, "LOTE LATAS REFRESCO"," REGALO 1 botella Whisky J.Walker etiqueta roja 70cl"),
 		fixedProduct(1066, "CAFE SAIMAZA NATURAL 250 GR"),
 		fixedProduct(1056, "ATUN DORNA A.VEGETAL BOLSA 1 K", "SUPERPRECIO( hasta fin de existencias ) "),
 	],
