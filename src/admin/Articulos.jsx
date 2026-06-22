@@ -54,7 +54,7 @@ export default function Articulos() {
       `)
       .order("nombre", { ascending: true });
 
-    const { data: departamentosData } = await supabase
+    const { data: departamentosData, error: departamentosError } = await supabase
       .from("departamentos")
       .select("id, nombre")
       .order("nombre", { ascending: true });
@@ -62,6 +62,11 @@ export default function Articulos() {
     if (articulosError) {
       console.error(articulosError);
       alert("Error cargando artículos");
+    }
+
+    if (departamentosError) {
+      console.error(departamentosError);
+      alert("Error cargando departamentos");
     }
 
     setArticulos(articulosData || []);
@@ -108,6 +113,7 @@ export default function Articulos() {
         : null;
 
     setEditando(articulo);
+
     setForm({
       codigo: String(articulo.codigo || ""),
       nombre: articulo.nombre || "",
@@ -161,7 +167,7 @@ export default function Articulos() {
     if (foto) {
       const extension = foto.name.split(".").pop().toLowerCase();
 
-      // CLAVE: nombre único para que cambie la foto y no se vea la antigua por caché
+      // Nombre único para evitar que se siga viendo la foto antigua por caché
       nombreFoto = `${codigoLimpio}_${Date.now()}.${extension}`;
 
       const { error: uploadError } = await supabase.storage
@@ -218,7 +224,7 @@ export default function Articulos() {
 
     await guardarOferta(articuloId);
     cancelarFormulario();
-    cargarDatos();
+    await cargarDatos();
   }
 
   async function guardarOferta(articuloId) {
@@ -231,7 +237,15 @@ export default function Articulos() {
 
     if (!texto) {
       if (ofertaActual) {
-        await supabase.from("ofertas").delete().eq("id", ofertaActual.id);
+        const { error } = await supabase
+          .from("ofertas")
+          .delete()
+          .eq("id", ofertaActual.id);
+
+        if (error) {
+          console.error(error);
+          alert("Error eliminando la oferta");
+        }
       }
       return;
     }
@@ -244,30 +258,104 @@ export default function Articulos() {
     };
 
     if (ofertaActual) {
-      await supabase.from("ofertas").update(datosOferta).eq("id", ofertaActual.id);
+      const { error } = await supabase
+        .from("ofertas")
+        .update(datosOferta)
+        .eq("id", ofertaActual.id);
+
+      if (error) {
+        console.error(error);
+        alert("Error actualizando la oferta");
+      }
     } else {
-      await supabase.from("ofertas").insert([datosOferta]);
+      const { error } = await supabase.from("ofertas").insert([datosOferta]);
+
+      if (error) {
+        console.error(error);
+        alert("Error creando la oferta");
+      }
     }
   }
 
   async function desactivarArticulo(articulo) {
-    await supabase.from("articulos").update({ activo: false }).eq("id", articulo.id);
-    cargarDatos();
+    const { error } = await supabase
+      .from("articulos")
+      .update({ activo: false })
+      .eq("id", articulo.id);
+
+    if (error) {
+      console.error(error);
+      alert("Error desactivando el artículo");
+      return;
+    }
+
+    await cargarDatos();
   }
 
   async function activarArticulo(articulo) {
-    await supabase.from("articulos").update({ activo: true }).eq("id", articulo.id);
-    cargarDatos();
+    const { error } = await supabase
+      .from("articulos")
+      .update({ activo: true })
+      .eq("id", articulo.id);
+
+    if (error) {
+      console.error(error);
+      alert("Error activando el artículo");
+      return;
+    }
+
+    await cargarDatos();
   }
 
   async function eliminarArticulo(articulo) {
-    const confirmar = confirm(`¿Eliminar definitivamente "${articulo.nombre}"?`);
+    const confirmar = confirm(
+      `¿Eliminar definitivamente "${articulo.nombre}"?\n\nEsta acción no se puede deshacer.`
+    );
+
     if (!confirmar) return;
 
-    await supabase.from("ofertas").delete().eq("articulo_id", articulo.id);
-    await supabase.from("articulos").delete().eq("id", articulo.id);
+    // 1. Eliminar ofertas relacionadas
+    const { error: errorOfertas } = await supabase
+      .from("ofertas")
+      .delete()
+      .eq("articulo_id", articulo.id);
 
-    cargarDatos();
+    if (errorOfertas) {
+      console.error(errorOfertas);
+      alert("No se pudo eliminar la oferta del artículo. El artículo NO se ha borrado.");
+      return;
+    }
+
+    // 2. Eliminar el artículo de la tabla principal
+    const { error: errorArticulo } = await supabase
+      .from("articulos")
+      .delete()
+      .eq("id", articulo.id);
+
+    if (errorArticulo) {
+      console.error(errorArticulo);
+      alert(
+        "No se pudo eliminar el artículo. Puede tener datos relacionados en Supabase."
+      );
+      return;
+    }
+
+    // 3. Eliminar foto del storage si existe
+    if (articulo.foto) {
+      const { error: errorFoto } = await supabase.storage
+        .from("productos")
+        .remove([articulo.foto]);
+
+      if (errorFoto) {
+        console.warn("El artículo se borró, pero no se pudo borrar la foto:", errorFoto);
+      }
+    }
+
+    // 4. Quitar inmediatamente de pantalla
+    setArticulos((prev) => prev.filter((item) => item.id !== articulo.id));
+
+    alert("Artículo eliminado definitivamente.");
+    await cargarDatos();
   }
 
   const articulosFiltrados = articulos.filter((articulo) => {
@@ -330,28 +418,59 @@ export default function Articulos() {
         />
 
         <div style={filters}>
-          <button style={filterButton(filtro === "todos")} onClick={() => setFiltro("todos")}>
+          <button
+            style={filterButton(filtro === "todos")}
+            onClick={() => setFiltro("todos")}
+          >
             Todos
           </button>
-          <button style={filterButton(filtro === "activos")} onClick={() => setFiltro("activos")}>
+
+          <button
+            style={filterButton(filtro === "activos")}
+            onClick={() => setFiltro("activos")}
+          >
             Activos
           </button>
-          <button style={filterButton(filtro === "inactivos")} onClick={() => setFiltro("inactivos")}>
+
+          <button
+            style={filterButton(filtro === "inactivos")}
+            onClick={() => setFiltro("inactivos")}
+          >
             Inactivos
           </button>
-          <button style={filterButton(filtro === "novedades")} onClick={() => setFiltro("novedades")}>
+
+          <button
+            style={filterButton(filtro === "novedades")}
+            onClick={() => setFiltro("novedades")}
+          >
             ⭐ Novedades
           </button>
-          <button style={filterButton(filtro === "sin_foto")} onClick={() => setFiltro("sin_foto")}>
+
+          <button
+            style={filterButton(filtro === "sin_foto")}
+            onClick={() => setFiltro("sin_foto")}
+          >
             Sin foto
           </button>
-          <button style={filterButton(filtro === "con_oferta")} onClick={() => setFiltro("con_oferta")}>
+
+          <button
+            style={filterButton(filtro === "con_oferta")}
+            onClick={() => setFiltro("con_oferta")}
+          >
             Con oferta
           </button>
-          <button style={filterButton(filtro === "visibles")} onClick={() => setFiltro("visibles")}>
+
+          <button
+            style={filterButton(filtro === "visibles")}
+            onClick={() => setFiltro("visibles")}
+          >
             Visibles
           </button>
-          <button style={filterButton(filtro === "ocultos")} onClick={() => setFiltro("ocultos")}>
+
+          <button
+            style={filterButton(filtro === "ocultos")}
+            onClick={() => setFiltro("ocultos")}
+          >
             Ocultos
           </button>
         </div>
