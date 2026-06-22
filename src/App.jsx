@@ -15,7 +15,6 @@ const WHATSAPP_NUMBER = "34670716744";
 const ORDER_STORAGE_KEY = "cash-lojo-pedido";
 const LANGUAGE_STORAGE_KEY = "cash-lojo-language";
 const SUPABASE_URL = "https://bohlxagrtpjvqrgkonlo.supabase.co";
-const APP_URL = "https://pedidos-lojo.vercel.app";
 
 const translations = {
   es: {
@@ -731,6 +730,25 @@ export default function App() {
     setShowOrderSummary(false);
   };
 
+  const resetToInitialState = () => {
+    setQuantities({});
+    setCustomerName("");
+    setCustomerNameFocused(false);
+    setSoloCajasAviso(null);
+    setNotes("");
+    setSearchInput("");
+    setSearch("");
+    setSelectedDepartment("OFERTAS");
+    setDepartmentDropdownOpen(false);
+    setShowOrderSummary(false);
+    setSelectedImage(null);
+    setPushCerrado(false);
+    setHeaderCollapsed(false);
+    localStorage.removeItem(ORDER_STORAGE_KEY);
+
+    window.scrollTo({ top: 0, behavior: "auto" });
+  };
+
   const sendByWhatsApp = () => {
     if (!orderedItems.length) {
       alert(t.alertEmpty);
@@ -750,8 +768,10 @@ export default function App() {
     orderedItems.forEach((item) => {
       const product = item.product;
 
-      lines.push(`${product.name}`);
+      // Nombre sin código y sin negrita
+      lines.push(String(product.name || "").trim());
 
+      // Cantidades en negrita
       if (item.boxes) {
         lines.push(`*${item.boxes} ${t.boxesLower}*`);
       }
@@ -773,9 +793,6 @@ export default function App() {
     }
 
     lines.push(t.sentFrom);
-    lines.push("");
-    lines.push(`*${t.newOrder}:*`);
-    lines.push(APP_URL);
 
     const message = encodeURIComponent(lines.join("\n"));
     const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${message}`;
@@ -788,7 +805,7 @@ export default function App() {
     link.click();
     document.body.removeChild(link);
 
-    clearOrder();
+    resetToInitialState();
   };
 
   const pushImageUrl = pushOferta?.articulos?.foto
@@ -1193,7 +1210,7 @@ export default function App() {
                 {t.sendByWhatsApp}
               </button>
 
-              <button type="button" onClick={clearOrder} style={styles.clearButton}>
+              <button type="button" onClick={resetToInitialState} style={styles.clearButton}>
                 <Trash2 size={18} />
                 {t.clearOrder}
               </button>
