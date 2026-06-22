@@ -74,6 +74,32 @@ export default function Articulos() {
     setCargando(false);
   }
 
+  async function obtenerSiguienteCodigo() {
+    const { data, error } = await supabase
+      .from("articulos")
+      .select("codigo")
+      .not("codigo", "is", null)
+      .order("codigo", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error obteniendo el último código:", error);
+
+      const codigosLocales = articulos
+        .map((articulo) => Number(articulo.codigo))
+        .filter((codigo) => Number.isFinite(codigo));
+
+      const ultimoCodigoLocal =
+        codigosLocales.length > 0 ? Math.max(...codigosLocales) : 0;
+
+      return String(ultimoCodigoLocal + 1);
+    }
+
+    const ultimoCodigo = Number(data?.codigo || 0);
+    return String(ultimoCodigo + 1);
+  }
+
   function cambiarCampo(campo, valor) {
     setForm({ ...form, [campo]: valor });
   }
@@ -86,10 +112,13 @@ export default function Articulos() {
     setPreview(URL.createObjectURL(archivo));
   }
 
-  function nuevoArticulo() {
+  async function nuevoArticulo() {
     setEditando(null);
+
+    const siguienteCodigo = await obtenerSiguienteCodigo();
+
     setForm({
-      codigo: "",
+      codigo: siguienteCodigo,
       nombre: "",
       departamento_id: "",
       precio: "",
@@ -101,6 +130,7 @@ export default function Articulos() {
       oferta_fecha_inicio: "",
       oferta_fecha_fin: "",
     });
+
     setFoto(null);
     setPreview("");
     setMostrarFormulario(true);
