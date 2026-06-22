@@ -15,6 +15,7 @@ const WHATSAPP_NUMBER = "34670716744";
 const ORDER_STORAGE_KEY = "cash-lojo-pedido";
 const LANGUAGE_STORAGE_KEY = "cash-lojo-language";
 const SUPABASE_URL = "https://bohlxagrtpjvqrgkonlo.supabase.co";
+const APP_URL = "https://pedidos-lojo.vercel.app";
 
 const translations = {
   es: {
@@ -749,20 +750,18 @@ export default function App() {
     orderedItems.forEach((item) => {
       const product = item.product;
 
-      lines.push(
-        `▪ ${product.codigo ? product.codigo + " - " : ""}${product.name}`
-      );
+      lines.push(`${product.name}`);
 
       if (item.boxes) {
-        lines.push(`   *${t.boxes.toUpperCase()}: ${item.boxes}*`);
+        lines.push(`*${item.boxes} ${t.boxesLower}*`);
       }
 
       if (item.units) {
-        lines.push(`   *${t.units.toUpperCase()}: ${item.units}*`);
+        lines.push(`*${item.units} ${t.unitsLower}*`);
       }
 
       if (item.notes.trim()) {
-        lines.push(`   ${t.notes}: ${item.notes.trim()}`);
+        lines.push(`${t.notes}: ${item.notes.trim()}`);
       }
 
       lines.push("");
@@ -774,17 +773,22 @@ export default function App() {
     }
 
     lines.push(t.sentFrom);
+    lines.push("");
+    lines.push(`*${t.newOrder}:*`);
+    lines.push(APP_URL);
 
     const message = encodeURIComponent(lines.join("\n"));
+    const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${message}`;
 
-    window.open(
-      `https://wa.me/${WHATSAPP_NUMBER}?text=${message}`,
-      "_blank"
-    );
+    const link = document.createElement("a");
+    link.href = whatsappUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 
-    setTimeout(() => {
-      clearOrder();
-    }, 500);
+    clearOrder();
   };
 
   const pushImageUrl = pushOferta?.articulos?.foto
