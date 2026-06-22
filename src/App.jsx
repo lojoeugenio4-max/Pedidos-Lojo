@@ -748,16 +748,21 @@ export default function App() {
 
     orderedItems.forEach((item) => {
       const product = item.product;
-      const quantityParts = [];
 
-      if (item.boxes) quantityParts.push(`${item.boxes} ${t.boxesLower}`);
-      if (item.units) quantityParts.push(`${item.units} ${t.unitsLower}`);
+      lines.push(
+        `▪ ${product.codigo ? product.codigo + " - " : ""}${product.name}`
+      );
 
-      lines.push(`• ${product.codigo ? product.codigo + " - " : ""}${product.name}`);
-      lines.push(`  ${quantityParts.join(" + ")}`);
+      if (item.boxes) {
+        lines.push(`   *${t.boxes.toUpperCase()}: ${item.boxes}*`);
+      }
+
+      if (item.units) {
+        lines.push(`   *${t.units.toUpperCase()}: ${item.units}*`);
+      }
 
       if (item.notes.trim()) {
-        lines.push(`  ${t.notes}: ${item.notes.trim()}`);
+        lines.push(`   ${t.notes}: ${item.notes.trim()}`);
       }
 
       lines.push("");
@@ -771,7 +776,15 @@ export default function App() {
     lines.push(t.sentFrom);
 
     const message = encodeURIComponent(lines.join("\n"));
-    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${message}`, "_blank");
+
+    window.open(
+      `https://wa.me/${WHATSAPP_NUMBER}?text=${message}`,
+      "_blank"
+    );
+
+    setTimeout(() => {
+      clearOrder();
+    }, 500);
   };
 
   const pushImageUrl = pushOferta?.articulos?.foto
