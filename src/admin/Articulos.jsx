@@ -160,7 +160,9 @@ export default function Articulos() {
 
     if (foto) {
       const extension = foto.name.split(".").pop().toLowerCase();
-      nombreFoto = `${codigoLimpio}.${extension}`;
+
+      // CLAVE: nombre único para que cambie la foto y no se vea la antigua por caché
+      nombreFoto = `${codigoLimpio}_${Date.now()}.${extension}`;
 
       const { error: uploadError } = await supabase.storage
         .from("productos")
@@ -295,7 +297,7 @@ export default function Articulos() {
     <div>
       <div style={header}>
         <div>
-          <h1 style={title}>📦 Artículos</h1>
+          <h1 style={title}>Artículos</h1>
           <p style={subtitle}>
             {articulosFiltrados.length} artículos mostrados de {articulos.length}
           </p>
@@ -321,7 +323,7 @@ export default function Articulos() {
       <div style={toolbar}>
         <input
           type="text"
-          placeholder="🔍 Buscar por código, nombre o departamento..."
+          placeholder="Buscar por código, nombre o departamento..."
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           style={searchInput}
@@ -341,16 +343,16 @@ export default function Articulos() {
             ⭐ Novedades
           </button>
           <button style={filterButton(filtro === "sin_foto")} onClick={() => setFiltro("sin_foto")}>
-            📷 Sin foto
+            Sin foto
           </button>
           <button style={filterButton(filtro === "con_oferta")} onClick={() => setFiltro("con_oferta")}>
-            🏷️ Con oferta
+            Con oferta
           </button>
           <button style={filterButton(filtro === "visibles")} onClick={() => setFiltro("visibles")}>
-            👁️ Visibles
+            Visibles
           </button>
           <button style={filterButton(filtro === "ocultos")} onClick={() => setFiltro("ocultos")}>
-            🙈 Ocultos
+            Ocultos
           </button>
         </div>
       </div>
