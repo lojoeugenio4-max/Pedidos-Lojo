@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import FormArticulo from "./FormArticulo";
 import TablaArticulos from "./TablaArticulos";
@@ -11,6 +11,7 @@ export default function Articulos() {
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [editando, setEditando] = useState(null);
   const [cargando, setCargando] = useState(true);
+  const [guardando, setGuardando] = useState(false);
 
   const [form, setForm] = useState({
     codigo: "",
@@ -161,6 +162,10 @@ export default function Articulos() {
     setFoto(null);
     setPreview("");
     setMostrarFormulario(true);
+
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }, 60);
   }
 
   function cancelarFormulario() {
@@ -192,69 +197,78 @@ export default function Articulos() {
       return;
     }
 
-    let nombreFoto = editando?.foto || null;
+    setGuardando(true);
 
-    if (foto) {
-      const extension = foto.name.split(".").pop().toLowerCase();
+    try {
+      let nombreFoto = editando?.foto || null;
 
-      // Nombre único para evitar que se siga viendo la foto antigua por caché
-      nombreFoto = `${codigoLimpio}_${Date.now()}.${extension}`;
+      if (foto) {
+        const extension = foto.name.split(".").pop().toLowerCase();
 
-      const { error: uploadError } = await supabase.storage
-        .from("productos")
-        .upload(nombreFoto, foto, { upsert: true });
+        // Nombre único para evitar que se siga viendo la foto antigua por caché
+        nombreFoto = `${codigoLimpio}_${Date.now()}.${extension}`;
 
-      if (uploadError) {
-        console.error(uploadError);
-        alert("Error subiendo la foto");
-        return;
+        const { error: uploadError } = await supabase.storage
+          .from("productos")
+          .upload(nombreFoto, foto, { upsert: true });
+
+        if (uploadError) {
+          console.error(uploadError);
+          alert("Error subiendo la foto");
+          setGuardando(false);
+          return;
+        }
       }
+
+      const datosArticulo = {
+        codigo: Number(codigoLimpio),
+        nombre: nombreLimpio,
+        departamento_id: form.oculto ? null : Number(form.departamento_id),
+        precio: form.precio === "" ? null : Number(form.precio),
+        permite_unidades: form.permite_unidades,
+        activo: form.activo,
+        novedad: form.novedad,
+        oculto: form.oculto,
+        foto: nombreFoto,
+      };
+
+      let articuloId = editando?.id;
+
+      if (editando) {
+        const { error } = await supabase
+          .from("articulos")
+          .update(datosArticulo)
+          .eq("id", editando.id);
+
+        if (error) {
+          console.error(error);
+          alert("Error actualizando el artículo");
+          setGuardando(false);
+          return;
+        }
+      } else {
+        const { data, error } = await supabase
+          .from("articulos")
+          .insert([datosArticulo])
+          .select("id")
+          .single();
+
+        if (error) {
+          console.error(error);
+          alert("Error creando el artículo");
+          setGuardando(false);
+          return;
+        }
+
+        articuloId = data.id;
+      }
+
+      await guardarOferta(articuloId);
+      cancelarFormulario();
+      await cargarDatos();
+    } finally {
+      setGuardando(false);
     }
-
-    const datosArticulo = {
-      codigo: Number(codigoLimpio),
-      nombre: nombreLimpio,
-      departamento_id: form.oculto ? null : Number(form.departamento_id),
-      precio: form.precio === "" ? null : Number(form.precio),
-      permite_unidades: form.permite_unidades,
-      activo: form.activo,
-      novedad: form.novedad,
-      oculto: form.oculto,
-      foto: nombreFoto,
-    };
-
-    let articuloId = editando?.id;
-
-    if (editando) {
-      const { error } = await supabase
-        .from("articulos")
-        .update(datosArticulo)
-        .eq("id", editando.id);
-
-      if (error) {
-        console.error(error);
-        alert("Error actualizando el artículo");
-        return;
-      }
-    } else {
-      const { data, error } = await supabase
-        .from("articulos")
-        .insert([datosArticulo])
-        .select("id")
-        .single();
-
-      if (error) {
-        console.error(error);
-        alert("Error creando el artículo");
-        return;
-      }
-
-      articuloId = data.id;
-    }
-
-    await guardarOferta(articuloId);
-    cancelarFormulario();
-    await cargarDatos();
   }
 
   async function guardarOferta(articuloId) {
@@ -344,7 +358,6 @@ export default function Articulos() {
 
     if (!confirmar) return;
 
-    // 1. Eliminar ofertas relacionadas
     const { error: errorOfertas } = await supabase
       .from("ofertas")
       .delete()
@@ -356,7 +369,6 @@ export default function Articulos() {
       return;
     }
 
-    // 2. Eliminar el artículo de la tabla principal
     const { error: errorArticulo } = await supabase
       .from("articulos")
       .delete()
@@ -370,7 +382,6 @@ export default function Articulos() {
       return;
     }
 
-    // 3. Eliminar foto del storage si existe
     if (articulo.foto) {
       const { error: errorFoto } = await supabase.storage
         .from("productos")
@@ -381,12 +392,30 @@ export default function Articulos() {
       }
     }
 
-    // 4. Quitar inmediatamente de pantalla
     setArticulos((prev) => prev.filter((item) => item.id !== articulo.id));
 
     alert("Artículo eliminado definitivamente.");
     await cargarDatos();
   }
+
+  const resumen = useMemo(() => {
+    const activos = articulos.filter((articulo) => articulo.activo).length;
+    const inactivos = articulos.filter((articulo) => !articulo.activo).length;
+    const ocultos = articulos.filter((articulo) => articulo.oculto).length;
+    const sinFoto = articulos.filter((articulo) => !articulo.foto).length;
+    const conOferta = articulos.filter(
+      (articulo) => Array.isArray(articulo.ofertas) && articulo.ofertas.length > 0
+    ).length;
+
+    return {
+      total: articulos.length,
+      activos,
+      inactivos,
+      ocultos,
+      sinFoto,
+      conOferta,
+    };
+  }, [articulos]);
 
   const articulosFiltrados = articulos.filter((articulo) => {
     const texto = `${articulo.codigo} ${articulo.nombre} ${
@@ -412,164 +441,337 @@ export default function Articulos() {
   });
 
   return (
-    <div>
-      <div style={header}>
+    <div style={page}>
+      <section style={hero}>
         <div>
+          <div style={eyebrow}>Administración</div>
           <h1 style={title}>Artículos</h1>
           <p style={subtitle}>
-            {articulosFiltrados.length} artículos mostrados de {articulos.length}
+            Gestiona altas, fotos, ofertas, visibilidad y códigos del catálogo.
           </p>
         </div>
 
         <button onClick={nuevoArticulo} style={newButton}>
           + Nuevo artículo
         </button>
-      </div>
+      </section>
+
+      <section style={statsGrid}>
+        <StatCard label="Total" value={resumen.total} />
+        <StatCard label="Activos" value={resumen.activos} />
+        <StatCard label="Inactivos" value={resumen.inactivos} />
+        <StatCard label="Ocultos" value={resumen.ocultos} />
+        <StatCard label="Sin foto" value={resumen.sinFoto} />
+        <StatCard label="Con oferta" value={resumen.conOferta} />
+      </section>
 
       {mostrarFormulario && (
-        <FormArticulo
-          form={form}
-          departamentos={departamentos}
-          preview={preview}
-          onChange={cambiarCampo}
-          onFotoChange={seleccionarFoto}
-          onGuardar={guardarArticulo}
-          onCancelar={cancelarFormulario}
-        />
+        <section style={formShell}>
+          <div style={formHeader}>
+            <div>
+              <h2 style={formTitle}>
+                {editando ? "Editar artículo" : "Nuevo artículo"}
+              </h2>
+              <p style={formSubtitle}>
+                {editando
+                  ? "Modifica los datos del artículo seleccionado."
+                  : "El código se rellena automáticamente con el siguiente disponible."}
+              </p>
+            </div>
+
+            <button type="button" onClick={cancelarFormulario} style={closeButton}>
+              Cerrar
+            </button>
+          </div>
+
+          <FormArticulo
+            form={form}
+            departamentos={departamentos}
+            preview={preview}
+            onChange={cambiarCampo}
+            onFotoChange={seleccionarFoto}
+            onGuardar={guardarArticulo}
+            onCancelar={cancelarFormulario}
+            guardando={guardando}
+          />
+        </section>
       )}
 
-      <div style={toolbar}>
-        <input
-          type="text"
-          placeholder="Buscar por código, nombre o departamento..."
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          style={searchInput}
-        />
+      <section style={toolbar}>
+        <div style={searchRow}>
+          <div style={searchBox}>
+            <span style={searchIcon}>🔎</span>
+            <input
+              type="text"
+              placeholder="Buscar por código, nombre o departamento..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              style={searchInput}
+            />
+          </div>
+
+          <div style={resultCounter}>
+            <strong>{articulosFiltrados.length}</strong>
+            <span> mostrados</span>
+          </div>
+        </div>
 
         <div style={filters}>
-          <button
-            style={filterButton(filtro === "todos")}
-            onClick={() => setFiltro("todos")}
-          >
-            Todos
-          </button>
-
-          <button
-            style={filterButton(filtro === "activos")}
-            onClick={() => setFiltro("activos")}
-          >
-            Activos
-          </button>
-
-          <button
-            style={filterButton(filtro === "inactivos")}
-            onClick={() => setFiltro("inactivos")}
-          >
-            Inactivos
-          </button>
-
-          <button
-            style={filterButton(filtro === "novedades")}
-            onClick={() => setFiltro("novedades")}
-          >
-            ⭐ Novedades
-          </button>
-
-          <button
-            style={filterButton(filtro === "sin_foto")}
-            onClick={() => setFiltro("sin_foto")}
-          >
-            Sin foto
-          </button>
-
-          <button
-            style={filterButton(filtro === "con_oferta")}
-            onClick={() => setFiltro("con_oferta")}
-          >
-            Con oferta
-          </button>
-
-          <button
-            style={filterButton(filtro === "visibles")}
-            onClick={() => setFiltro("visibles")}
-          >
+          <FilterButton active={filtro === "visibles"} onClick={() => setFiltro("visibles")}>
             Visibles
-          </button>
-
-          <button
-            style={filterButton(filtro === "ocultos")}
-            onClick={() => setFiltro("ocultos")}
-          >
+          </FilterButton>
+          <FilterButton active={filtro === "todos"} onClick={() => setFiltro("todos")}>
+            Todos
+          </FilterButton>
+          <FilterButton active={filtro === "activos"} onClick={() => setFiltro("activos")}>
+            Activos
+          </FilterButton>
+          <FilterButton active={filtro === "inactivos"} onClick={() => setFiltro("inactivos")}>
+            Inactivos
+          </FilterButton>
+          <FilterButton active={filtro === "novedades"} onClick={() => setFiltro("novedades")}>
+            ⭐ Novedades
+          </FilterButton>
+          <FilterButton active={filtro === "sin_foto"} onClick={() => setFiltro("sin_foto")}>
+            Sin foto
+          </FilterButton>
+          <FilterButton active={filtro === "con_oferta"} onClick={() => setFiltro("con_oferta")}>
+            Con oferta
+          </FilterButton>
+          <FilterButton active={filtro === "ocultos"} onClick={() => setFiltro("ocultos")}>
             Ocultos
+          </FilterButton>
+        </div>
+      </section>
+
+      <section style={tableShell}>
+        <div style={tableHeader}>
+          <div>
+            <h2 style={tableTitle}>Listado de artículos</h2>
+            <p style={tableSubtitle}>
+              Los cambios se reflejan en la página de pedidos al guardar.
+            </p>
+          </div>
+
+          <button type="button" onClick={cargarDatos} style={refreshButton}>
+            Actualizar
           </button>
         </div>
-      </div>
 
-      {cargando ? (
-        <p>Cargando artículos...</p>
-      ) : (
-        <TablaArticulos
-          articulos={articulosFiltrados}
-          onEditar={editarArticulo}
-          onDesactivar={desactivarArticulo}
-          onActivar={activarArticulo}
-          onEliminar={eliminarArticulo}
-        />
-      )}
+        {cargando ? (
+          <div style={loadingBox}>Cargando artículos...</div>
+        ) : (
+          <TablaArticulos
+            articulos={articulosFiltrados}
+            onEditar={editarArticulo}
+            onDesactivar={desactivarArticulo}
+            onActivar={activarArticulo}
+            onEliminar={eliminarArticulo}
+          />
+        )}
+      </section>
     </div>
   );
 }
 
-const header = {
+function StatCard({ label, value }) {
+  return (
+    <div style={statCard}>
+      <div style={statValue}>{value}</div>
+      <div style={statLabel}>{label}</div>
+    </div>
+  );
+}
+
+function FilterButton({ active, onClick, children }) {
+  return (
+    <button type="button" onClick={onClick} style={filterButton(active)}>
+      {children}
+    </button>
+  );
+}
+
+const page = {
+  minHeight: "100vh",
+  padding: "24px",
+  background:
+    "linear-gradient(180deg, #eef2ff 0%, #f8fafc 38%, #ffffff 100%)",
+  boxSizing: "border-box",
+};
+
+const hero = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
   gap: "20px",
-  marginBottom: "24px",
+  background: "linear-gradient(135deg, #111827 0%, #1d4ed8 100%)",
+  borderRadius: "24px",
+  padding: "28px",
+  color: "#ffffff",
+  boxShadow: "0 22px 45px rgba(29,78,216,0.22)",
+  marginBottom: "18px",
+};
+
+const eyebrow = {
+  display: "inline-block",
+  background: "rgba(255,255,255,0.14)",
+  border: "1px solid rgba(255,255,255,0.2)",
+  borderRadius: "999px",
+  padding: "6px 12px",
+  fontSize: "12px",
+  fontWeight: "900",
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  marginBottom: "12px",
 };
 
 const title = {
   margin: 0,
-  fontSize: "28px",
-  color: "#111827",
+  fontSize: "34px",
+  lineHeight: "1",
+  fontWeight: "950",
 };
 
 const subtitle = {
-  margin: "6px 0 0",
-  color: "#6b7280",
-  fontSize: "14px",
+  margin: "10px 0 0",
+  color: "#dbeafe",
+  fontSize: "15px",
+  maxWidth: "640px",
 };
 
 const newButton = {
-  background: "#2563eb",
+  background: "#22c55e",
   color: "#fff",
   border: "none",
-  borderRadius: "12px",
-  padding: "13px 20px",
+  borderRadius: "16px",
+  padding: "15px 22px",
   fontSize: "15px",
-  fontWeight: "bold",
+  fontWeight: "950",
   cursor: "pointer",
-  boxShadow: "0 8px 18px rgba(37,99,235,0.25)",
+  boxShadow: "0 14px 26px rgba(34,197,94,0.28)",
+  whiteSpace: "nowrap",
+};
+
+const statsGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+  gap: "12px",
+  marginBottom: "18px",
+};
+
+const statCard = {
+  background: "#ffffff",
+  border: "1px solid #e5e7eb",
+  borderRadius: "18px",
+  padding: "16px",
+  boxShadow: "0 10px 28px rgba(15,23,42,0.06)",
+};
+
+const statValue = {
+  fontSize: "28px",
+  fontWeight: "950",
+  color: "#111827",
+  lineHeight: "1",
+};
+
+const statLabel = {
+  marginTop: "8px",
+  fontSize: "12px",
+  fontWeight: "850",
+  color: "#64748b",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+};
+
+const formShell = {
+  background: "#ffffff",
+  border: "1px solid #dbeafe",
+  borderRadius: "22px",
+  padding: "18px",
+  marginBottom: "18px",
+  boxShadow: "0 18px 40px rgba(29,78,216,0.12)",
+};
+
+const formHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "14px",
+  marginBottom: "14px",
+};
+
+const formTitle = {
+  margin: 0,
+  color: "#111827",
+  fontSize: "21px",
+  fontWeight: "950",
+};
+
+const formSubtitle = {
+  margin: "5px 0 0",
+  color: "#64748b",
+  fontSize: "13px",
+};
+
+const closeButton = {
+  border: "none",
+  borderRadius: "999px",
+  padding: "9px 14px",
+  background: "#f1f5f9",
+  color: "#334155",
+  fontWeight: "900",
+  cursor: "pointer",
 };
 
 const toolbar = {
-  background: "#f9fafb",
+  background: "#ffffff",
   border: "1px solid #e5e7eb",
-  borderRadius: "16px",
+  borderRadius: "22px",
   padding: "16px",
   marginBottom: "18px",
+  boxShadow: "0 12px 30px rgba(15,23,42,0.06)",
+};
+
+const searchRow = {
+  display: "grid",
+  gridTemplateColumns: "1fr auto",
+  gap: "12px",
+  alignItems: "center",
+  marginBottom: "14px",
+};
+
+const searchBox = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  background: "#f8fafc",
+  border: "1px solid #dbe4ef",
+  borderRadius: "16px",
+  padding: "0 14px",
+};
+
+const searchIcon = {
+  fontSize: "17px",
 };
 
 const searchInput = {
   width: "100%",
   boxSizing: "border-box",
-  padding: "14px 16px",
-  border: "1px solid #d1d5db",
-  borderRadius: "12px",
+  padding: "15px 0",
+  border: "none",
   fontSize: "15px",
-  marginBottom: "14px",
   outline: "none",
+  background: "transparent",
+  color: "#111827",
+};
+
+const resultCounter = {
+  background: "#eff6ff",
+  color: "#1d4ed8",
+  borderRadius: "14px",
+  padding: "12px 15px",
+  fontSize: "14px",
+  whiteSpace: "nowrap",
 };
 
 const filters = {
@@ -581,9 +783,59 @@ const filters = {
 const filterButton = (active) => ({
   border: "none",
   borderRadius: "999px",
-  padding: "9px 14px",
+  padding: "10px 15px",
   cursor: "pointer",
-  fontWeight: "bold",
-  background: active ? "#111827" : "#e5e7eb",
-  color: active ? "#fff" : "#374151",
+  fontWeight: "900",
+  background: active ? "#111827" : "#f1f5f9",
+  color: active ? "#fff" : "#334155",
+  boxShadow: active ? "0 10px 18px rgba(17,24,39,0.18)" : "none",
 });
+
+const tableShell = {
+  background: "#ffffff",
+  border: "1px solid #e5e7eb",
+  borderRadius: "22px",
+  padding: "16px",
+  boxShadow: "0 14px 35px rgba(15,23,42,0.07)",
+};
+
+const tableHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "14px",
+  marginBottom: "14px",
+};
+
+const tableTitle = {
+  margin: 0,
+  color: "#111827",
+  fontSize: "20px",
+  fontWeight: "950",
+};
+
+const tableSubtitle = {
+  margin: "5px 0 0",
+  color: "#64748b",
+  fontSize: "13px",
+};
+
+const refreshButton = {
+  border: "none",
+  borderRadius: "14px",
+  padding: "11px 15px",
+  background: "#eff6ff",
+  color: "#1d4ed8",
+  fontWeight: "950",
+  cursor: "pointer",
+};
+
+const loadingBox = {
+  padding: "30px",
+  textAlign: "center",
+  color: "#64748b",
+  fontWeight: "900",
+  background: "#f8fafc",
+  borderRadius: "16px",
+};
+
