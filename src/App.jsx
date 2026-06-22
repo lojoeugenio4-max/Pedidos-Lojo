@@ -1177,12 +1177,11 @@ export default function App() {
             ) : (
               orderedItems.map((item) => (
                 <div key={item.product.id} style={styles.summaryItem}>
-                  <strong>
-                    {item.product.codigo ? `${item.product.codigo} · ` : ""}
+                  <div style={styles.summaryProductName}>
                     {item.product.name}
-                  </strong>
+                  </div>
 
-                  <div style={styles.summarySmall}>
+                  <div style={styles.summaryQuantity}>
                     {item.boxes ? `${item.boxes} ${t.boxesLower}` : ""}
                     {item.boxes && item.units ? " + " : ""}
                     {item.units ? `${item.units} ${t.unitsLower}` : ""}
@@ -1880,6 +1879,21 @@ const styles = {
     boxShadow: "0 -10px 24px rgba(15,23,42,0.2)",
     boxSizing: "border-box",
     overflowX: "hidden",
+  },
+
+  summaryProductName: {
+    color: "#111827",
+    fontSize: "16px",
+    fontWeight: "500",
+    lineHeight: "1.25",
+  },
+
+  summaryQuantity: {
+    color: "#111827",
+    fontSize: "22px",
+    fontWeight: "1000",
+    lineHeight: "1.2",
+    marginTop: "6px",
   },
 
   summarySmall: {
