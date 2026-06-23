@@ -3,6 +3,7 @@ import MenuAdmin from "./MenuAdmin";
 import Articulos from "./Articulos";
 import Departamentos from "./Departamentos";
 import Ofertas from "./Ofertas";
+import Pushes from "./Pushes";
 import Estadisticas from "./Estadisticas";
 import Configuracion from "./Configuracion";
 
@@ -47,6 +48,7 @@ export default function AdminPanel() {
           {opcion === "articulos" && <Articulos />}
           {opcion === "departamentos" && <Departamentos />}
           {opcion === "ofertas" && <Ofertas />}
+          {opcion === "pushes" && <Pushes />}
           {opcion === "estadisticas" && <Estadisticas />}
           {opcion === "configuracion" && <Configuracion />}
         </section>
