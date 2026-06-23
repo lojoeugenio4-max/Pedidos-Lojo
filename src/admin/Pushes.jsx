@@ -110,6 +110,14 @@ export default function Pushes() {
     });
   }, [pushes, busquedaPush]);
 
+  const articulosConPush = useMemo(() => {
+    return new Set(
+      pushes
+        .map((push) => Number(push.articulo_id))
+        .filter((id) => !Number.isNaN(id) && id > 0)
+    );
+  }, [pushes]);
+
   const articulosFiltrados = useMemo(() => {
     const texto = busquedaArticulo.trim().toLowerCase();
 
@@ -623,6 +631,23 @@ const articleList = { maxHeight: "360px", overflowY: "auto", border: "1px solid 
 const articleOption = (selected) => ({ width: "100%", border: "none", borderBottom: "1px solid #f1f5f9", background: selected ? "#ffedd5" : "#fff", padding: "12px 13px", cursor: "pointer", textAlign: "left", display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center" });
 const articleInfo = { display: "flex", flexDirection: "column", minWidth: 0 };
 const articleCode = { display: "block", color: "#64748b", fontSize: "12px", marginTop: "3px" };
+const badgeGroup = {
+  display: "flex",
+  gap: "6px",
+  alignItems: "center",
+  flex: "0 0 auto",
+};
+
+const hasPushBadge = {
+  background: "#fef3c7",
+  color: "#92400e",
+  padding: "6px 9px",
+  borderRadius: "999px",
+  fontSize: "11px",
+  fontWeight: "900",
+  whiteSpace: "nowrap",
+};
+
 const selectedBadge = { background: "#ea580c", color: "#fff", padding: "6px 9px", borderRadius: "999px", fontSize: "11px", fontWeight: "900", whiteSpace: "nowrap" };
 const dateGrid = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" };
 const weekGrid = { display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "8px" };
