@@ -24,6 +24,12 @@ export default function MenuAdmin({
       descripcion: "Promociones y avisos",
     },
     {
+      id: "pushes",
+      icono: "📣",
+      titulo: "Push Diario",
+      descripcion: "Programación de push",
+    },
+    {
       id: "estadisticas",
       icono: "📊",
       titulo: "Estadísticas",
