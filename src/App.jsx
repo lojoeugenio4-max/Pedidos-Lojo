@@ -828,11 +828,119 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "auto" });
   };
 
-  const sendByWhatsApp = () => {
+  async function guardarEstadisticasPedido() {
+    const hoy = getTodayISO();
+
+    try {
+      const { data: pedidoDiaActual, error: pedidoDiaSelectError } = await supabase
+        .from("estadisticas_pedidos_dia")
+        .select("fecha, total_pedidos")
+        .eq("fecha", hoy)
+        .maybeSingle();
+
+      if (pedidoDiaSelectError) {
+        throw pedidoDiaSelectError;
+      }
+
+      if (pedidoDiaActual) {
+        const { error: pedidoDiaUpdateError } = await supabase
+          .from("estadisticas_pedidos_dia")
+          .update({
+            total_pedidos: Number(pedidoDiaActual.total_pedidos || 0) + 1,
+          })
+          .eq("fecha", hoy);
+
+        if (pedidoDiaUpdateError) {
+          throw pedidoDiaUpdateError;
+        }
+      } else {
+        const { error: pedidoDiaInsertError } = await supabase
+          .from("estadisticas_pedidos_dia")
+          .insert([
+            {
+              fecha: hoy,
+              total_pedidos: 1,
+            },
+          ]);
+
+        if (pedidoDiaInsertError) {
+          throw pedidoDiaInsertError;
+        }
+      }
+
+      for (const item of orderedItems) {
+        const product = item.product;
+        const cajas = Number(item.boxes || 0);
+        const unidades = Number(item.units || 0);
+
+        if (!cajas && !unidades) continue;
+
+        const articuloId = Number(product.id);
+        const departamento = product.department || product.departamento || "";
+
+        const { data: articuloDiaActual, error: articuloDiaSelectError } =
+          await supabase
+            .from("estadisticas_articulos_dia")
+            .select("fecha, articulo_id, cajas, unidades, veces_pedido")
+            .eq("fecha", hoy)
+            .eq("articulo_id", articuloId)
+            .maybeSingle();
+
+        if (articuloDiaSelectError) {
+          throw articuloDiaSelectError;
+        }
+
+        if (articuloDiaActual) {
+          const { error: articuloDiaUpdateError } = await supabase
+            .from("estadisticas_articulos_dia")
+            .update({
+              codigo_articulo: product.codigo || product.idnum || "",
+              nombre_articulo: product.name || product.nombre || "",
+              departamento,
+              cajas: Number(articuloDiaActual.cajas || 0) + cajas,
+              unidades: Number(articuloDiaActual.unidades || 0) + unidades,
+              veces_pedido: Number(articuloDiaActual.veces_pedido || 0) + 1,
+            })
+            .eq("fecha", hoy)
+            .eq("articulo_id", articuloId);
+
+          if (articuloDiaUpdateError) {
+            throw articuloDiaUpdateError;
+          }
+        } else {
+          const { error: articuloDiaInsertError } = await supabase
+            .from("estadisticas_articulos_dia")
+            .insert([
+              {
+                fecha: hoy,
+                articulo_id: articuloId,
+                codigo_articulo: product.codigo || product.idnum || "",
+                nombre_articulo: product.name || product.nombre || "",
+                departamento,
+                cajas,
+                unidades,
+                veces_pedido: 1,
+              },
+            ]);
+
+          if (articuloDiaInsertError) {
+            throw articuloDiaInsertError;
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error guardando estadísticas:", err);
+      // No bloqueamos WhatsApp si falla la estadística.
+    }
+  }
+
+  const sendByWhatsApp = async () => {
     if (!orderedItems.length) {
       alert(t.alertEmpty);
       return;
     }
+
+    await guardarEstadisticasPedido();
 
     const lines = [];
 
