@@ -708,6 +708,14 @@ export default function Pushes() {
                           <div style={actionButtons}>
                             <button
                               type="button"
+                              onClick={() => editarPush(push)}
+                              style={editButton}
+                            >
+                              Editar
+                            </button>
+
+                            <button
+                              type="button"
                               onClick={() => cambiarEstadoPush(push)}
                               style={push.activo ? deactivateButton : activateButton}
                             >
