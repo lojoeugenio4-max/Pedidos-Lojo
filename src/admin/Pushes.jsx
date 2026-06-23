@@ -45,6 +45,7 @@ export default function Pushes() {
 
   async function cargarDatos() {
     setCargando(true);
+    setMensaje("");
 
     const { data: pushesData, error: pushesError } = await supabase
       .from("push_ofertas")
@@ -53,17 +54,7 @@ export default function Pushes() {
 
     const { data: calendarioData, error: calendarioError } = await supabase
       .from("push_calendario")
-      .select(`
-        id,
-        fecha,
-        push_id,
-        push_ofertas (
-          id,
-          titulo,
-          nombre_articulo,
-          activo
-        )
-      `)
+      .select("id, fecha, push_id")
       .order("fecha", { ascending: true });
 
     const { data: articulosData, error: articulosError } = await supabase
@@ -85,8 +76,20 @@ export default function Pushes() {
       alert("Error cargando artículos");
     }
 
-    setPushes(pushesData || []);
-    setCalendario(calendarioData || []);
+    const listaPushes = pushesData || [];
+    const listaCalendario = calendarioData || [];
+
+    const calendarioConPush = listaCalendario.map((dia) => {
+      const push = listaPushes.find((p) => String(p.id) === String(dia.push_id));
+
+      return {
+        ...dia,
+        push_ofertas: push || null,
+      };
+    });
+
+    setPushes(listaPushes);
+    setCalendario(calendarioConPush);
     setArticulos(articulosData || []);
     setCargando(false);
   }
