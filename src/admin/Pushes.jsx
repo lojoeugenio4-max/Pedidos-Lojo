@@ -20,6 +20,7 @@ export default function Pushes() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  const [editando, setEditando] = useState(null);
   const [busquedaArticulo, setBusquedaArticulo] = useState("");
 
   const [form, setForm] = useState({
@@ -100,6 +101,7 @@ export default function Pushes() {
   }, [articulos, busquedaArticulo]);
 
   function abrirFormulario() {
+    setEditando(null);
     setMostrarFormulario(true);
 
     setTimeout(() => {
@@ -108,6 +110,7 @@ export default function Pushes() {
   }
 
   function cerrarFormulario() {
+    setEditando(null);
     setMostrarFormulario(false);
     setBusquedaArticulo("");
     setForm({
@@ -180,6 +183,35 @@ export default function Pushes() {
     return fechas;
   }
 
+
+  function editarPush(push) {
+    setEditando(push);
+    setBusquedaArticulo(push.nombre_articulo || "");
+
+    setForm({
+      titulo: push.titulo || "🔥 Oferta del día",
+      descripcion: push.descripcion || push.texto || "",
+      articulo_id: String(push.articulo_id || ""),
+      codigo_articulo: push.codigo_articulo || "",
+      nombre_articulo: push.nombre_articulo || "",
+      departamento: push.departamento || "",
+      texto: push.texto || "",
+      ruta: push.ruta || "",
+      fecha_inicio: push.fecha_inicio || "",
+      fecha_fin: push.fecha_fin || "",
+      dias_semana: Array.isArray(push.dias_semana)
+        ? push.dias_semana.map(String)
+        : [],
+      activo: Boolean(push.activo),
+    });
+
+    setMostrarFormulario(true);
+
+    setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+  }
+
   async function guardarPush() {
     setError("");
 
@@ -202,9 +234,10 @@ export default function Pushes() {
       return alert("No hay ningún día válido en ese rango");
     }
 
-    const fechasOcupadas = calendarioConPush.filter((dia) =>
-      fechas.includes(dia.fecha)
-    );
+    const fechasOcupadas = calendarioConPush.filter((dia) => {
+      if (editando && dia.push_id === editando.id) return false;
+      return fechas.includes(dia.fecha);
+    });
 
     if (fechasOcupadas.length > 0) {
       const listado = fechasOcupadas
@@ -238,16 +271,36 @@ export default function Pushes() {
         activo: Boolean(form.activo),
       };
 
-      const { data: pushCreado, error: pushError } = await supabase
-        .from("push_ofertas")
-        .insert([datosPush])
-        .select("id")
-        .single();
+      let pushId = editando?.id;
 
-      if (pushError) throw pushError;
+      if (editando) {
+        const { error: pushError } = await supabase
+          .from("push_ofertas")
+          .update(datosPush)
+          .eq("id", editando.id);
+
+        if (pushError) throw pushError;
+
+        const { error: borrarCalendarioError } = await supabase
+          .from("push_calendario")
+          .delete()
+          .eq("push_id", editando.id);
+
+        if (borrarCalendarioError) throw borrarCalendarioError;
+      } else {
+        const { data: pushCreado, error: pushError } = await supabase
+          .from("push_ofertas")
+          .insert([datosPush])
+          .select("id")
+          .single();
+
+        if (pushError) throw pushError;
+
+        pushId = pushCreado.id;
+      }
 
       const registrosCalendario = fechas.map((fecha) => ({
-        push_id: pushCreado.id,
+        push_id: pushId,
         fecha,
       }));
 
@@ -256,7 +309,9 @@ export default function Pushes() {
         .insert(registrosCalendario);
 
       if (calendarioError) {
-        await supabase.from("push_ofertas").delete().eq("id", pushCreado.id);
+        if (!editando) {
+          await supabase.from("push_ofertas").delete().eq("id", pushId);
+        }
         throw calendarioError;
       }
 
@@ -373,7 +428,7 @@ export default function Pushes() {
         <section ref={formRef} style={formBox}>
           <div style={formHeader}>
             <div>
-              <h2 style={formTitle}>Nuevo Push</h2>
+              <h2 style={formTitle}>{editando ? "Editar Push" : "Nuevo Push"}</h2>
               <p style={formSubtitle}>
                 Selecciona artículo, fechas y días. El sistema bloqueará días ya usados.
               </p>
@@ -526,7 +581,7 @@ export default function Pushes() {
 
               <div style={formActions}>
                 <button type="button" onClick={guardarPush} style={saveButton}>
-                  Guardar Push
+                  {editando ? "Actualizar Push" : "Guardar Push"}
                 </button>
 
                 <button type="button" onClick={cerrarFormulario} style={cancelButton}>
@@ -788,6 +843,17 @@ const activateButton = {
 const deactivateButton = {
   background: "#e5e7eb",
   color: "#374151",
+  border: "none",
+  padding: "8px 12px",
+  borderRadius: "10px",
+  fontWeight: "950",
+  cursor: "pointer",
+  fontSize: "12px",
+};
+
+const editButton = {
+  background: "#dbeafe",
+  color: "#1d4ed8",
   border: "none",
   padding: "8px 12px",
   borderRadius: "10px",
