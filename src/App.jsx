@@ -181,6 +181,15 @@ function getActiveOffer(offers) {
   );
 }
 
+function getTodayISO() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 export default function App() {
   const rowRefs = useRef({});
   const departmentDropdownRef = useRef(null);
@@ -333,23 +342,66 @@ export default function App() {
         .select("id, nombre")
         .order("nombre", { ascending: true });
 
-      const { data: pushData } = await supabase
-        .from("ofertas")
-        .select(`
-          id,
-          texto,
-          push_titulo,
-          push_activo,
-          articulos (
-            id,
-            codigo,
-            nombre,
-            foto
-          )
-        `)
-        .eq("push_activo", true)
-        .limit(1)
-        .maybeSingle();
+      const hoy = getTodayISO();
+
+      const { data: calendarioPushData, error: calendarioPushError } =
+        await supabase
+          .from("push_calendario")
+          .select("id, fecha, push_id")
+          .eq("fecha", hoy)
+          .maybeSingle();
+
+      if (calendarioPushError) {
+        console.error(calendarioPushError);
+      }
+
+      let pushData = null;
+
+      if (calendarioPushData?.push_id) {
+        const { data: pushOfertaData, error: pushOfertaError } = await supabase
+          .from("push_ofertas")
+          .select("*")
+          .eq("id", calendarioPushData.push_id)
+          .eq("activo", true)
+          .maybeSingle();
+
+        if (pushOfertaError) {
+          console.error(pushOfertaError);
+        }
+
+        if (pushOfertaData) {
+          const { data: articuloPushData, error: articuloPushError } =
+            await supabase
+              .from("articulos")
+              .select("id, codigo, nombre, foto")
+              .eq("id", pushOfertaData.articulo_id)
+              .maybeSingle();
+
+          if (articuloPushError) {
+            console.error(articuloPushError);
+          }
+
+          pushData = {
+            id: pushOfertaData.id,
+            texto: pushOfertaData.descripcion || pushOfertaData.texto || "",
+            push_titulo: pushOfertaData.titulo || "🔥 Oferta del día",
+            push_activo: Boolean(pushOfertaData.activo),
+            articulos: articuloPushData
+              ? {
+                  id: articuloPushData.id,
+                  codigo: articuloPushData.codigo,
+                  nombre: articuloPushData.nombre,
+                  foto: articuloPushData.foto,
+                }
+              : {
+                  id: pushOfertaData.articulo_id,
+                  codigo: pushOfertaData.codigo_articulo,
+                  nombre: pushOfertaData.nombre_articulo,
+                  foto: null,
+                },
+          };
+        }
+      }
 
       if (articulosError) {
         console.error(articulosError);
