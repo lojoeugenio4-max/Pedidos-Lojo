@@ -271,6 +271,42 @@ export default function Pushes() {
     }
   }
 
+
+  async function eliminarPush(push) {
+    const confirmar = confirm(
+      `¿Eliminar este push?\n\n${push.titulo || "Sin título"}\n${push.nombre_articulo || ""}`
+    );
+
+    if (!confirmar) return;
+
+    setCargando(true);
+    setError("");
+
+    try {
+      const { error: calendarioError } = await supabase
+        .from("push_calendario")
+        .delete()
+        .eq("push_id", push.id);
+
+      if (calendarioError) throw calendarioError;
+
+      const { error: pushError } = await supabase
+        .from("push_ofertas")
+        .delete()
+        .eq("id", push.id);
+
+      if (pushError) throw pushError;
+
+      await cargarDatos();
+    } catch (err) {
+      console.error("Error eliminando push:", err);
+      setError(err?.message || JSON.stringify(err));
+      alert("Error eliminando push. Revisa el mensaje rojo.");
+    } finally {
+      setCargando(false);
+    }
+  }
+
   const totalPushes = pushes.length;
   const totalDias = calendario.length;
   const totalActivos = pushes.filter((p) => p.activo).length;
@@ -558,13 +594,14 @@ export default function Pushes() {
                     <th style={th}>Inicio</th>
                     <th style={th}>Fin</th>
                     <th style={th}>Estado</th>
+                    <th style={th}>Acciones</th>
                   </tr>
                 </thead>
 
                 <tbody>
                   {pushes.length === 0 ? (
                     <tr>
-                      <td colSpan="5" style={emptyCell}>
+                      <td colSpan="6" style={emptyCell}>
                         No hay registros en push_ofertas
                       </td>
                     </tr>
@@ -587,6 +624,16 @@ export default function Pushes() {
                           ) : (
                             <span style={inactiveBadge}>Inactivo</span>
                           )}
+                        </td>
+
+                        <td style={td}>
+                          <button
+                            type="button"
+                            onClick={() => eliminarPush(push)}
+                            style={deleteButton}
+                          >
+                            Eliminar
+                          </button>
                         </td>
                       </tr>
                     ))
@@ -675,3 +722,14 @@ const emptyCell = { textAlign: "center", padding: "30px", color: "#94a3b8", font
 const smallText = { marginTop: "4px", color: "#64748b", fontSize: "12px" };
 const activeBadge = { background: "#dcfce7", color: "#166534", padding: "6px 10px", borderRadius: "999px", fontWeight: "950", fontSize: "12px" };
 const inactiveBadge = { background: "#fee2e2", color: "#991b1b", padding: "6px 10px", borderRadius: "999px", fontWeight: "950", fontSize: "12px" };
+
+const deleteButton = {
+  background: "#fee2e2",
+  color: "#b91c1c",
+  border: "none",
+  padding: "8px 12px",
+  borderRadius: "10px",
+  fontWeight: "950",
+  cursor: "pointer",
+  fontSize: "12px",
+};
