@@ -272,6 +272,29 @@ export default function Pushes() {
   }
 
 
+
+  async function cambiarEstadoPush(push) {
+    setCargando(true);
+    setError("");
+
+    try {
+      const { error: pushError } = await supabase
+        .from("push_ofertas")
+        .update({ activo: !push.activo })
+        .eq("id", push.id);
+
+      if (pushError) throw pushError;
+
+      await cargarDatos();
+    } catch (err) {
+      console.error("Error cambiando estado del push:", err);
+      setError(err?.message || JSON.stringify(err));
+      alert("Error cambiando estado del push. Revisa el mensaje rojo.");
+    } finally {
+      setCargando(false);
+    }
+  }
+
   async function eliminarPush(push) {
     const confirmar = confirm(
       `¿Eliminar este push?\n\n${push.titulo || "Sin título"}\n${push.nombre_articulo || ""}`
@@ -627,13 +650,23 @@ export default function Pushes() {
                         </td>
 
                         <td style={td}>
-                          <button
-                            type="button"
-                            onClick={() => eliminarPush(push)}
-                            style={deleteButton}
-                          >
-                            Eliminar
-                          </button>
+                          <div style={actionButtons}>
+                            <button
+                              type="button"
+                              onClick={() => cambiarEstadoPush(push)}
+                              style={push.activo ? deactivateButton : activateButton}
+                            >
+                              {push.activo ? "Desactivar" : "Activar"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => eliminarPush(push)}
+                              style={deleteButton}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -726,6 +759,35 @@ const inactiveBadge = { background: "#fee2e2", color: "#991b1b", padding: "6px 1
 const deleteButton = {
   background: "#fee2e2",
   color: "#b91c1c",
+  border: "none",
+  padding: "8px 12px",
+  borderRadius: "10px",
+  fontWeight: "950",
+  cursor: "pointer",
+  fontSize: "12px",
+};
+
+const actionButtons = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "6px",
+  minWidth: "110px",
+};
+
+const activateButton = {
+  background: "#dcfce7",
+  color: "#166534",
+  border: "none",
+  padding: "8px 12px",
+  borderRadius: "10px",
+  fontWeight: "950",
+  cursor: "pointer",
+  fontSize: "12px",
+};
+
+const deactivateButton = {
+  background: "#e5e7eb",
+  color: "#374151",
   border: "none",
   padding: "8px 12px",
   borderRadius: "10px",
