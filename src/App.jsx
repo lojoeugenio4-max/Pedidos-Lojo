@@ -344,6 +344,8 @@ export default function App() {
 
       const hoy = getTodayISO();
 
+      let pushData = null;
+
       const { data: calendarioPushData, error: calendarioPushError } =
         await supabase
           .from("push_calendario")
@@ -354,8 +356,6 @@ export default function App() {
       if (calendarioPushError) {
         console.error(calendarioPushError);
       }
-
-      let pushData = null;
 
       if (calendarioPushData?.push_id) {
         const { data: pushOfertaData, error: pushOfertaError } = await supabase
@@ -401,6 +401,34 @@ export default function App() {
                 },
           };
         }
+      }
+
+      // Fallback temporal: si no hay Push Diario para hoy, mantiene el push antiguo.
+      // Así no desaparece el banner mientras terminamos la migración.
+      if (!pushData) {
+        const { data: pushAntiguoData, error: pushAntiguoError } = await supabase
+          .from("ofertas")
+          .select(`
+            id,
+            texto,
+            push_titulo,
+            push_activo,
+            articulos (
+              id,
+              codigo,
+              nombre,
+              foto
+            )
+          `)
+          .eq("push_activo", true)
+          .limit(1)
+          .maybeSingle();
+
+        if (pushAntiguoError) {
+          console.error(pushAntiguoError);
+        }
+
+        pushData = pushAntiguoData || null;
       }
 
       if (articulosError) {
