@@ -68,7 +68,7 @@ export default function Pushes() {
 
     const { data: articulosData, error: articulosError } = await supabase
       .from("articulos")
-      .select("id, codigo, nombre, departamento, activo, oculto");
+      .select("id, codigo, nombre, activo, oculto");
 
     if (pushesError) {
       console.error(pushesError);
@@ -197,7 +197,7 @@ export default function Pushes() {
       articulo_id: String(articulo.id),
       codigo_articulo: articulo.codigo || "",
       nombre_articulo: articulo.nombre || "",
-      departamento: articulo.departamento || actual.departamento || "",
+      departamento: actual.departamento || "",
     }));
     setBusquedaArticulo(articulo.nombre || "");
   }
