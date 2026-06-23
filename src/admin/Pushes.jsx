@@ -220,6 +220,9 @@ export default function Pushes() {
     if (!form.descripcion.trim()) return alert("El texto del push es obligatorio");
     if (!form.fecha_inicio) return alert("La fecha de inicio es obligatoria");
     if (!form.fecha_fin) return alert("La fecha fin es obligatoria");
+    if (!form.dias_semana || form.dias_semana.length === 0) {
+      return alert("Selecciona al menos un día de la semana para activar el push");
+    }
     if (form.fecha_fin < form.fecha_inicio) {
       return alert("La fecha fin no puede ser anterior a la fecha inicio");
     }
@@ -537,7 +540,7 @@ export default function Pushes() {
               </div>
 
               <p style={hint}>
-                Si no marcas ningún día, se programará todos los días del rango.
+                Selecciona al menos un día de la semana. Si no seleccionas días, el push no se activará.
               </p>
 
               <div style={dateGrid}>
@@ -706,14 +709,6 @@ export default function Pushes() {
 
                         <td style={td}>
                           <div style={actionButtons}>
-                            <button
-                              type="button"
-                              onClick={() => editarPush(push)}
-                              style={editButton}
-                            >
-                              Editar
-                            </button>
-
                             <button
                               type="button"
                               onClick={() => cambiarEstadoPush(push)}
