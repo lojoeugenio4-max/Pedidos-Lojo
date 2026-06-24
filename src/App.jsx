@@ -952,8 +952,46 @@ export default function App() {
       lines.push("");
     }
 
-    orderedItems.forEach((item) => {
+    const itemsOrdenados = [...orderedItems].sort((a, b) => {
+      const departamentoA = String(
+        a.product.department || a.product.departamento || "SIN DEPARTAMENTO"
+      );
+      const departamentoB = String(
+        b.product.department || b.product.departamento || "SIN DEPARTAMENTO"
+      );
+
+      const compararDepartamento = departamentoA.localeCompare(
+        departamentoB,
+        "es",
+        { sensitivity: "base" }
+      );
+
+      if (compararDepartamento !== 0) return compararDepartamento;
+
+      return String(a.product.name || "").localeCompare(
+        String(b.product.name || ""),
+        "es",
+        { sensitivity: "base" }
+      );
+    });
+
+    let departamentoActual = "";
+
+    itemsOrdenados.forEach((item) => {
       const product = item.product;
+      const departamento = String(
+        product.department || product.departamento || "SIN DEPARTAMENTO"
+      )
+        .trim()
+        .toUpperCase();
+
+      if (departamento !== departamentoActual) {
+        departamentoActual = departamento;
+
+        lines.push(`*${departamentoActual}*`);
+        lines.push("-".repeat(departamentoActual.length));
+        lines.push("");
+      }
 
       // Nombre sin código y sin negrita
       lines.push(String(product.name || "").trim());
