@@ -741,6 +741,32 @@ export default function App() {
     }, 40);
   };
 
+  const irAlArticuloPush = () => {
+    const articuloId = String(pushOferta?.articulos?.id || "");
+
+    setPushCerrado(true);
+    setHeaderCollapsed(true);
+    setSelectedDepartment("TODOS");
+    setSearchInput("");
+    setSearch("");
+    setDepartmentDropdownOpen(false);
+
+    if (!articuloId) {
+      setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }, 80);
+      return;
+    }
+
+    const intentarScroll = () => {
+      asegurarArticuloVisible(articuloId);
+    };
+
+    setTimeout(intentarScroll, 180);
+    setTimeout(intentarScroll, 450);
+    setTimeout(intentarScroll, 800);
+  };
+
   const asegurarArticuloVisible = (productId) => {
     const recolocar = () => {
       const element = rowRefs.current[productId];
@@ -1044,13 +1070,23 @@ export default function App() {
             />
           </div>
 
-          <button
-            type="button"
-            onClick={cerrarPush}
-            style={styles.pushBottomButton}
-          >
-            {t.close}
-          </button>
+          <div style={styles.pushActions}>
+            <button
+              type="button"
+              onClick={irAlArticuloPush}
+              style={styles.pushOrderButton}
+            >
+              Pedir artículo
+            </button>
+
+            <button
+              type="button"
+              onClick={cerrarPush}
+              style={styles.pushBottomButton}
+            >
+              {t.close}
+            </button>
+          </div>
         </div>
       )}
 
@@ -2347,16 +2383,35 @@ const styles = {
     boxShadow: "0 22px 50px rgba(0,0,0,0.35)",
   },
 
-  pushBottomButton: {
+  pushActions: {
     width: "100%",
     maxWidth: "420px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    marginTop: "16px",
+  },
+
+  pushOrderButton: {
+    width: "100%",
     border: "none",
     borderRadius: "999px",
     padding: "15px 18px",
+    background: "#22c55e",
+    color: "#ffffff",
+    fontSize: "17px",
+    fontWeight: "1000",
+    boxShadow: "0 14px 28px rgba(34,197,94,0.35)",
+  },
+
+  pushBottomButton: {
+    width: "100%",
+    border: "none",
+    borderRadius: "999px",
+    padding: "13px 18px",
     background: "#ffffff",
     color: "#111827",
-    fontSize: "17px",
+    fontSize: "16px",
     fontWeight: "900",
-    marginTop: "16px",
   },
 };
