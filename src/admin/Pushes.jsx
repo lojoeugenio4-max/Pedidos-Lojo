@@ -36,6 +36,7 @@ export default function Pushes() {
     fecha_fin: "",
     dias_semana: [],
     activo: true,
+    imagen_url: "",
   });
 
   useEffect(() => {
@@ -126,6 +127,7 @@ export default function Pushes() {
       fecha_fin: "",
       dias_semana: [],
       activo: true,
+      imagen_url: "",
     });
   }
 
@@ -173,7 +175,7 @@ export default function Pushes() {
     while (actual <= fin) {
       const diaSemana = String(actual.getDay());
 
-      if (diasPermitidos.size === 0 || diasPermitidos.has(diaSemana)) {
+      if (diasPermitidos.has(diaSemana)) {
         fechas.push(fechaLocalISO(actual));
       }
 
@@ -203,6 +205,7 @@ export default function Pushes() {
         ? push.dias_semana.map(String)
         : [],
       activo: Boolean(push.activo),
+      imagen_url: push.imagen_url || "",
     });
 
     setMostrarFormulario(true);
@@ -237,12 +240,14 @@ export default function Pushes() {
       return alert("No hay ningún día válido en ese rango");
     }
 
-    const fechasOcupadas = calendarioConPush.filter((dia) => {
-      if (editando && dia.push_id === editando.id) return false;
-      return fechas.includes(dia.fecha);
-    });
+    const fechasOcupadas = form.activo
+      ? calendarioConPush.filter((dia) => {
+          if (editando && dia.push_id === editando.id) return false;
+          return fechas.includes(dia.fecha);
+        })
+      : [];
 
-    if (fechasOcupadas.length > 0) {
+    if (form.activo && fechasOcupadas.length > 0) {
       const listado = fechasOcupadas
         .slice(0, 10)
         .map(
@@ -272,6 +277,7 @@ export default function Pushes() {
         fecha_fin: form.fecha_fin,
         dias_semana: form.dias_semana,
         activo: Boolean(form.activo),
+        imagen_url: form.imagen_url.trim() || null,
       };
 
       let pushId = editando?.id;
@@ -302,20 +308,22 @@ export default function Pushes() {
         pushId = pushCreado.id;
       }
 
-      const registrosCalendario = fechas.map((fecha) => ({
-        push_id: pushId,
-        fecha,
-      }));
+      if (form.activo) {
+        const registrosCalendario = fechas.map((fecha) => ({
+          push_id: pushId,
+          fecha,
+        }));
 
-      const { error: calendarioError } = await supabase
-        .from("push_calendario")
-        .insert(registrosCalendario);
+        const { error: calendarioError } = await supabase
+          .from("push_calendario")
+          .insert(registrosCalendario);
 
-      if (calendarioError) {
-        if (!editando) {
-          await supabase.from("push_ofertas").delete().eq("id", pushId);
+        if (calendarioError) {
+          if (!editando) {
+            await supabase.from("push_ofertas").delete().eq("id", pushId);
+          }
+          throw calendarioError;
         }
-        throw calendarioError;
       }
 
       cerrarFormulario();
@@ -336,18 +344,114 @@ export default function Pushes() {
     setError("");
 
     try {
-      const { error: pushError } = await supabase
-        .from("push_ofertas")
-        .update({ activo: !push.activo })
-        .eq("id", push.id);
+      if (push.activo) {
+        // Al desactivar, liberamos el calendario.
+        const { error: calendarioError } = await supabase
+          .from("push_calendario")
+          .delete()
+          .eq("push_id", push.id);
 
-      if (pushError) throw pushError;
+        if (calendarioError) throw calendarioError;
+
+        const { error: pushError } = await supabase
+          .from("push_ofertas")
+          .update({ activo: false })
+          .eq("id", push.id);
+
+        if (pushError) throw pushError;
+      } else {
+        // Al activar, intentamos reservar de nuevo sus fechas.
+        const fechas = calcularFechas(
+          push.fecha_inicio,
+          push.fecha_fin,
+          Array.isArray(push.dias_semana) ? push.dias_semana.map(String) : []
+        );
+
+        if (fechas.length === 0) {
+          alert("Este push no tiene fechas válidas. Edítalo antes de activarlo.");
+          return;
+        }
+
+        const fechasOcupadas = calendarioConPush.filter((dia) =>
+          fechas.includes(dia.fecha)
+        );
+
+        if (fechasOcupadas.length > 0) {
+          const listado = fechasOcupadas
+            .slice(0, 12)
+            .map(
+              (dia) =>
+                `${formatearFecha(dia.fecha)} - ${
+                  dia.push?.titulo || "Push existente"
+                }`
+            )
+            .join("\n");
+
+          alert(
+            `No se puede activar.\n\nEstos días ya están ocupados:\n\n${listado}`
+          );
+          return;
+        }
+
+        const { error: pushError } = await supabase
+          .from("push_ofertas")
+          .update({ activo: true })
+          .eq("id", push.id);
+
+        if (pushError) throw pushError;
+
+        const registrosCalendario = fechas.map((fecha) => ({
+          push_id: push.id,
+          fecha,
+        }));
+
+        const { error: calendarioError } = await supabase
+          .from("push_calendario")
+          .insert(registrosCalendario);
+
+        if (calendarioError) throw calendarioError;
+      }
 
       await cargarDatos();
     } catch (err) {
       console.error("Error cambiando estado del push:", err);
       setError(err?.message || JSON.stringify(err));
       alert("Error cambiando estado del push. Revisa el mensaje rojo.");
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  async function liberarCalendarioPush(push) {
+    const confirmar = confirm(
+      `¿Liberar calendario de este push?\n\n${push.titulo || "Sin título"}\n\nEl push quedará inactivo.`
+    );
+
+    if (!confirmar) return;
+
+    setCargando(true);
+    setError("");
+
+    try {
+      const { error: calendarioError } = await supabase
+        .from("push_calendario")
+        .delete()
+        .eq("push_id", push.id);
+
+      if (calendarioError) throw calendarioError;
+
+      const { error: pushError } = await supabase
+        .from("push_ofertas")
+        .update({ activo: false })
+        .eq("id", push.id);
+
+      if (pushError) throw pushError;
+
+      await cargarDatos();
+    } catch (err) {
+      console.error("Error liberando calendario:", err);
+      setError(err?.message || JSON.stringify(err));
+      alert("Error liberando calendario. Revisa el mensaje rojo.");
     } finally {
       setCargando(false);
     }
@@ -391,6 +495,8 @@ export default function Pushes() {
   const totalPushes = pushes.length;
   const totalDias = calendario.length;
   const totalActivos = pushes.filter((p) => p.activo).length;
+  const totalInactivos = pushes.filter((p) => !p.activo).length;
+  const fechas = calcularFechas(form.fecha_inicio, form.fecha_fin, form.dias_semana);
 
   return (
     <div style={page}>
@@ -414,9 +520,18 @@ export default function Pushes() {
         </div>
       </section>
 
+      <section style={infoBox}>
+        <strong>Nuevo funcionamiento</strong>
+        <p>
+          Los push inactivos ya no ocupan calendario. Al desactivar un push se liberan sus días.
+          Al activarlo de nuevo se comprueba que las fechas estén libres.
+        </p>
+      </section>
+
       <section style={statsGrid}>
         <StatCard label="Pushes creados" value={totalPushes} />
         <StatCard label="Pushes activos" value={totalActivos} />
+        <StatCard label="Pushes inactivos" value={totalInactivos} />
         <StatCard label="Días calendario" value={totalDias} />
       </section>
 
@@ -503,6 +618,19 @@ export default function Pushes() {
                 style={textarea}
               />
 
+              <label style={label}>Imagen propia de la oferta opcional</label>
+              <input
+                type="text"
+                value={form.imagen_url}
+                onChange={(e) => cambiarCampo("imagen_url", e.target.value)}
+                placeholder="Pega aquí una URL de imagen si quieres usar una foto especial"
+                style={input}
+              />
+
+              <p style={hint}>
+                Si dejas este campo vacío, la app usará la foto del artículo.
+              </p>
+
               <div style={dateGrid}>
                 <div>
                   <label style={label}>Fecha inicio</label>
@@ -540,7 +668,7 @@ export default function Pushes() {
               </div>
 
               <p style={hint}>
-                Selecciona al menos un día de la semana. Si no seleccionas días, el push no se activará.
+                Selecciona al menos un día. Si guardas el push inactivo, no ocupará calendario.
               </p>
 
               <div style={dateGrid}>
@@ -580,6 +708,13 @@ export default function Pushes() {
                 <strong>{form.titulo || "🔥 Oferta del día"}</strong>
                 <p>{form.descripcion || "Texto del push..."}</p>
                 <small>{form.nombre_articulo || "Artículo seleccionado"}</small>
+                <div style={previewDates}>
+                  {form.activo ? (
+                    <span style={activeBadge}>Reservará {fechas.length} día(s)</span>
+                  ) : (
+                    <span style={inactiveBadge}>Inactivo: no ocupa calendario</span>
+                  )}
+                </div>
               </div>
 
               <div style={formActions}>
@@ -722,7 +857,15 @@ export default function Pushes() {
                               onClick={() => cambiarEstadoPush(push)}
                               style={push.activo ? deactivateButton : activateButton}
                             >
-                              {push.activo ? "Desactivar" : "Activar"}
+                              {push.activo ? "Desactivar y liberar" : "Activar"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => liberarCalendarioPush(push)}
+                              style={releaseButton}
+                            >
+                              Liberar calendario
                             </button>
 
                             <button
@@ -781,7 +924,8 @@ const title = { margin: 0, fontSize: "34px", lineHeight: "1", fontWeight: "950" 
 const subtitle = { margin: "10px 0 0", color: "#ffedd5", fontSize: "15px", maxWidth: "680px" };
 const newButton = { background: "#22c55e", color: "#fff", border: "none", borderRadius: "16px", padding: "15px 22px", fontSize: "15px", fontWeight: "950", cursor: "pointer", boxShadow: "0 14px 26px rgba(34,197,94,0.28)", whiteSpace: "nowrap" };
 const refreshHeroButton = { background: "#ffffff", color: "#9a3412", border: "none", borderRadius: "16px", padding: "15px 22px", fontSize: "15px", fontWeight: "950", cursor: "pointer", whiteSpace: "nowrap" };
-const statsGrid = { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "12px", marginBottom: "18px" };
+const infoBox = { background: "#eff6ff", color: "#1e3a8a", border: "1px solid #bfdbfe", padding: "14px 16px", borderRadius: "18px", marginBottom: "18px" };
+const statsGrid = { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "12px", marginBottom: "18px" };
 const statCard = { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "18px", padding: "16px", boxShadow: "0 10px 28px rgba(15,23,42,0.06)" };
 const statValue = { fontSize: "28px", fontWeight: "950", color: "#111827", lineHeight: "1" };
 const statLabel = { marginTop: "8px", fontSize: "12px", fontWeight: "850", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" };
@@ -805,6 +949,7 @@ const weekButton = (selected) => ({ border: "none", borderRadius: "999px", paddi
 const hint = { margin: "0 0 12px", color: "#64748b", fontSize: "12px", fontWeight: "800" };
 const checkboxLabel = { display: "block", marginBottom: "10px", fontWeight: "850", color: "#334155" };
 const previewBox = { background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: "16px", padding: "14px", color: "#9a3412" };
+const previewDates = { marginTop: "10px" };
 const formActions = { display: "flex", gap: "10px", marginTop: "12px" };
 const saveButton = { background: "#22c55e", color: "white", border: "none", padding: "12px 18px", borderRadius: "14px", fontWeight: "950", cursor: "pointer" };
 const cancelButton = { background: "#e5e7eb", color: "#111827", border: "none", padding: "12px 18px", borderRadius: "14px", fontWeight: "950", cursor: "pointer" };
@@ -865,6 +1010,17 @@ const deactivateButton = {
 const editButton = {
   background: "#dbeafe",
   color: "#1d4ed8",
+  border: "none",
+  padding: "8px 12px",
+  borderRadius: "10px",
+  fontWeight: "950",
+  cursor: "pointer",
+  fontSize: "12px",
+};
+
+const releaseButton = {
+  background: "#fef3c7",
+  color: "#92400e",
   border: "none",
   padding: "8px 12px",
   borderRadius: "10px",
