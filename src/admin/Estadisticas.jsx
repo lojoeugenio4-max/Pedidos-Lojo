@@ -1,24 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 
-function fechaISOHoy() {
-  const hoy = new Date();
-  const year = hoy.getFullYear();
-  const month = String(hoy.getMonth() + 1).padStart(2, "0");
-  const day = String(hoy.getDate()).padStart(2, "0");
+function fechaLocalISO(fecha = new Date()) {
+  const year = fecha.getFullYear();
+  const month = String(fecha.getMonth() + 1).padStart(2, "0");
+  const day = String(fecha.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
 function inicioMesISO() {
   const hoy = new Date();
-  const year = hoy.getFullYear();
-  const month = String(hoy.getMonth() + 1).padStart(2, "0");
-  return `${year}-${month}-01`;
+  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
 function inicioAnoISO() {
-  const hoy = new Date();
-  return `${hoy.getFullYear()}-01-01`;
+  return `${new Date().getFullYear()}-01-01`;
 }
 
 function formatearNumero(valor) {
@@ -27,45 +23,61 @@ function formatearNumero(valor) {
   });
 }
 
-function formatearFecha(fecha) {
-  if (!fecha) return "—";
-  const [year, month, day] = String(fecha).split("-").map(Number);
+function formatearFecha(fechaISO) {
+  if (!fechaISO) return "—";
+  const [year, month, day] = String(fechaISO).split("-").map(Number);
   return new Date(year, month - 1, day).toLocaleDateString("es-ES");
 }
 
-function obtenerMes(fecha) {
-  if (!fecha) return "";
-  return String(fecha).slice(0, 7);
+function obtenerMes(fechaISO) {
+  return String(fechaISO || "").slice(0, 7);
+}
+
+function nombreMes(mesISO) {
+  if (!mesISO) return "—";
+  const [year, month] = mesISO.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString("es-ES", {
+    month: "short",
+    year: "numeric",
+  });
 }
 
 export default function Estadisticas() {
   const [pedidosDia, setPedidosDia] = useState([]);
   const [articulosDia, setArticulosDia] = useState([]);
-  const [cargando, setCargando] = useState(true);
+  const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
-  const [filtroDesde, setFiltroDesde] = useState(inicioMesISO());
-  const [filtroHasta, setFiltroHasta] = useState(fechaISOHoy());
+
+  const [desde, setDesde] = useState(inicioMesISO());
+  const [hasta, setHasta] = useState(fechaLocalISO());
 
   useEffect(() => {
-    cargarEstadisticas();
+    cargarEstadisticas(desde, hasta);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function cargarEstadisticas() {
+  async function cargarEstadisticas(desdeFiltro = desde, hastaFiltro = hasta) {
     setCargando(true);
     setError("");
 
     try {
       const { data: pedidosData, error: pedidosError } = await supabase
         .from("estadisticas_pedidos_dia")
-        .select("*")
-        .order("fecha", { ascending: false });
+        .select("fecha, total_pedidos")
+        .gte("fecha", desdeFiltro)
+        .lte("fecha", hastaFiltro)
+        .order("fecha", { ascending: true });
 
       if (pedidosError) throw pedidosError;
 
       const { data: articulosData, error: articulosError } = await supabase
         .from("estadisticas_articulos_dia")
-        .select("*")
-        .order("fecha", { ascending: false });
+        .select(
+          "fecha, articulo_id, codigo_articulo, nombre_articulo, departamento, cajas, unidades, veces_pedido"
+        )
+        .gte("fecha", desdeFiltro)
+        .lte("fecha", hastaFiltro)
+        .order("fecha", { ascending: true });
 
       if (articulosError) throw articulosError;
 
@@ -79,53 +91,59 @@ export default function Estadisticas() {
     }
   }
 
-  const pedidosFiltrados = useMemo(() => {
-    return pedidosDia.filter((fila) => {
-      if (filtroDesde && fila.fecha < filtroDesde) return false;
-      if (filtroHasta && fila.fecha > filtroHasta) return false;
-      return true;
-    });
-  }, [pedidosDia, filtroDesde, filtroHasta]);
+  function aplicarHoy() {
+    const hoy = fechaLocalISO();
+    setDesde(hoy);
+    setHasta(hoy);
+    cargarEstadisticas(hoy, hoy);
+  }
 
-  const articulosFiltrados = useMemo(() => {
-    return articulosDia.filter((fila) => {
-      if (filtroDesde && fila.fecha < filtroDesde) return false;
-      if (filtroHasta && fila.fecha > filtroHasta) return false;
-      return true;
-    });
-  }, [articulosDia, filtroDesde, filtroHasta]);
+  function aplicarMes() {
+    const inicio = inicioMesISO();
+    const fin = fechaLocalISO();
+    setDesde(inicio);
+    setHasta(fin);
+    cargarEstadisticas(inicio, fin);
+  }
+
+  function aplicarAno() {
+    const inicio = inicioAnoISO();
+    const fin = fechaLocalISO();
+    setDesde(inicio);
+    setHasta(fin);
+    cargarEstadisticas(inicio, fin);
+  }
 
   const resumen = useMemo(() => {
-    const hoy = fechaISOHoy();
-    const inicioMes = inicioMesISO();
-    const inicioAno = inicioAnoISO();
+    const totalPedidos = pedidosDia.reduce(
+      (total, fila) => total + Number(fila.total_pedidos || 0),
+      0
+    );
 
-    const pedidosHoy = pedidosDia
-      .filter((fila) => fila.fecha === hoy)
-      .reduce((total, fila) => total + Number(fila.total_pedidos || 0), 0);
+    const totalCajas = articulosDia.reduce(
+      (total, fila) => total + Number(fila.cajas || 0),
+      0
+    );
 
-    const pedidosMes = pedidosDia
-      .filter((fila) => fila.fecha >= inicioMes)
-      .reduce((total, fila) => total + Number(fila.total_pedidos || 0), 0);
+    const totalUnidades = articulosDia.reduce(
+      (total, fila) => total + Number(fila.unidades || 0),
+      0
+    );
 
-    const pedidosAno = pedidosDia
-      .filter((fila) => fila.fecha >= inicioAno)
-      .reduce((total, fila) => total + Number(fila.total_pedidos || 0), 0);
+    const articulosDistintos = new Set(
+      articulosDia.map((fila) => String(fila.articulo_id || fila.codigo_articulo || ""))
+    ).size;
 
-    const cajasMes = articulosDia
-      .filter((fila) => fila.fecha >= inicioMes)
-      .reduce((total, fila) => total + Number(fila.cajas || 0), 0);
-
-    const unidadesMes = articulosDia
-      .filter((fila) => fila.fecha >= inicioMes)
-      .reduce((total, fila) => total + Number(fila.unidades || 0), 0);
+    const departamentosDistintos = new Set(
+      articulosDia.map((fila) => String(fila.departamento || "Sin departamento"))
+    ).size;
 
     return {
-      pedidosHoy,
-      pedidosMes,
-      pedidosAno,
-      cajasMes,
-      unidadesMes,
+      totalPedidos,
+      totalCajas,
+      totalUnidades,
+      articulosDistintos,
+      departamentosDistintos,
     };
   }, [pedidosDia, articulosDia]);
 
@@ -138,30 +156,33 @@ export default function Estadisticas() {
     });
 
     return Array.from(mapa.entries())
-      .map(([mes, total]) => ({ mes, total }))
-      .sort((a, b) => b.mes.localeCompare(a.mes))
-      .slice(0, 12);
+      .map(([mes, total_pedidos]) => ({ mes, total_pedidos }))
+      .sort((a, b) => a.mes.localeCompare(b.mes));
+  }, [pedidosDia]);
+
+  const pedidosPorDia = useMemo(() => {
+    return [...pedidosDia].sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
   }, [pedidosDia]);
 
   const topCajas = useMemo(() => {
-    return agruparArticulos(articulosFiltrados, "cajas").slice(0, 20);
-  }, [articulosFiltrados]);
+    return agruparArticulos(articulosDia, "cajas").slice(0, 20);
+  }, [articulosDia]);
 
   const topUnidades = useMemo(() => {
-    return agruparArticulos(articulosFiltrados, "unidades").slice(0, 20);
-  }, [articulosFiltrados]);
+    return agruparArticulos(articulosDia, "unidades").slice(0, 20);
+  }, [articulosDia]);
 
-  const topMasPedidos = useMemo(() => {
-    return agruparArticulos(articulosFiltrados, "veces_pedido").slice(0, 20);
-  }, [articulosFiltrados]);
+  const topVecesPedido = useMemo(() => {
+    return agruparArticulos(articulosDia, "veces_pedido").slice(0, 20);
+  }, [articulosDia]);
 
   const departamentos = useMemo(() => {
     const mapa = new Map();
 
-    articulosFiltrados.forEach((fila) => {
-      const nombre = fila.departamento || "Sin departamento";
-      const actual = mapa.get(nombre) || {
-        departamento: nombre,
+    articulosDia.forEach((fila) => {
+      const departamento = fila.departamento || "Sin departamento";
+      const actual = mapa.get(departamento) || {
+        departamento,
         cajas: 0,
         unidades: 0,
         veces_pedido: 0,
@@ -171,7 +192,7 @@ export default function Estadisticas() {
       actual.unidades += Number(fila.unidades || 0);
       actual.veces_pedido += Number(fila.veces_pedido || 0);
 
-      mapa.set(nombre, actual);
+      mapa.set(departamento, actual);
     });
 
     return Array.from(mapa.values()).sort(
@@ -179,12 +200,9 @@ export default function Estadisticas() {
         b.cajas + b.unidades + b.veces_pedido -
         (a.cajas + a.unidades + a.veces_pedido)
     );
-  }, [articulosFiltrados]);
+  }, [articulosDia]);
 
-  const totalPedidosFiltrados = pedidosFiltrados.reduce(
-    (total, fila) => total + Number(fila.total_pedidos || 0),
-    0
-  );
+  const hayDatos = pedidosDia.length > 0 || articulosDia.length > 0;
 
   return (
     <div style={page}>
@@ -193,11 +211,15 @@ export default function Estadisticas() {
           <div style={eyebrow}>Administración</div>
           <h1 style={title}>📊 Estadísticas</h1>
           <p style={subtitle}>
-            Resumen de pedidos enviados por WhatsApp, artículos vendidos y departamentos.
+            Pedidos enviados por WhatsApp, artículos más vendidos y departamentos.
           </p>
         </div>
 
-        <button type="button" onClick={cargarEstadisticas} style={refreshButton}>
+        <button
+          type="button"
+          onClick={() => cargarEstadisticas(desde, hasta)}
+          style={refreshButton}
+        >
           Actualizar
         </button>
       </section>
@@ -214,8 +236,8 @@ export default function Estadisticas() {
           <label style={label}>Desde</label>
           <input
             type="date"
-            value={filtroDesde}
-            onChange={(e) => setFiltroDesde(e.target.value)}
+            value={desde}
+            onChange={(e) => setDesde(e.target.value)}
             style={input}
           />
         </div>
@@ -224,33 +246,31 @@ export default function Estadisticas() {
           <label style={label}>Hasta</label>
           <input
             type="date"
-            value={filtroHasta}
-            onChange={(e) => setFiltroHasta(e.target.value)}
+            value={hasta}
+            onChange={(e) => setHasta(e.target.value)}
             style={input}
           />
         </div>
 
         <div style={filterActions}>
-          <button
-            type="button"
-            onClick={() => {
-              setFiltroDesde(inicioMesISO());
-              setFiltroHasta(fechaISOHoy());
-            }}
-            style={periodButton}
-          >
+          <button type="button" onClick={aplicarHoy} style={todayButton}>
+            Hoy
+          </button>
+
+          <button type="button" onClick={aplicarMes} style={periodButton}>
             Este mes
+          </button>
+
+          <button type="button" onClick={aplicarAno} style={periodButton}>
+            Este año
           </button>
 
           <button
             type="button"
-            onClick={() => {
-              setFiltroDesde(inicioAnoISO());
-              setFiltroHasta(fechaISOHoy());
-            }}
-            style={periodButton}
+            onClick={() => cargarEstadisticas(desde, hasta)}
+            style={applyButton}
           >
-            Este año
+            Aplicar filtro
           </button>
         </div>
       </section>
@@ -260,16 +280,41 @@ export default function Estadisticas() {
       ) : (
         <>
           <section style={statsGrid}>
-            <StatCard label="Pedidos hoy" value={resumen.pedidosHoy} />
-            <StatCard label="Pedidos este mes" value={resumen.pedidosMes} />
-            <StatCard label="Pedidos este año" value={resumen.pedidosAno} />
-            <StatCard label="Pedidos filtrados" value={totalPedidosFiltrados} />
-            <StatCard label="Cajas mes" value={formatearNumero(resumen.cajasMes)} />
-            <StatCard label="Unidades mes" value={formatearNumero(resumen.unidadesMes)} />
+            <StatCard label="Pedidos" value={formatearNumero(resumen.totalPedidos)} />
+            <StatCard label="Cajas" value={formatearNumero(resumen.totalCajas)} />
+            <StatCard label="Unidades" value={formatearNumero(resumen.totalUnidades)} />
+            <StatCard label="Artículos distintos" value={formatearNumero(resumen.articulosDistintos)} />
+            <StatCard label="Departamentos" value={formatearNumero(resumen.departamentosDistintos)} />
           </section>
 
+          {!hayDatos && (
+            <section style={emptyPanel}>
+              Todavía no hay estadísticas para el periodo seleccionado.
+            </section>
+          )}
+
           <section style={gridTwo}>
-            <Panel title="Pedidos por mes" subtitle="Últimos 12 meses">
+            <Panel title="Pedidos por día" subtitle={`${formatearFecha(desde)} - ${formatearFecha(hasta)}`}>
+              <MiniBarChart
+                data={pedidosPorDia.map((fila) => ({
+                  label: formatearFecha(fila.fecha),
+                  value: Number(fila.total_pedidos || 0),
+                }))}
+                valueLabel="pedidos"
+              />
+
+              <TablaPedidosDia filas={pedidosPorDia} />
+            </Panel>
+
+            <Panel title="Pedidos por mes" subtitle="Agrupado dentro del periodo filtrado">
+              <MiniBarChart
+                data={pedidosPorMes.map((fila) => ({
+                  label: nombreMes(fila.mes),
+                  value: Number(fila.total_pedidos || 0),
+                }))}
+                valueLabel="pedidos"
+              />
+
               <table style={table}>
                 <thead>
                   <tr>
@@ -283,33 +328,8 @@ export default function Estadisticas() {
                   ) : (
                     pedidosPorMes.map((fila) => (
                       <tr key={fila.mes}>
-                        <td style={td}>{fila.mes}</td>
-                        <td style={tdRight}>{formatearNumero(fila.total)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </Panel>
-
-            <Panel title="Departamentos más vendidos" subtitle="Según el periodo filtrado">
-              <table style={table}>
-                <thead>
-                  <tr>
-                    <th style={th}>Departamento</th>
-                    <th style={thRight}>Cajas</th>
-                    <th style={thRight}>Unid.</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {departamentos.length === 0 ? (
-                    <FilaVacia columnas={3} />
-                  ) : (
-                    departamentos.slice(0, 15).map((fila) => (
-                      <tr key={fila.departamento}>
-                        <td style={td}>{fila.departamento}</td>
-                        <td style={tdRight}>{formatearNumero(fila.cajas)}</td>
-                        <td style={tdRight}>{formatearNumero(fila.unidades)}</td>
+                        <td style={td}>{nombreMes(fila.mes)}</td>
+                        <td style={tdRightStrong}>{formatearNumero(fila.total_pedidos)}</td>
                       </tr>
                     ))
                   )}
@@ -318,16 +338,77 @@ export default function Estadisticas() {
             </Panel>
           </section>
 
-          <Panel title="Artículos más vendidos por cajas" subtitle="Según el periodo filtrado">
+          <section style={gridTwo}>
+            <Panel title="Departamentos más vendidos" subtitle="Cajas + unidades + veces pedido">
+              <MiniBarChart
+                data={departamentos.slice(0, 10).map((fila) => ({
+                  label: fila.departamento,
+                  value: Number(fila.cajas || 0) + Number(fila.unidades || 0),
+                }))}
+                valueLabel="total"
+              />
+
+              <table style={table}>
+                <thead>
+                  <tr>
+                    <th style={th}>Departamento</th>
+                    <th style={thRight}>Cajas</th>
+                    <th style={thRight}>Unid.</th>
+                    <th style={thRight}>Veces</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {departamentos.length === 0 ? (
+                    <FilaVacia columnas={4} />
+                  ) : (
+                    departamentos.slice(0, 20).map((fila) => (
+                      <tr key={fila.departamento}>
+                        <td style={td}>{fila.departamento}</td>
+                        <td style={tdRight}>{formatearNumero(fila.cajas)}</td>
+                        <td style={tdRight}>{formatearNumero(fila.unidades)}</td>
+                        <td style={tdRight}>{formatearNumero(fila.veces_pedido)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </Panel>
+
+            <Panel title="Artículos que más se piden" subtitle="Número de pedidos en los que aparece">
+              <MiniBarChart
+                data={topVecesPedido.slice(0, 10).map((fila) => ({
+                  label: fila.nombre_articulo,
+                  value: Number(fila.veces_pedido || 0),
+                }))}
+                valueLabel="veces"
+              />
+
+              <TablaArticulos filas={topVecesPedido} campo="veces_pedido" etiqueta="Veces" />
+            </Panel>
+          </section>
+
+          <Panel title="Artículos más vendidos por cajas" subtitle="Suma de cajas del periodo seleccionado">
+            <MiniBarChart
+              data={topCajas.slice(0, 10).map((fila) => ({
+                label: fila.nombre_articulo,
+                value: Number(fila.cajas || 0),
+              }))}
+              valueLabel="cajas"
+            />
+
             <TablaArticulos filas={topCajas} campo="cajas" etiqueta="Cajas" />
           </Panel>
 
-          <Panel title="Artículos más vendidos por unidades" subtitle="Según el periodo filtrado">
-            <TablaArticulos filas={topUnidades} campo="unidades" etiqueta="Unidades" />
-          </Panel>
+          <Panel title="Artículos más vendidos por unidades" subtitle="Suma de unidades del periodo seleccionado">
+            <MiniBarChart
+              data={topUnidades.slice(0, 10).map((fila) => ({
+                label: fila.nombre_articulo,
+                value: Number(fila.unidades || 0),
+              }))}
+              valueLabel="unidades"
+            />
 
-          <Panel title="Artículos que más aparecen en pedidos" subtitle="Cuenta veces_pedido, no cantidad">
-            <TablaArticulos filas={topMasPedidos} campo="veces_pedido" etiqueta="Veces" />
+            <TablaArticulos filas={topUnidades} campo="unidades" etiqueta="Unidades" />
           </Panel>
         </>
       )}
@@ -339,7 +420,7 @@ function agruparArticulos(filas, campoOrden) {
   const mapa = new Map();
 
   filas.forEach((fila) => {
-    const key = fila.articulo_id || fila.codigo_articulo || fila.nombre_articulo;
+    const key = String(fila.articulo_id || fila.codigo_articulo || fila.nombre_articulo || "");
     const actual = mapa.get(key) || {
       articulo_id: fila.articulo_id,
       codigo_articulo: fila.codigo_articulo || "",
@@ -357,9 +438,16 @@ function agruparArticulos(filas, campoOrden) {
     mapa.set(key, actual);
   });
 
-  return Array.from(mapa.values()).sort(
-    (a, b) => Number(b[campoOrden] || 0) - Number(a[campoOrden] || 0)
-  );
+  return Array.from(mapa.values()).sort((a, b) => {
+    const principal = Number(b[campoOrden] || 0) - Number(a[campoOrden] || 0);
+    if (principal !== 0) return principal;
+
+    return String(a.nombre_articulo || "").localeCompare(
+      String(b.nombre_articulo || ""),
+      "es",
+      { sensitivity: "base" }
+    );
+  });
 }
 
 function StatCard({ label, value }) {
@@ -381,37 +469,62 @@ function Panel({ title, subtitle, children }) {
         </div>
       </div>
 
-      <div style={tableWrap}>{children}</div>
+      {children}
     </section>
   );
 }
 
-function TablaArticulos({ filas, campo, etiqueta }) {
+function MiniBarChart({ data, valueLabel }) {
+  const filas = (data || []).filter((fila) => Number(fila.value || 0) > 0).slice(0, 10);
+  const max = Math.max(...filas.map((fila) => Number(fila.value || 0)), 0);
+
+  if (!filas.length) {
+    return <div style={chartEmpty}>Sin datos para gráfico</div>;
+  }
+
+  return (
+    <div style={chartBox}>
+      {filas.map((fila) => {
+        const valor = Number(fila.value || 0);
+        const width = max > 0 ? Math.max(6, (valor / max) * 100) : 0;
+
+        return (
+          <div key={fila.label} style={chartRow}>
+            <div style={chartLabel} title={fila.label}>
+              {fila.label}
+            </div>
+
+            <div style={chartTrack}>
+              <div style={{ ...chartBar, width: `${width}%` }} />
+            </div>
+
+            <div style={chartValue}>
+              {formatearNumero(valor)} {valueLabel}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TablaPedidosDia({ filas }) {
   return (
     <table style={table}>
       <thead>
         <tr>
-          <th style={th}>Artículo</th>
-          <th style={th}>Departamento</th>
-          <th style={thRight}>{etiqueta}</th>
-          <th style={thRight}>Cajas</th>
-          <th style={thRight}>Unid.</th>
+          <th style={th}>Fecha</th>
+          <th style={thRight}>Pedidos</th>
         </tr>
       </thead>
       <tbody>
         {filas.length === 0 ? (
-          <FilaVacia columnas={5} />
+          <FilaVacia columnas={2} />
         ) : (
           filas.map((fila) => (
-            <tr key={`${fila.articulo_id}-${fila.codigo_articulo}-${fila.nombre_articulo}`}>
-              <td style={td}>
-                <strong>{fila.nombre_articulo}</strong>
-                <div style={smallText}>Código: {fila.codigo_articulo || "-"}</div>
-              </td>
-              <td style={td}>{fila.departamento || "—"}</td>
-              <td style={tdRightStrong}>{formatearNumero(fila[campo])}</td>
-              <td style={tdRight}>{formatearNumero(fila.cajas)}</td>
-              <td style={tdRight}>{formatearNumero(fila.unidades)}</td>
+            <tr key={fila.fecha}>
+              <td style={td}>{formatearFecha(fila.fecha)}</td>
+              <td style={tdRightStrong}>{formatearNumero(fila.total_pedidos)}</td>
             </tr>
           ))
         )}
@@ -420,11 +533,50 @@ function TablaArticulos({ filas, campo, etiqueta }) {
   );
 }
 
+function TablaArticulos({ filas, campo, etiqueta }) {
+  return (
+    <div style={tableWrap}>
+      <table style={table}>
+        <thead>
+          <tr>
+            <th style={th}>Artículo</th>
+            <th style={th}>Departamento</th>
+            <th style={thRight}>{etiqueta}</th>
+            <th style={thRight}>Cajas</th>
+            <th style={thRight}>Unid.</th>
+            <th style={thRight}>Veces</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {filas.length === 0 ? (
+            <FilaVacia columnas={6} />
+          ) : (
+            filas.map((fila) => (
+              <tr key={`${fila.articulo_id}-${fila.codigo_articulo}-${fila.nombre_articulo}`}>
+                <td style={td}>
+                  <strong>{fila.nombre_articulo}</strong>
+                  <div style={smallText}>Código: {fila.codigo_articulo || "-"}</div>
+                </td>
+                <td style={td}>{fila.departamento || "—"}</td>
+                <td style={tdRightStrong}>{formatearNumero(fila[campo])}</td>
+                <td style={tdRight}>{formatearNumero(fila.cajas)}</td>
+                <td style={tdRight}>{formatearNumero(fila.unidades)}</td>
+                <td style={tdRight}>{formatearNumero(fila.veces_pedido)}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function FilaVacia({ columnas }) {
   return (
     <tr>
       <td colSpan={columnas} style={emptyCell}>
-        Sin datos todavía
+        Sin datos en este periodo
       </td>
     </tr>
   );
@@ -492,7 +644,7 @@ const refreshButton = {
 
 const filtersBox = {
   display: "grid",
-  gridTemplateColumns: "180px 180px auto",
+  gridTemplateColumns: "180px 180px 1fr",
   gap: "12px",
   alignItems: "end",
   background: "#ffffff",
@@ -528,6 +680,16 @@ const filterActions = {
   flexWrap: "wrap",
 };
 
+const todayButton = {
+  background: "#22c55e",
+  color: "#ffffff",
+  border: "none",
+  borderRadius: "13px",
+  padding: "12px 14px",
+  fontWeight: "950",
+  cursor: "pointer",
+};
+
 const periodButton = {
   background: "#eff6ff",
   color: "#1d4ed8",
@@ -538,9 +700,19 @@ const periodButton = {
   cursor: "pointer",
 };
 
+const applyButton = {
+  background: "#111827",
+  color: "#ffffff",
+  border: "none",
+  borderRadius: "13px",
+  padding: "12px 14px",
+  fontWeight: "950",
+  cursor: "pointer",
+};
+
 const statsGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
   gap: "12px",
   marginBottom: "18px",
 };
@@ -665,6 +837,72 @@ const smallText = {
   marginTop: "4px",
   color: "#64748b",
   fontSize: "12px",
+};
+
+const chartBox = {
+  border: "1px solid #e5e7eb",
+  borderRadius: "16px",
+  padding: "12px",
+  marginBottom: "14px",
+  background: "#f8fafc",
+};
+
+const chartRow = {
+  display: "grid",
+  gridTemplateColumns: "160px 1fr 90px",
+  gap: "10px",
+  alignItems: "center",
+  marginBottom: "8px",
+};
+
+const chartLabel = {
+  fontSize: "12px",
+  fontWeight: "850",
+  color: "#334155",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const chartTrack = {
+  height: "11px",
+  background: "#e2e8f0",
+  borderRadius: "999px",
+  overflow: "hidden",
+};
+
+const chartBar = {
+  height: "100%",
+  background: "linear-gradient(90deg, #1d4ed8, #60a5fa)",
+  borderRadius: "999px",
+};
+
+const chartValue = {
+  textAlign: "right",
+  fontSize: "11px",
+  fontWeight: "950",
+  color: "#1e293b",
+};
+
+const chartEmpty = {
+  border: "1px dashed #cbd5e1",
+  borderRadius: "16px",
+  padding: "20px",
+  color: "#94a3b8",
+  fontWeight: "850",
+  textAlign: "center",
+  marginBottom: "14px",
+};
+
+const emptyPanel = {
+  background: "#ffffff",
+  border: "1px dashed #cbd5e1",
+  color: "#64748b",
+  borderRadius: "18px",
+  padding: "22px",
+  fontWeight: "900",
+  textAlign: "center",
+  marginBottom: "18px",
 };
 
 const loadingBox = {
