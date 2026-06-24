@@ -240,6 +240,18 @@ export default function App() {
   }, [language]);
 
   useEffect(() => {
+    const mostrarPushAlVolver = () => {
+      setPushCerrado(false);
+    };
+
+    window.addEventListener("pageshow", mostrarPushAlVolver);
+
+    return () => {
+      window.removeEventListener("pageshow", mostrarPushAlVolver);
+    };
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem(
       ORDER_STORAGE_KEY,
       JSON.stringify({
