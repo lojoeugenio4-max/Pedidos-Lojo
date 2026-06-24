@@ -244,10 +244,20 @@ export default function App() {
       setPushCerrado(false);
     };
 
+    const mostrarPushSiLaAppVuelve = () => {
+      if (document.visibilityState === "visible") {
+        setPushCerrado(false);
+      }
+    };
+
     window.addEventListener("pageshow", mostrarPushAlVolver);
+    window.addEventListener("focus", mostrarPushAlVolver);
+    document.addEventListener("visibilitychange", mostrarPushSiLaAppVuelve);
 
     return () => {
       window.removeEventListener("pageshow", mostrarPushAlVolver);
+      window.removeEventListener("focus", mostrarPushAlVolver);
+      document.removeEventListener("visibilitychange", mostrarPushSiLaAppVuelve);
     };
   }, []);
 
