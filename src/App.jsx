@@ -223,6 +223,7 @@ export default function App() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("OFERTAS");
+  const [articuloDestacado, setArticuloDestacado] = useState(null);
   const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
   const [showOrderSummary, setShowOrderSummary] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
@@ -758,6 +759,12 @@ export default function App() {
       return;
     }
 
+    setArticuloDestacado(articuloId);
+
+    setTimeout(() => {
+      setArticuloDestacado((actual) => (actual === articuloId ? null : actual));
+    }, 4500);
+
     const intentarScroll = () => {
       asegurarArticuloVisible(articuloId);
     };
@@ -1254,7 +1261,12 @@ export default function App() {
                       ref={(element) => {
                         rowRefs.current[product.id] = element;
                       }}
-                      style={styles.productCard}
+                      style={{
+                        ...styles.productCard,
+                        ...(articuloDestacado === product.id
+                          ? styles.productCardHighlighted
+                          : {}),
+                      }}
                     >
                       <div style={styles.photoBox}>
                         {product.image ? (
@@ -1940,6 +1952,13 @@ const styles = {
     boxSizing: "border-box",
     overflow: "hidden",
     scrollMarginTop: "150px",
+    transition: "background 180ms ease, border 180ms ease, box-shadow 180ms ease",
+  },
+
+  productCardHighlighted: {
+    background: "#e0f2fe",
+    border: "2px solid #0ea5e9",
+    boxShadow: "0 0 20px rgba(14,165,233,0.45)",
   },
 
   photoBox: {
