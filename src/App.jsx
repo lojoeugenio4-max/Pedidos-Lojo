@@ -975,23 +975,8 @@ export default function App() {
       );
     });
 
-    let departamentoActual = "";
-
     itemsOrdenados.forEach((item) => {
       const product = item.product;
-      const departamento = String(
-        product.department || product.departamento || "SIN DEPARTAMENTO"
-      )
-        .trim()
-        .toUpperCase();
-
-      if (departamento !== departamentoActual) {
-        departamentoActual = departamento;
-
-        lines.push(`*${departamentoActual}*`);
-        lines.push("-".repeat(departamentoActual.length));
-        lines.push("");
-      }
 
       // Nombre sin código y sin negrita
       lines.push(String(product.name || "").trim());
