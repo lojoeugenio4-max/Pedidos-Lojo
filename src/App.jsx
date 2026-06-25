@@ -208,6 +208,7 @@ export default function App() {
   const [departamentos, setDepartamentos] = useState([]);
   const [pushOferta, setPushOferta] = useState(null);
   const [pushCerrado, setPushCerrado] = useState(false);
+  const [mostrarVolverPush, setMostrarVolverPush] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [errorCatalogo, setErrorCatalogo] = useState("");
 
@@ -238,28 +239,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
   }, [language]);
-
-  useEffect(() => {
-    const mostrarPushAlVolver = () => {
-      setPushCerrado(false);
-    };
-
-    const mostrarPushSiLaAppVuelve = () => {
-      if (document.visibilityState === "visible") {
-        setPushCerrado(false);
-      }
-    };
-
-    window.addEventListener("pageshow", mostrarPushAlVolver);
-    window.addEventListener("focus", mostrarPushAlVolver);
-    document.addEventListener("visibilitychange", mostrarPushSiLaAppVuelve);
-
-    return () => {
-      window.removeEventListener("pageshow", mostrarPushAlVolver);
-      window.removeEventListener("focus", mostrarPushAlVolver);
-      document.removeEventListener("visibilitychange", mostrarPushSiLaAppVuelve);
-    };
-  }, []);
 
   useEffect(() => {
     localStorage.setItem(
@@ -393,35 +372,113 @@ export default function App() {
         }
 
         if (pushOfertaData) {
-          const { data: articuloPushData, error: articuloPushError } =
-            await supabase
-              .from("articulos")
-              .select("id, codigo, nombre, foto")
-              .eq("id", pushOfertaData.articulo_id)
-              .maybeSingle();
+          let articulosPush = [];
 
-          if (articuloPushError) {
-            console.error(articuloPushError);
+          const { data: pushArticulosData, error: pushArticulosError } =
+            await supabase
+              .from("push_articulos")
+              .select("*")
+              .eq("push_id", pushOfertaData.id)
+              .order("orden", { ascending: true });
+
+          if (pushArticulosError) {
+            console.error(pushArticulosError);
+          }
+
+          if (Array.isArray(pushArticulosData) && pushArticulosData.length > 0) {
+            const idsArticulos = pushArticulosData
+              .map((item) => item.articulo_id)
+              .filter(Boolean);
+
+            let articulosCatalogoPush = [];
+
+            if (idsArticulos.length > 0) {
+              const { data: articulosPushData, error: articulosPushError } =
+                await supabase
+                  .from("articulos")
+                  .select("id, codigo, nombre, foto")
+                  .in("id", idsArticulos);
+
+              if (articulosPushError) {
+                console.error(articulosPushError);
+              }
+
+              articulosCatalogoPush = articulosPushData || [];
+            }
+
+            articulosPush = pushArticulosData.map((item) => {
+              const articuloCatalogo = articulosCatalogoPush.find(
+                (articulo) => Number(articulo.id) === Number(item.articulo_id)
+              );
+
+              return {
+                id: item.articulo_id ? String(item.articulo_id) : "",
+                codigo:
+                  item.codigo_articulo ||
+                  articuloCatalogo?.codigo ||
+                  "",
+                nombre:
+                  item.nombre_articulo ||
+                  articuloCatalogo?.nombre ||
+                  "Información",
+                foto: articuloCatalogo?.foto || null,
+                imagen_url: item.imagen_url || "",
+                texto: item.texto || "",
+                orden: item.orden || 1,
+                comprable: item.comprable !== false && Boolean(item.articulo_id),
+              };
+            });
+          }
+
+          if (articulosPush.length === 0 && pushOfertaData.articulo_id) {
+            const { data: articuloPushData, error: articuloPushError } =
+              await supabase
+                .from("articulos")
+                .select("id, codigo, nombre, foto")
+                .eq("id", pushOfertaData.articulo_id)
+                .maybeSingle();
+
+            if (articuloPushError) {
+              console.error(articuloPushError);
+            }
+
+            articulosPush = [
+              articuloPushData
+                ? {
+                    id: String(articuloPushData.id),
+                    codigo: articuloPushData.codigo,
+                    nombre: articuloPushData.nombre,
+                    foto: articuloPushData.foto,
+                    imagen_url: "",
+                    texto:
+                      pushOfertaData.descripcion ||
+                      pushOfertaData.texto ||
+                      "",
+                    orden: 1,
+                    comprable: true,
+                  }
+                : {
+                    id: String(pushOfertaData.articulo_id || ""),
+                    codigo: pushOfertaData.codigo_articulo,
+                    nombre: pushOfertaData.nombre_articulo,
+                    foto: null,
+                    imagen_url: "",
+                    texto:
+                      pushOfertaData.descripcion ||
+                      pushOfertaData.texto ||
+                      "",
+                    orden: 1,
+                    comprable: Boolean(pushOfertaData.articulo_id),
+                  },
+            ];
           }
 
           pushData = {
             id: pushOfertaData.id,
             texto: pushOfertaData.descripcion || pushOfertaData.texto || "",
-            push_titulo: pushOfertaData.titulo || "🔥 Oferta del día",
+            push_titulo: pushOfertaData.titulo || "🔥 Ofertas del día",
             push_activo: Boolean(pushOfertaData.activo),
-            articulos: articuloPushData
-              ? {
-                  id: articuloPushData.id,
-                  codigo: articuloPushData.codigo,
-                  nombre: articuloPushData.nombre,
-                  foto: articuloPushData.foto,
-                }
-              : {
-                  id: pushOfertaData.articulo_id,
-                  codigo: pushOfertaData.codigo_articulo,
-                  nombre: pushOfertaData.nombre_articulo,
-                  foto: null,
-                },
+            articulos: articulosPush,
           };
         }
       }
@@ -450,7 +507,28 @@ export default function App() {
           console.error(pushAntiguoError);
         }
 
-        pushData = pushAntiguoData || null;
+        pushData = pushAntiguoData
+          ? {
+              id: pushAntiguoData.id,
+              texto: pushAntiguoData.texto || "",
+              push_titulo: pushAntiguoData.push_titulo || "🔥 Oferta del día",
+              push_activo: Boolean(pushAntiguoData.push_activo),
+              articulos: pushAntiguoData.articulos
+                ? [
+                    {
+                      id: String(pushAntiguoData.articulos.id),
+                      codigo: pushAntiguoData.articulos.codigo,
+                      nombre: pushAntiguoData.articulos.nombre,
+                      foto: pushAntiguoData.articulos.foto,
+                      imagen_url: "",
+                      texto: pushAntiguoData.texto || "",
+                      orden: 1,
+                      comprable: true,
+                    },
+                  ]
+                : [],
+            }
+          : null;
       }
 
       if (articulosError) {
@@ -764,10 +842,15 @@ export default function App() {
     }, 40);
   };
 
-  const irAlArticuloPush = () => {
-    const articuloId = String(pushOferta?.articulos?.id || "");
+  const irAlArticuloPush = (articuloPush) => {
+    const articuloId = String(articuloPush?.id || "");
+    const totalComprables =
+      Array.isArray(pushOferta?.articulos)
+        ? pushOferta.articulos.filter((item) => item.comprable && item.id).length
+        : 0;
 
     setPushCerrado(true);
+    setMostrarVolverPush(totalComprables > 1);
     setHeaderCollapsed(true);
     setSelectedDepartment("TODOS");
     setSearchInput("");
@@ -877,6 +960,7 @@ export default function App() {
     setShowOrderSummary(false);
     setSelectedImage(null);
     setPushCerrado(false);
+    setMostrarVolverPush(false);
     setHeaderCollapsed(false);
     localStorage.removeItem(ORDER_STORAGE_KEY);
 
@@ -1073,13 +1157,24 @@ export default function App() {
     resetToInitialState();
   };
 
-  const pushImageUrl = pushOferta?.articulos?.foto
-    ? getPublicPhotoUrl(pushOferta.articulos.foto)
-    : "";
+  const pushItems = Array.isArray(pushOferta?.articulos)
+    ? pushOferta.articulos
+    : pushOferta?.articulos
+      ? [pushOferta.articulos]
+      : [];
+
+  const getPushItemImageUrl = (item) => {
+    if (item?.imagen_url) return item.imagen_url;
+    if (item?.foto) return getPublicPhotoUrl(item.foto);
+    return "";
+  };
+
+  const pushTieneVariosComprables =
+    pushItems.filter((item) => item.comprable && item.id).length > 1;
 
   return (
     <div style={styles.page}>
-      {pushOferta && pushImageUrl && !pushCerrado && (
+      {pushOferta && pushItems.length > 0 && !pushCerrado && (
         <div style={styles.pushOverlay}>
           <button
             type="button"
@@ -1090,23 +1185,48 @@ export default function App() {
             ×
           </button>
 
-          <div style={styles.pushImageBox}>
-            <img
-              src={pushImageUrl}
-              alt=""
-              style={styles.pushImage}
-              onError={cerrarPush}
-            />
-          </div>
+          <div style={styles.pushPanel}>
+            <div style={styles.pushHeader}>
+              <strong>{pushOferta.push_titulo || "🔥 Ofertas del día"}</strong>
+              {pushOferta.texto && <p>{pushOferta.texto}</p>}
+            </div>
 
-          <div style={styles.pushActions}>
-            <button
-              type="button"
-              onClick={irAlArticuloPush}
-              style={styles.pushOrderButton}
-            >
-              Pedir artículo
-            </button>
+            <div style={styles.pushItemsGrid}>
+              {pushItems.map((item, index) => {
+                const imagen = getPushItemImageUrl(item);
+
+                return (
+                  <div key={`${item.id || "info"}-${index}`} style={styles.pushItemCard}>
+                    <div style={styles.pushItemImageBox}>
+                      {imagen ? (
+                        <img
+                          src={imagen}
+                          alt=""
+                          style={styles.pushItemImage}
+                        />
+                      ) : (
+                        <div style={styles.pushNoImage}>Sin imagen</div>
+                      )}
+                    </div>
+
+                    <div style={styles.pushItemContent}>
+                      <strong>{item.nombre || "Información"}</strong>
+                      {item.texto && <p>{item.texto}</p>}
+
+                      {item.comprable && item.id && (
+                        <button
+                          type="button"
+                          onClick={() => irAlArticuloPush(item)}
+                          style={styles.pushOrderButton}
+                        >
+                          Pedir artículo
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
 
             <button
               type="button"
@@ -1117,6 +1237,20 @@ export default function App() {
             </button>
           </div>
         </div>
+      )}
+
+      {mostrarVolverPush && pushTieneVariosComprables && pushCerrado && (
+        <button
+          type="button"
+          onClick={() => {
+            setPushCerrado(false);
+            setMostrarVolverPush(false);
+            setHeaderCollapsed(false);
+          }}
+          style={styles.returnPushButton}
+        >
+          ← Volver al Push
+        </button>
       )}
 
       {selectedImage && (
@@ -2407,42 +2541,84 @@ const styles = {
     zIndex: 5001,
   },
 
-  pushImageBox: {
-    width: "100%",
-    height: "calc(100vh - 120px)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  pushImage: {
-    maxWidth: "100%",
-    maxHeight: "100%",
-    objectFit: "contain",
-    borderRadius: "22px",
+  pushPanel: {
+    width: "min(520px, 100%)",
+    maxHeight: "calc(100vh - 86px)",
+    overflowY: "auto",
     background: "#ffffff",
-    boxShadow: "0 22px 50px rgba(0,0,0,0.35)",
+    borderRadius: "24px",
+    padding: "14px",
+    boxShadow: "0 24px 60px rgba(0,0,0,0.38)",
+    boxSizing: "border-box",
   },
 
-  pushActions: {
-    width: "100%",
-    maxWidth: "420px",
+  pushHeader: {
+    textAlign: "center",
+    color: "#111827",
+    marginBottom: "12px",
+    fontSize: "18px",
+    lineHeight: "1.2",
+  },
+
+  pushItemsGrid: {
     display: "flex",
     flexDirection: "column",
     gap: "10px",
-    marginTop: "16px",
+  },
+
+  pushItemCard: {
+    border: "1px solid #e5e7eb",
+    borderRadius: "18px",
+    background: "#f8fafc",
+    padding: "10px",
+    display: "grid",
+    gridTemplateColumns: "116px minmax(0, 1fr)",
+    gap: "10px",
+    alignItems: "center",
+  },
+
+  pushItemImageBox: {
+    width: "116px",
+    height: "116px",
+    background: "#ffffff",
+    borderRadius: "14px",
+    border: "1px solid #e5e7eb",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+
+  pushItemImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+  },
+
+  pushNoImage: {
+    color: "#94a3b8",
+    fontSize: "12px",
+    fontWeight: "900",
+  },
+
+  pushItemContent: {
+    minWidth: 0,
+    color: "#111827",
+    fontSize: "14px",
+    lineHeight: "1.25",
   },
 
   pushOrderButton: {
     width: "100%",
     border: "none",
     borderRadius: "999px",
-    padding: "15px 18px",
+    padding: "11px 13px",
     background: "#22c55e",
     color: "#ffffff",
-    fontSize: "17px",
+    fontSize: "15px",
     fontWeight: "1000",
-    boxShadow: "0 14px 28px rgba(34,197,94,0.35)",
+    marginTop: "8px",
+    boxShadow: "0 10px 20px rgba(34,197,94,0.28)",
   },
 
   pushBottomButton: {
@@ -2450,9 +2626,26 @@ const styles = {
     border: "none",
     borderRadius: "999px",
     padding: "13px 18px",
-    background: "#ffffff",
-    color: "#111827",
+    background: "#111827",
+    color: "#ffffff",
     fontSize: "16px",
     fontWeight: "900",
+    marginTop: "12px",
+  },
+
+  returnPushButton: {
+    position: "fixed",
+    left: "12px",
+    right: "12px",
+    bottom: "calc(74px + env(safe-area-inset-bottom))",
+    zIndex: 45,
+    border: "none",
+    borderRadius: "999px",
+    padding: "13px 16px",
+    background: "#0ea5e9",
+    color: "#ffffff",
+    fontSize: "16px",
+    fontWeight: "1000",
+    boxShadow: "0 14px 28px rgba(14,165,233,0.35)",
   },
 };
