@@ -1226,7 +1226,11 @@ export default function App() {
                           src={imagen}
                           alt=""
                           style={styles.pushItemImage}
-                          onClick={() => setSelectedImage(imagen)}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setSelectedImage(imagen);
+                          }}
                         />
                       ) : (
                         <div style={styles.pushNoImage}>Sin imagen</div>
@@ -2511,7 +2515,7 @@ const styles = {
     position: "fixed",
     inset: 0,
     background: "rgba(15,23,42,0.86)",
-    zIndex: 80,
+    zIndex: 9000,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -2522,6 +2526,7 @@ const styles = {
     position: "absolute",
     top: "16px",
     right: "16px",
+    zIndex: 9001,
     width: "42px",
     height: "42px",
     borderRadius: "999px",
