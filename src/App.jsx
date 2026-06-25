@@ -241,6 +241,28 @@ export default function App() {
   }, [language]);
 
   useEffect(() => {
+    const mostrarPushAlVolver = () => {
+      setPushCerrado(false);
+    };
+
+    const mostrarPushSiLaAppVuelve = () => {
+      if (document.visibilityState === "visible") {
+        setPushCerrado(false);
+      }
+    };
+
+    window.addEventListener("pageshow", mostrarPushAlVolver);
+    window.addEventListener("focus", mostrarPushAlVolver);
+    document.addEventListener("visibilitychange", mostrarPushSiLaAppVuelve);
+
+    return () => {
+      window.removeEventListener("pageshow", mostrarPushAlVolver);
+      window.removeEventListener("focus", mostrarPushAlVolver);
+      document.removeEventListener("visibilitychange", mostrarPushSiLaAppVuelve);
+    };
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem(
       ORDER_STORAGE_KEY,
       JSON.stringify({
@@ -843,7 +865,7 @@ export default function App() {
   };
 
   const irAlArticuloPush = (articuloPush) => {
-    const articuloId = String(articuloPush?.id || "");
+    const articuloId = String(articuloPush?.id || pushOferta?.articulos?.id || "");
     const totalComprables =
       Array.isArray(pushOferta?.articulos)
         ? pushOferta.articulos.filter((item) => item.comprable && item.id).length
@@ -1213,18 +1235,20 @@ export default function App() {
                       <strong>{item.nombre || "Información"}</strong>
                       {item.texto && <p>{item.texto}</p>}
 
-                      {item.comprable && item.id && quantities[String(item.id)]?.boxes || item.comprable && item.id && quantities[String(item.id)]?.units ? (
-                        <div style={styles.pushAddedBadge}>
-                          ✓ Añadido al pedido
-                        </div>
-                      ) : item.comprable && item.id ? (
-                        <button
-                          type="button"
-                          onClick={() => irAlArticuloPush(item)}
-                          style={styles.pushOrderButton}
-                        >
-                          PEDIR ARTÍCULO
-                        </button>
+                      {item.comprable && item.id ? (
+                        quantities[String(item.id)]?.boxes || quantities[String(item.id)]?.units ? (
+                          <div style={styles.pushAddedBadge}>
+                            ✓ Añadido al pedido
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => irAlArticuloPush(item)}
+                            style={styles.pushOrderButton}
+                          >
+                            PEDIR ARTÍCULO
+                          </button>
+                        )
                       ) : null}
                     </div>
                   </div>
