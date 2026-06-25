@@ -659,6 +659,8 @@ export default function Pushes() {
                 {form.activo ? <span style={activeBadge}>Reservará {fechasCalculadas.length} día(s)</span> : <span style={inactiveBadge}>Inactivo: no ocupa calendario</span>}
               </div>
 
+              <PreviewPush form={form} />
+
               {conflictosFormulario.length > 0 && (
                 <div style={warningBox}>
                   <strong>Conflictos detectados</strong>
@@ -778,6 +780,54 @@ export default function Pushes() {
         </>
       )}
     </div>
+  );
+}
+
+function PreviewPush({ form }) {
+  const articulosPreview = form.articulos_push
+    .slice(0, Number(form.numero_articulos))
+    .filter((item) => item.articulo_id || item.texto.trim() || item.imagen_url.trim());
+
+  return (
+    <section style={clientPreviewBox}>
+      <div style={clientPreviewHeader}>
+        <strong>{form.titulo || "🔥 Ofertas del día"}</strong>
+        {form.descripcion && <p>{form.descripcion}</p>}
+      </div>
+
+      {articulosPreview.length === 0 ? (
+        <div style={clientPreviewEmpty}>
+          La vista previa aparecerá cuando completes los artículos.
+        </div>
+      ) : (
+        <div style={clientPreviewItems}>
+          {articulosPreview.map((item, index) => (
+            <div key={`${item.orden}-${index}`} style={clientPreviewItem}>
+              <div style={clientPreviewImageBox}>
+                {item.imagen_url ? (
+                  <img src={item.imagen_url} alt="" style={clientPreviewImage} />
+                ) : (
+                  <div style={clientPreviewNoImage}>Foto artículo</div>
+                )}
+              </div>
+
+              <div style={clientPreviewContent}>
+                <strong>{item.nombre_articulo || `Artículo ${index + 1}`}</strong>
+                {item.texto && <p>{item.texto}</p>}
+
+                {item.comprable ? (
+                  <button type="button" style={clientPreviewBuyButton}>
+                    Pedir artículo
+                  </button>
+                ) : (
+                  <span style={clientPreviewInfoBadge}>Solo informativo</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -977,6 +1027,17 @@ const articleList = { maxHeight: "190px", overflowY: "auto", border: "1px solid 
 const articleOption = (selected) => ({ width: "100%", border: "none", borderBottom: "1px solid #f1f5f9", background: selected ? "#ffedd5" : "#fff", padding: "12px 13px", cursor: "pointer", textAlign: "left", display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center" });
 const articleCode = { display: "block", color: "#64748b", fontSize: "12px", marginTop: "3px" };
 const selectedBadge = { background: "#ea580c", color: "#fff", padding: "6px 9px", borderRadius: "999px", fontSize: "11px", fontWeight: "900", whiteSpace: "nowrap" };
+const clientPreviewBox = { background: "rgba(15,23,42,0.92)", borderRadius: "22px", padding: "14px", marginTop: "14px", marginBottom: "14px", color: "#ffffff", boxShadow: "0 18px 36px rgba(15,23,42,0.18)" };
+const clientPreviewHeader = { textAlign: "center", marginBottom: "12px", fontSize: "17px", lineHeight: "1.2" };
+const clientPreviewItems = { display: "flex", flexDirection: "column", gap: "10px" };
+const clientPreviewItem = { display: "grid", gridTemplateColumns: "92px minmax(0, 1fr)", gap: "10px", alignItems: "center", background: "#ffffff", color: "#111827", borderRadius: "16px", padding: "9px" };
+const clientPreviewImageBox = { width: "92px", height: "92px", borderRadius: "12px", background: "#f8fafc", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" };
+const clientPreviewImage = { width: "100%", height: "100%", objectFit: "contain" };
+const clientPreviewNoImage = { color: "#94a3b8", fontSize: "12px", fontWeight: "900", textAlign: "center" };
+const clientPreviewContent = { minWidth: 0, fontSize: "13px", lineHeight: "1.25" };
+const clientPreviewBuyButton = { width: "100%", border: "none", borderRadius: "999px", padding: "9px 11px", background: "#22c55e", color: "#ffffff", fontSize: "13px", fontWeight: "1000", marginTop: "7px" };
+const clientPreviewInfoBadge = { display: "inline-block", marginTop: "7px", background: "#e0f2fe", color: "#075985", borderRadius: "999px", padding: "6px 9px", fontSize: "12px", fontWeight: "950" };
+const clientPreviewEmpty = { background: "#ffffff", color: "#64748b", borderRadius: "14px", padding: "16px", textAlign: "center", fontWeight: "900" };
 const articleEditor = { border: "1px solid #fed7aa", background: "#fff7ed", borderRadius: "18px", padding: "14px", marginBottom: "14px" };
 const articleEditorHeader = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginBottom: "8px" };
 const articleEditorTitle = { margin: 0, color: "#9a3412", fontSize: "17px", fontWeight: "950" };
