@@ -1213,15 +1213,19 @@ export default function App() {
                       <strong>{item.nombre || "Información"}</strong>
                       {item.texto && <p>{item.texto}</p>}
 
-                      {item.comprable && item.id && (
+                      {item.comprable && item.id && quantities[String(item.id)]?.boxes || item.comprable && item.id && quantities[String(item.id)]?.units ? (
+                        <div style={styles.pushAddedBadge}>
+                          ✓ Añadido al pedido
+                        </div>
+                      ) : item.comprable && item.id ? (
                         <button
                           type="button"
                           onClick={() => irAlArticuloPush(item)}
                           style={styles.pushOrderButton}
                         >
-                          Pedir artículo
+                          PEDIR ARTÍCULO
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -1249,7 +1253,7 @@ export default function App() {
           }}
           style={styles.returnPushButton}
         >
-          ← Volver al Push
+          ← Volver a ofertas
         </button>
       )}
 
@@ -2542,46 +2546,49 @@ const styles = {
   },
 
   pushPanel: {
-    width: "min(520px, 100%)",
-    maxHeight: "calc(100vh - 86px)",
+    width: "min(560px, 100%)",
+    maxHeight: "calc(100vh - 74px)",
     overflowY: "auto",
-    background: "#ffffff",
-    borderRadius: "24px",
-    padding: "14px",
-    boxShadow: "0 24px 60px rgba(0,0,0,0.38)",
+    background: "linear-gradient(180deg, #fff7ed 0%, #ffffff 45%, #f8fafc 100%)",
+    borderRadius: "28px",
+    padding: "16px",
+    boxShadow: "0 28px 70px rgba(0,0,0,0.42)",
     boxSizing: "border-box",
+    border: "3px solid #ffffff",
   },
 
   pushHeader: {
     textAlign: "center",
-    color: "#111827",
-    marginBottom: "12px",
-    fontSize: "18px",
-    lineHeight: "1.2",
+    color: "#7c2d12",
+    marginBottom: "16px",
+    fontSize: "22px",
+    lineHeight: "1.15",
+    fontWeight: "1000",
   },
 
   pushItemsGrid: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "16px",
   },
 
   pushItemCard: {
-    border: "1px solid #e5e7eb",
-    borderRadius: "18px",
-    background: "#f8fafc",
-    padding: "10px",
-    display: "grid",
-    gridTemplateColumns: "116px minmax(0, 1fr)",
+    border: "2px solid #fed7aa",
+    borderRadius: "24px",
+    background: "#ffffff",
+    padding: "12px",
+    display: "flex",
+    flexDirection: "column",
     gap: "10px",
-    alignItems: "center",
+    alignItems: "stretch",
+    boxShadow: "0 12px 28px rgba(234,88,12,0.10)",
   },
 
   pushItemImageBox: {
-    width: "116px",
-    height: "116px",
+    width: "100%",
+    height: "230px",
     background: "#ffffff",
-    borderRadius: "14px",
+    borderRadius: "20px",
     border: "1px solid #e5e7eb",
     display: "flex",
     alignItems: "center",
@@ -2597,40 +2604,55 @@ const styles = {
 
   pushNoImage: {
     color: "#94a3b8",
-    fontSize: "12px",
+    fontSize: "13px",
     fontWeight: "900",
   },
 
   pushItemContent: {
     minWidth: 0,
     color: "#111827",
-    fontSize: "14px",
-    lineHeight: "1.25",
+    fontSize: "16px",
+    lineHeight: "1.3",
+    textAlign: "center",
   },
 
   pushOrderButton: {
     width: "100%",
     border: "none",
     borderRadius: "999px",
-    padding: "11px 13px",
-    background: "#22c55e",
+    padding: "15px 16px",
+    background: "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)",
     color: "#ffffff",
-    fontSize: "15px",
+    fontSize: "17px",
     fontWeight: "1000",
-    marginTop: "8px",
-    boxShadow: "0 10px 20px rgba(34,197,94,0.28)",
+    marginTop: "10px",
+    boxShadow: "0 14px 26px rgba(34,197,94,0.34)",
+    letterSpacing: "0.03em",
+  },
+
+  pushAddedBadge: {
+    width: "100%",
+    borderRadius: "999px",
+    padding: "13px 16px",
+    background: "#dcfce7",
+    color: "#166534",
+    fontSize: "16px",
+    fontWeight: "1000",
+    marginTop: "10px",
+    textAlign: "center",
+    boxSizing: "border-box",
   },
 
   pushBottomButton: {
     width: "100%",
     border: "none",
     borderRadius: "999px",
-    padding: "13px 18px",
+    padding: "14px 18px",
     background: "#111827",
     color: "#ffffff",
     fontSize: "16px",
     fontWeight: "900",
-    marginTop: "12px",
+    marginTop: "16px",
   },
 
   returnPushButton: {
@@ -2641,7 +2663,7 @@ const styles = {
     zIndex: 45,
     border: "none",
     borderRadius: "999px",
-    padding: "13px 16px",
+    padding: "14px 16px",
     background: "#0ea5e9",
     color: "#ffffff",
     fontSize: "16px",
