@@ -236,6 +236,11 @@ export default function App() {
 
   const t = translations[language];
 
+  const abrirImagen = (url) => {
+    if (!url) return;
+    setSelectedImage(url);
+  };
+
   useEffect(() => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
   }, [language]);
@@ -1229,7 +1234,7 @@ export default function App() {
                           onClick={(event) => {
                             event.preventDefault();
                             event.stopPropagation();
-                            setSelectedImage(imagen);
+                            abrirImagen(imagen);
                           }}
                         />
                       ) : (
@@ -1286,7 +1291,10 @@ export default function App() {
       )}
 
       {selectedImage && (
-        <div style={styles.imageOverlay} onClick={() => setSelectedImage(null)}>
+        <div
+          style={styles.imageOverlay}
+          onClick={() => setSelectedImage(null)}
+        >
           <button
             type="button"
             style={styles.imageClose}
@@ -1298,7 +1306,13 @@ export default function App() {
           >
             ×
           </button>
-          <img src={selectedImage} alt="" style={styles.bigImage} />
+
+          <div
+            style={styles.imageViewerBox}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <img src={selectedImage} alt="" style={styles.bigImage} />
+          </div>
         </div>
       )}
 
@@ -1473,7 +1487,7 @@ export default function App() {
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              setSelectedImage(product.image);
+                              abrirImagen(product.image);
                             }}
                           />
                         ) : (
@@ -2527,8 +2541,8 @@ const styles = {
   imageOverlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(15,23,42,0.86)",
-    zIndex: 9000,
+    background: "rgba(15,23,42,0.88)",
+    zIndex: 20000,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -2539,7 +2553,7 @@ const styles = {
     position: "absolute",
     top: "16px",
     right: "16px",
-    zIndex: 9001,
+    zIndex: 20001,
     width: "42px",
     height: "42px",
     borderRadius: "999px",
@@ -2548,6 +2562,14 @@ const styles = {
     color: "#111827",
     fontSize: "28px",
     fontWeight: "900",
+  },
+
+  imageViewerBox: {
+    maxWidth: "94vw",
+    maxHeight: "88vh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   bigImage: {
