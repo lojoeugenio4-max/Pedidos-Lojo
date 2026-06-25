@@ -214,6 +214,45 @@ export default function Pushes() {
     });
   }
 
+  async function subirImagenPush(index, file) {
+    if (!file) return;
+
+    setError("");
+    setCargando(true);
+
+    try {
+      const extension = file.name.split(".").pop() || "jpg";
+      const safeName = `${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}.${extension}`;
+      const path = `ofertas/${safeName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("push")
+        .upload(path, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from("push").getPublicUrl(path);
+      const publicUrl = data?.publicUrl || "";
+
+      if (!publicUrl) {
+        throw new Error("No se pudo obtener la URL pública de la imagen");
+      }
+
+      cambiarArticuloPush(index, "imagen_url", publicUrl);
+    } catch (err) {
+      console.error("Error subiendo imagen push:", err);
+      setError(err?.message || JSON.stringify(err));
+      alert("Error subiendo imagen. Revisa el mensaje rojo.");
+    } finally {
+      setCargando(false);
+    }
+  }
+
   function alternarDia(diaId) {
     setForm((actual) => {
       const existe = actual.dias_semana.includes(diaId);
@@ -651,6 +690,7 @@ export default function Pushes() {
                   onSeleccionar={(articulo) => seleccionarArticulo(index, articulo)}
                   onCambiar={(campo, valor) => cambiarArticuloPush(index, campo, valor)}
                   onLimpiar={() => limpiarArticulo(index)}
+                  onUpload={(file) => subirImagenPush(index, file)}
                 />
               ))}
 
@@ -741,7 +781,17 @@ export default function Pushes() {
   );
 }
 
-function ArticuloPushEditor({ index, item, busqueda, articulos, onBusqueda, onSeleccionar, onCambiar, onLimpiar }) {
+function ArticuloPushEditor({
+  index,
+  item,
+  busqueda,
+  articulos,
+  onBusqueda,
+  onSeleccionar,
+  onCambiar,
+  onLimpiar,
+  onUpload,
+}) {
   const textoBusqueda = busqueda.trim().toLowerCase();
   const articulosFiltrados = articulos
     .filter((articulo) => !articulo.oculto)
@@ -777,7 +827,44 @@ function ArticuloPushEditor({ index, item, busqueda, articulos, onBusqueda, onSe
       <textarea value={item.texto} onChange={(e) => onCambiar("texto", e.target.value)} placeholder="Ej: Oferta especial, regalo, precio, condiciones..." style={smallTextarea} />
 
       <label style={label}>Imagen propia opcional</label>
-      <input type="text" value={item.imagen_url} onChange={(e) => onCambiar("imagen_url", e.target.value)} placeholder="URL de imagen. Si está vacío, usará la foto del artículo." style={input} />
+
+      <div style={uploadBox}>
+        {item.imagen_url ? (
+          <img src={item.imagen_url} alt="" style={uploadPreview} />
+        ) : (
+          <div style={uploadEmpty}>Sin imagen propia</div>
+        )}
+
+        <div style={uploadControls}>
+          <label style={uploadButton}>
+            Subir imagen
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => onUpload(e.target.files?.[0])}
+              style={hiddenFileInput}
+            />
+          </label>
+
+          {item.imagen_url && (
+            <button
+              type="button"
+              onClick={() => onCambiar("imagen_url", "")}
+              style={removeImageButton}
+            >
+              Quitar imagen
+            </button>
+          )}
+        </div>
+      </div>
+
+      <input
+        type="text"
+        value={item.imagen_url}
+        onChange={(e) => onCambiar("imagen_url", e.target.value)}
+        placeholder="URL de imagen. Si está vacío, usará la foto del artículo."
+        style={input}
+      />
 
       <label style={checkboxLabel}>
         <input type="checkbox" checked={item.comprable} onChange={(e) => onCambiar("comprable", e.target.checked)} /> Se puede pedir desde el push
@@ -902,6 +989,13 @@ const miniActions = { display: "flex", gap: "8px", marginBottom: "10px", flexWra
 const miniButton = { border: "none", borderRadius: "999px", padding: "8px 12px", background: "#dbeafe", color: "#1d4ed8", fontWeight: "900", cursor: "pointer" };
 const miniButtonMuted = { ...miniButton, background: "#f1f5f9", color: "#475569" };
 const hint = { margin: "0 0 12px", color: "#64748b", fontSize: "12px", fontWeight: "800" };
+const uploadBox = { display: "grid", gridTemplateColumns: "90px 1fr", gap: "10px", alignItems: "center", background: "#ffffff", border: "1px solid #fed7aa", borderRadius: "14px", padding: "10px", marginBottom: "10px" };
+const uploadPreview = { width: "90px", height: "90px", objectFit: "contain", borderRadius: "12px", background: "#fff", border: "1px solid #e5e7eb" };
+const uploadEmpty = { width: "90px", height: "90px", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", color: "#94a3b8", fontSize: "12px", fontWeight: "900", borderRadius: "12px", background: "#f8fafc", border: "1px dashed #cbd5e1", boxSizing: "border-box" };
+const uploadControls = { display: "flex", flexDirection: "column", gap: "8px" };
+const uploadButton = { display: "inline-flex", justifyContent: "center", alignItems: "center", background: "#22c55e", color: "#ffffff", borderRadius: "999px", padding: "10px 12px", fontWeight: "950", cursor: "pointer", fontSize: "13px" };
+const hiddenFileInput = { display: "none" };
+const removeImageButton = { border: "none", background: "#fee2e2", color: "#991b1b", borderRadius: "999px", padding: "9px 12px", fontWeight: "950", cursor: "pointer", fontSize: "13px" };
 const checkboxLabel = { display: "block", marginBottom: "10px", fontWeight: "850", color: "#334155" };
 const previewBox = { background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: "16px", padding: "14px", color: "#9a3412" };
 const formActions = { display: "flex", gap: "10px", marginTop: "12px" };
