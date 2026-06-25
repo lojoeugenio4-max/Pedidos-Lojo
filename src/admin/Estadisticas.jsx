@@ -8,25 +8,52 @@ function fechaLocalISO(fecha = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
-function inicioMesISO() {
-  const hoy = new Date();
-  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-01`;
+function crearFechaLocal(fechaISO) {
+  const [year, month, day] = String(fechaISO).split("-").map(Number);
+  return new Date(year, month - 1, day);
 }
 
-function inicioAnoISO() {
-  return `${new Date().getFullYear()}-01-01`;
+function getDiaEstadisticoISO() {
+  const ahora = new Date();
+  const corte = new Date();
+
+  corte.setHours(14, 30, 0, 0);
+
+  if (ahora < corte) {
+    ahora.setDate(ahora.getDate() - 1);
+  }
+
+  return fechaLocalISO(ahora);
+}
+
+function getInicioSemanaEstadisticaISO() {
+  const fecha = crearFechaLocal(getDiaEstadisticoISO());
+  const diaSemana = fecha.getDay();
+  const diferenciaLunes = diaSemana === 0 ? -6 : 1 - diaSemana;
+  fecha.setDate(fecha.getDate() + diferenciaLunes);
+  return fechaLocalISO(fecha);
+}
+
+function getInicioMesEstadisticoISO() {
+  const fecha = crearFechaLocal(getDiaEstadisticoISO());
+  return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function sumarDias(fechaISO, dias) {
+  const fecha = crearFechaLocal(fechaISO);
+  fecha.setDate(fecha.getDate() + dias);
+  return fechaLocalISO(fecha);
+}
+
+function formatearFecha(fechaISO) {
+  if (!fechaISO) return "—";
+  return crearFechaLocal(fechaISO).toLocaleDateString("es-ES");
 }
 
 function formatearNumero(valor) {
   return Number(valor || 0).toLocaleString("es-ES", {
     maximumFractionDigits: 2,
   });
-}
-
-function formatearFecha(fechaISO) {
-  if (!fechaISO) return "—";
-  const [year, month, day] = String(fechaISO).split("-").map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString("es-ES");
 }
 
 function obtenerMes(fechaISO) {
@@ -45,15 +72,13 @@ function nombreMes(mesISO) {
 export default function Estadisticas() {
   const [pedidosDia, setPedidosDia] = useState([]);
   const [articulosDia, setArticulosDia] = useState([]);
+  const [desde, setDesde] = useState(getDiaEstadisticoISO());
+  const [hasta, setHasta] = useState(getDiaEstadisticoISO());
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
 
-  const [desde, setDesde] = useState(inicioMesISO());
-  const [hasta, setHasta] = useState(fechaLocalISO());
-
   useEffect(() => {
-    cargarEstadisticas(desde, hasta);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    cargarEstadisticas(getDiaEstadisticoISO(), getDiaEstadisticoISO());
   }, []);
 
   async function cargarEstadisticas(desdeFiltro = desde, hastaFiltro = hasta) {
@@ -72,9 +97,7 @@ export default function Estadisticas() {
 
       const { data: articulosData, error: articulosError } = await supabase
         .from("estadisticas_articulos_dia")
-        .select(
-          "fecha, articulo_id, codigo_articulo, nombre_articulo, departamento, cajas, unidades, veces_pedido"
-        )
+        .select("fecha, articulo_id, codigo_articulo, nombre_articulo, departamento, cajas, unidades, veces_pedido")
         .gte("fecha", desdeFiltro)
         .lte("fecha", hastaFiltro)
         .order("fecha", { ascending: true });
@@ -92,23 +115,30 @@ export default function Estadisticas() {
   }
 
   function aplicarHoy() {
-    const hoy = fechaLocalISO();
+    const hoy = getDiaEstadisticoISO();
     setDesde(hoy);
     setHasta(hoy);
     cargarEstadisticas(hoy, hoy);
   }
 
-  function aplicarMes() {
-    const inicio = inicioMesISO();
-    const fin = fechaLocalISO();
+  function aplicarAyer() {
+    const ayer = sumarDias(getDiaEstadisticoISO(), -1);
+    setDesde(ayer);
+    setHasta(ayer);
+    cargarEstadisticas(ayer, ayer);
+  }
+
+  function aplicarSemana() {
+    const inicio = getInicioSemanaEstadisticaISO();
+    const fin = getDiaEstadisticoISO();
     setDesde(inicio);
     setHasta(fin);
     cargarEstadisticas(inicio, fin);
   }
 
-  function aplicarAno() {
-    const inicio = inicioAnoISO();
-    const fin = fechaLocalISO();
+  function aplicarMes() {
+    const inicio = getInicioMesEstadisticoISO();
+    const fin = getDiaEstadisticoISO();
     setDesde(inicio);
     setHasta(fin);
     cargarEstadisticas(inicio, fin);
@@ -131,11 +161,7 @@ export default function Estadisticas() {
     );
 
     const articulosDistintos = new Set(
-      articulosDia.map((fila) => String(fila.articulo_id || fila.codigo_articulo || ""))
-    ).size;
-
-    const departamentosDistintos = new Set(
-      articulosDia.map((fila) => String(fila.departamento || "Sin departamento"))
+      articulosDia.map((fila) => String(fila.articulo_id || fila.codigo_articulo || fila.nombre_articulo || ""))
     ).size;
 
     return {
@@ -143,9 +169,12 @@ export default function Estadisticas() {
       totalCajas,
       totalUnidades,
       articulosDistintos,
-      departamentosDistintos,
     };
   }, [pedidosDia, articulosDia]);
+
+  const pedidosPorDia = useMemo(() => {
+    return [...pedidosDia].sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+  }, [pedidosDia]);
 
   const pedidosPorMes = useMemo(() => {
     const mapa = new Map();
@@ -158,10 +187,6 @@ export default function Estadisticas() {
     return Array.from(mapa.entries())
       .map(([mes, total_pedidos]) => ({ mes, total_pedidos }))
       .sort((a, b) => a.mes.localeCompare(b.mes));
-  }, [pedidosDia]);
-
-  const pedidosPorDia = useMemo(() => {
-    return [...pedidosDia].sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
   }, [pedidosDia]);
 
   const topCajas = useMemo(() => {
@@ -202,8 +227,6 @@ export default function Estadisticas() {
     );
   }, [articulosDia]);
 
-  const hayDatos = pedidosDia.length > 0 || articulosDia.length > 0;
-
   return (
     <div style={page}>
       <section style={hero}>
@@ -211,15 +234,11 @@ export default function Estadisticas() {
           <div style={eyebrow}>Administración</div>
           <h1 style={title}>📊 Estadísticas</h1>
           <p style={subtitle}>
-            Pedidos enviados por WhatsApp, artículos más vendidos y departamentos.
+            Día estadístico: de 14:30 a 14:30. Hoy corresponde a {formatearFecha(getDiaEstadisticoISO())}.
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => cargarEstadisticas(desde, hasta)}
-          style={refreshButton}
-        >
+        <button type="button" onClick={() => cargarEstadisticas(desde, hasta)} style={refreshButton}>
           Actualizar
         </button>
       </section>
@@ -237,7 +256,7 @@ export default function Estadisticas() {
           <input
             type="date"
             value={desde}
-            onChange={(e) => setDesde(e.target.value)}
+            onChange={(event) => setDesde(event.target.value)}
             style={input}
           />
         </div>
@@ -247,29 +266,17 @@ export default function Estadisticas() {
           <input
             type="date"
             value={hasta}
-            onChange={(e) => setHasta(e.target.value)}
+            onChange={(event) => setHasta(event.target.value)}
             style={input}
           />
         </div>
 
         <div style={filterActions}>
-          <button type="button" onClick={aplicarHoy} style={todayButton}>
-            Hoy
-          </button>
-
-          <button type="button" onClick={aplicarMes} style={periodButton}>
-            Este mes
-          </button>
-
-          <button type="button" onClick={aplicarAno} style={periodButton}>
-            Este año
-          </button>
-
-          <button
-            type="button"
-            onClick={() => cargarEstadisticas(desde, hasta)}
-            style={applyButton}
-          >
+          <button type="button" onClick={aplicarHoy} style={todayButton}>Hoy</button>
+          <button type="button" onClick={aplicarAyer} style={periodButton}>Ayer</button>
+          <button type="button" onClick={aplicarSemana} style={periodButton}>Semana</button>
+          <button type="button" onClick={aplicarMes} style={periodButton}>Mes</button>
+          <button type="button" onClick={() => cargarEstadisticas(desde, hasta)} style={applyButton}>
             Aplicar filtro
           </button>
         </div>
@@ -284,17 +291,10 @@ export default function Estadisticas() {
             <StatCard label="Cajas" value={formatearNumero(resumen.totalCajas)} />
             <StatCard label="Unidades" value={formatearNumero(resumen.totalUnidades)} />
             <StatCard label="Artículos distintos" value={formatearNumero(resumen.articulosDistintos)} />
-            <StatCard label="Departamentos" value={formatearNumero(resumen.departamentosDistintos)} />
           </section>
 
-          {!hayDatos && (
-            <section style={emptyPanel}>
-              Todavía no hay estadísticas para el periodo seleccionado.
-            </section>
-          )}
-
           <section style={gridTwo}>
-            <Panel title="Pedidos por día" subtitle={`${formatearFecha(desde)} - ${formatearFecha(hasta)}`}>
+            <Panel title="Pedidos por día" subtitle="Cada día va de 14:30 a 14:30">
               <MiniBarChart
                 data={pedidosPorDia.map((fila) => ({
                   label: formatearFecha(fila.fecha),
@@ -303,10 +303,29 @@ export default function Estadisticas() {
                 valueLabel="pedidos"
               />
 
-              <TablaPedidosDia filas={pedidosPorDia} />
+              <table style={table}>
+                <thead>
+                  <tr>
+                    <th style={th}>Día estadístico</th>
+                    <th style={thRight}>Pedidos</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pedidosPorDia.length === 0 ? (
+                    <FilaVacia columnas={2} />
+                  ) : (
+                    pedidosPorDia.map((fila) => (
+                      <tr key={fila.fecha}>
+                        <td style={td}>{formatearFecha(fila.fecha)}</td>
+                        <td style={tdRightStrong}>{formatearNumero(fila.total_pedidos)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </Panel>
 
-            <Panel title="Pedidos por mes" subtitle="Agrupado dentro del periodo filtrado">
+            <Panel title="Pedidos por mes" subtitle="Agrupado por día estadístico">
               <MiniBarChart
                 data={pedidosPorMes.map((fila) => ({
                   label: nombreMes(fila.mes),
@@ -339,7 +358,7 @@ export default function Estadisticas() {
           </section>
 
           <section style={gridTwo}>
-            <Panel title="Departamentos más vendidos" subtitle="Cajas + unidades + veces pedido">
+            <Panel title="Departamentos" subtitle="Departamento con más movimiento">
               <MiniBarChart
                 data={departamentos.slice(0, 10).map((fila) => ({
                   label: fila.departamento,
@@ -374,7 +393,7 @@ export default function Estadisticas() {
               </table>
             </Panel>
 
-            <Panel title="Artículos que más se piden" subtitle="Número de pedidos en los que aparece">
+            <Panel title="Artículos que más se piden" subtitle="Veces que aparecen en pedidos">
               <MiniBarChart
                 data={topVecesPedido.slice(0, 10).map((fila) => ({
                   label: fila.nombre_articulo,
@@ -468,7 +487,6 @@ function Panel({ title, subtitle, children }) {
           {subtitle && <p style={panelSubtitle}>{subtitle}</p>}
         </div>
       </div>
-
       {children}
     </section>
   );
@@ -490,14 +508,10 @@ function MiniBarChart({ data, valueLabel }) {
 
         return (
           <div key={fila.label} style={chartRow}>
-            <div style={chartLabel} title={fila.label}>
-              {fila.label}
-            </div>
-
+            <div style={chartLabel} title={fila.label}>{fila.label}</div>
             <div style={chartTrack}>
               <div style={{ ...chartBar, width: `${width}%` }} />
             </div>
-
             <div style={chartValue}>
               {formatearNumero(valor)} {valueLabel}
             </div>
@@ -505,31 +519,6 @@ function MiniBarChart({ data, valueLabel }) {
         );
       })}
     </div>
-  );
-}
-
-function TablaPedidosDia({ filas }) {
-  return (
-    <table style={table}>
-      <thead>
-        <tr>
-          <th style={th}>Fecha</th>
-          <th style={thRight}>Pedidos</th>
-        </tr>
-      </thead>
-      <tbody>
-        {filas.length === 0 ? (
-          <FilaVacia columnas={2} />
-        ) : (
-          filas.map((fila) => (
-            <tr key={fila.fecha}>
-              <td style={td}>{formatearFecha(fila.fecha)}</td>
-              <td style={tdRightStrong}>{formatearNumero(fila.total_pedidos)}</td>
-            </tr>
-          ))
-        )}
-      </tbody>
-    </table>
   );
 }
 
@@ -582,343 +571,43 @@ function FilaVacia({ columnas }) {
   );
 }
 
-const page = {
-  minHeight: "100vh",
-  padding: "24px",
-  background: "linear-gradient(180deg, #eef2ff 0%, #f8fafc 38%, #ffffff 100%)",
-  boxSizing: "border-box",
-};
-
-const hero = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "20px",
-  background: "linear-gradient(135deg, #111827 0%, #1d4ed8 48%, #2563eb 100%)",
-  borderRadius: "24px",
-  padding: "28px",
-  color: "#ffffff",
-  boxShadow: "0 22px 45px rgba(37,99,235,0.22)",
-  marginBottom: "18px",
-};
-
-const eyebrow = {
-  display: "inline-block",
-  background: "rgba(255,255,255,0.14)",
-  border: "1px solid rgba(255,255,255,0.2)",
-  borderRadius: "999px",
-  padding: "6px 12px",
-  fontSize: "12px",
-  fontWeight: "900",
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
-  marginBottom: "12px",
-};
-
-const title = {
-  margin: 0,
-  fontSize: "34px",
-  lineHeight: "1",
-  fontWeight: "950",
-};
-
-const subtitle = {
-  margin: "10px 0 0",
-  color: "#dbeafe",
-  fontSize: "15px",
-  maxWidth: "680px",
-};
-
-const refreshButton = {
-  background: "#22c55e",
-  color: "#fff",
-  border: "none",
-  borderRadius: "16px",
-  padding: "15px 22px",
-  fontSize: "15px",
-  fontWeight: "950",
-  cursor: "pointer",
-  boxShadow: "0 14px 26px rgba(34,197,94,0.28)",
-  whiteSpace: "nowrap",
-};
-
-const filtersBox = {
-  display: "grid",
-  gridTemplateColumns: "180px 180px 1fr",
-  gap: "12px",
-  alignItems: "end",
-  background: "#ffffff",
-  border: "1px solid #e5e7eb",
-  borderRadius: "20px",
-  padding: "16px",
-  marginBottom: "18px",
-  boxShadow: "0 10px 28px rgba(15,23,42,0.06)",
-};
-
-const label = {
-  display: "block",
-  fontWeight: "900",
-  marginBottom: "7px",
-  color: "#334155",
-  fontSize: "13px",
-};
-
-const input = {
-  width: "100%",
-  boxSizing: "border-box",
-  padding: "12px 13px",
-  border: "1px solid #d1d5db",
-  borderRadius: "13px",
-  fontSize: "14px",
-  outline: "none",
-  background: "#ffffff",
-};
-
-const filterActions = {
-  display: "flex",
-  gap: "8px",
-  flexWrap: "wrap",
-};
-
-const todayButton = {
-  background: "#22c55e",
-  color: "#ffffff",
-  border: "none",
-  borderRadius: "13px",
-  padding: "12px 14px",
-  fontWeight: "950",
-  cursor: "pointer",
-};
-
-const periodButton = {
-  background: "#eff6ff",
-  color: "#1d4ed8",
-  border: "none",
-  borderRadius: "13px",
-  padding: "12px 14px",
-  fontWeight: "950",
-  cursor: "pointer",
-};
-
-const applyButton = {
-  background: "#111827",
-  color: "#ffffff",
-  border: "none",
-  borderRadius: "13px",
-  padding: "12px 14px",
-  fontWeight: "950",
-  cursor: "pointer",
-};
-
-const statsGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-  gap: "12px",
-  marginBottom: "18px",
-};
-
-const statCard = {
-  background: "#ffffff",
-  border: "1px solid #e5e7eb",
-  borderRadius: "18px",
-  padding: "16px",
-  boxShadow: "0 10px 28px rgba(15,23,42,0.06)",
-};
-
-const statValue = {
-  fontSize: "28px",
-  fontWeight: "950",
-  color: "#111827",
-  lineHeight: "1",
-};
-
-const statLabel = {
-  marginTop: "8px",
-  fontSize: "12px",
-  fontWeight: "850",
-  color: "#64748b",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-};
-
-const gridTwo = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: "18px",
-};
-
-const panel = {
-  background: "#ffffff",
-  border: "1px solid #e5e7eb",
-  borderRadius: "22px",
-  padding: "16px",
-  boxShadow: "0 14px 35px rgba(15,23,42,0.07)",
-  marginBottom: "18px",
-};
-
-const panelHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "14px",
-  marginBottom: "14px",
-};
-
-const panelTitle = {
-  margin: 0,
-  color: "#111827",
-  fontSize: "20px",
-  fontWeight: "950",
-};
-
-const panelSubtitle = {
-  margin: "5px 0 0",
-  color: "#64748b",
-  fontSize: "13px",
-};
-
-const tableWrap = {
-  overflowX: "auto",
-  border: "1px solid #e5e7eb",
-  borderRadius: "18px",
-  background: "#fff",
-};
-
-const table = {
-  width: "100%",
-  borderCollapse: "separate",
-  borderSpacing: 0,
-};
-
-const th = {
-  background: "#f8fafc",
-  color: "#475569",
-  textAlign: "left",
-  padding: "13px 14px",
-  fontSize: "12px",
-  fontWeight: "950",
-  borderBottom: "1px solid #e5e7eb",
-  textTransform: "uppercase",
-  whiteSpace: "nowrap",
-};
-
-const thRight = {
-  ...th,
-  textAlign: "right",
-};
-
-const td = {
-  padding: "13px 14px",
-  verticalAlign: "middle",
-  fontSize: "14px",
-  borderBottom: "1px solid #f1f5f9",
-};
-
-const tdRight = {
-  ...td,
-  textAlign: "right",
-  whiteSpace: "nowrap",
-};
-
-const tdRightStrong = {
-  ...tdRight,
-  fontWeight: "950",
-  color: "#1d4ed8",
-};
-
-const emptyCell = {
-  textAlign: "center",
-  padding: "30px",
-  color: "#94a3b8",
-  fontWeight: "800",
-};
-
-const smallText = {
-  marginTop: "4px",
-  color: "#64748b",
-  fontSize: "12px",
-};
-
-const chartBox = {
-  border: "1px solid #e5e7eb",
-  borderRadius: "16px",
-  padding: "12px",
-  marginBottom: "14px",
-  background: "#f8fafc",
-};
-
-const chartRow = {
-  display: "grid",
-  gridTemplateColumns: "160px 1fr 90px",
-  gap: "10px",
-  alignItems: "center",
-  marginBottom: "8px",
-};
-
-const chartLabel = {
-  fontSize: "12px",
-  fontWeight: "850",
-  color: "#334155",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-
-const chartTrack = {
-  height: "11px",
-  background: "#e2e8f0",
-  borderRadius: "999px",
-  overflow: "hidden",
-};
-
-const chartBar = {
-  height: "100%",
-  background: "linear-gradient(90deg, #1d4ed8, #60a5fa)",
-  borderRadius: "999px",
-};
-
-const chartValue = {
-  textAlign: "right",
-  fontSize: "11px",
-  fontWeight: "950",
-  color: "#1e293b",
-};
-
-const chartEmpty = {
-  border: "1px dashed #cbd5e1",
-  borderRadius: "16px",
-  padding: "20px",
-  color: "#94a3b8",
-  fontWeight: "850",
-  textAlign: "center",
-  marginBottom: "14px",
-};
-
-const emptyPanel = {
-  background: "#ffffff",
-  border: "1px dashed #cbd5e1",
-  color: "#64748b",
-  borderRadius: "18px",
-  padding: "22px",
-  fontWeight: "900",
-  textAlign: "center",
-  marginBottom: "18px",
-};
-
-const loadingBox = {
-  padding: "30px",
-  textAlign: "center",
-  color: "#64748b",
-  fontWeight: "900",
-  background: "#ffffff",
-  borderRadius: "16px",
-};
-
-const errorBox = {
-  background: "#fee2e2",
-  color: "#991b1b",
-  border: "1px solid #fecaca",
-  padding: "16px",
-  borderRadius: "18px",
-  marginBottom: "18px",
-};
+const page = { minHeight: "100vh", padding: "24px", background: "linear-gradient(180deg, #eef2ff 0%, #f8fafc 38%, #ffffff 100%)", boxSizing: "border-box" };
+const hero = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "20px", background: "linear-gradient(135deg, #111827 0%, #1d4ed8 48%, #2563eb 100%)", borderRadius: "24px", padding: "28px", color: "#ffffff", boxShadow: "0 22px 45px rgba(37,99,235,0.22)", marginBottom: "18px" };
+const eyebrow = { display: "inline-block", background: "rgba(255,255,255,0.14)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "999px", padding: "6px 12px", fontSize: "12px", fontWeight: "900", letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: "12px" };
+const title = { margin: 0, fontSize: "34px", lineHeight: "1", fontWeight: "950" };
+const subtitle = { margin: "10px 0 0", color: "#dbeafe", fontSize: "15px", maxWidth: "720px" };
+const refreshButton = { background: "#22c55e", color: "#fff", border: "none", borderRadius: "16px", padding: "15px 22px", fontSize: "15px", fontWeight: "950", cursor: "pointer", boxShadow: "0 14px 26px rgba(34,197,94,0.28)", whiteSpace: "nowrap" };
+const filtersBox = { display: "grid", gridTemplateColumns: "180px 180px 1fr", gap: "12px", alignItems: "end", background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "20px", padding: "16px", marginBottom: "18px", boxShadow: "0 10px 28px rgba(15,23,42,0.06)" };
+const label = { display: "block", fontWeight: "900", marginBottom: "7px", color: "#334155", fontSize: "13px" };
+const input = { width: "100%", boxSizing: "border-box", padding: "12px 13px", border: "1px solid #d1d5db", borderRadius: "13px", fontSize: "14px", outline: "none", background: "#ffffff" };
+const filterActions = { display: "flex", gap: "8px", flexWrap: "wrap" };
+const todayButton = { background: "#22c55e", color: "#ffffff", border: "none", borderRadius: "13px", padding: "12px 14px", fontWeight: "950", cursor: "pointer" };
+const periodButton = { background: "#eff6ff", color: "#1d4ed8", border: "none", borderRadius: "13px", padding: "12px 14px", fontWeight: "950", cursor: "pointer" };
+const applyButton = { background: "#111827", color: "#ffffff", border: "none", borderRadius: "13px", padding: "12px 14px", fontWeight: "950", cursor: "pointer" };
+const statsGrid = { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "12px", marginBottom: "18px" };
+const statCard = { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "18px", padding: "16px", boxShadow: "0 10px 28px rgba(15,23,42,0.06)" };
+const statValue = { fontSize: "28px", fontWeight: "950", color: "#111827", lineHeight: "1" };
+const statLabel = { marginTop: "8px", fontSize: "12px", fontWeight: "850", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" };
+const gridTwo = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px" };
+const panel = { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "22px", padding: "16px", boxShadow: "0 14px 35px rgba(15,23,42,0.07)", marginBottom: "18px" };
+const panelHeader = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "14px", marginBottom: "14px" };
+const panelTitle = { margin: 0, color: "#111827", fontSize: "20px", fontWeight: "950" };
+const panelSubtitle = { margin: "5px 0 0", color: "#64748b", fontSize: "13px" };
+const tableWrap = { overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: "18px", background: "#fff" };
+const table = { width: "100%", borderCollapse: "separate", borderSpacing: 0 };
+const th = { background: "#f8fafc", color: "#475569", textAlign: "left", padding: "13px 14px", fontSize: "12px", fontWeight: "950", borderBottom: "1px solid #e5e7eb", textTransform: "uppercase", whiteSpace: "nowrap" };
+const thRight = { ...th, textAlign: "right" };
+const td = { padding: "13px 14px", verticalAlign: "middle", fontSize: "14px", borderBottom: "1px solid #f1f5f9" };
+const tdRight = { ...td, textAlign: "right", whiteSpace: "nowrap" };
+const tdRightStrong = { ...tdRight, fontWeight: "950", color: "#1d4ed8" };
+const emptyCell = { textAlign: "center", padding: "30px", color: "#94a3b8", fontWeight: "800" };
+const smallText = { marginTop: "4px", color: "#64748b", fontSize: "12px" };
+const chartBox = { border: "1px solid #e5e7eb", borderRadius: "16px", padding: "12px", marginBottom: "14px", background: "#f8fafc" };
+const chartRow = { display: "grid", gridTemplateColumns: "160px 1fr 90px", gap: "10px", alignItems: "center", marginBottom: "8px" };
+const chartLabel = { fontSize: "12px", fontWeight: "850", color: "#334155", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const chartTrack = { height: "11px", background: "#e2e8f0", borderRadius: "999px", overflow: "hidden" };
+const chartBar = { height: "100%", background: "linear-gradient(90deg, #1d4ed8, #60a5fa)", borderRadius: "999px" };
+const chartValue = { textAlign: "right", fontSize: "11px", fontWeight: "950", color: "#1e293b" };
+const chartEmpty = { border: "1px dashed #cbd5e1", borderRadius: "16px", padding: "20px", color: "#94a3b8", fontWeight: "850", textAlign: "center", marginBottom: "14px" };
+const loadingBox = { padding: "30px", textAlign: "center", color: "#64748b", fontWeight: "900", background: "#ffffff", borderRadius: "16px" };
+const errorBox = { background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca", padding: "16px", borderRadius: "18px", marginBottom: "18px" };
