@@ -1287,7 +1287,15 @@ export default function App() {
 
       {selectedImage && (
         <div style={styles.imageOverlay} onClick={() => setSelectedImage(null)}>
-          <button type="button" style={styles.imageClose}>
+          <button
+            type="button"
+            style={styles.imageClose}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setSelectedImage(null);
+            }}
+          >
             ×
           </button>
           <img src={selectedImage} alt="" style={styles.bigImage} />
@@ -1462,7 +1470,11 @@ export default function App() {
                             src={product.image}
                             alt=""
                             style={styles.productImage}
-                            onClick={() => setSelectedImage(product.image)}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setSelectedImage(product.image);
+                            }}
                           />
                         ) : (
                           <span style={styles.noPhoto}>{t.noPhoto}</span>
@@ -2166,6 +2178,7 @@ const styles = {
     width: "100%",
     height: "100%",
     objectFit: "contain",
+    cursor: "pointer",
   },
 
   noPhoto: {
