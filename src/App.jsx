@@ -1226,6 +1226,7 @@ export default function App() {
                           src={imagen}
                           alt=""
                           style={styles.pushItemImage}
+                          onClick={() => setSelectedImage(imagen)}
                         />
                       ) : (
                         <div style={styles.pushNoImage}>Sin imagen</div>
@@ -1794,7 +1795,7 @@ const styles = {
 
   brandTitleCollapsed: {
     color: "#ff1e1e",
-    fontSize: "22px",
+    fontSize: "20px",
     lineHeight: "1",
     fontWeight: "1000",
     letterSpacing: "0.01em",
@@ -2569,12 +2570,12 @@ const styles = {
   },
 
   pushPanel: {
-    width: "min(560px, 100%)",
+    width: "min(520px, 100%)",
     maxHeight: "calc(100vh - 74px)",
     overflowY: "auto",
     background: "linear-gradient(180deg, #fff7ed 0%, #ffffff 45%, #f8fafc 100%)",
-    borderRadius: "28px",
-    padding: "16px",
+    borderRadius: "24px",
+    padding: "13px",
     boxShadow: "0 28px 70px rgba(0,0,0,0.42)",
     boxSizing: "border-box",
     border: "3px solid #ffffff",
@@ -2592,14 +2593,14 @@ const styles = {
   pushItemsGrid: {
     display: "flex",
     flexDirection: "column",
-    gap: "16px",
+    gap: "12px",
   },
 
   pushItemCard: {
     border: "2px solid #fed7aa",
-    borderRadius: "24px",
+    borderRadius: "16px",
     background: "#ffffff",
-    padding: "12px",
+    padding: "10px",
     display: "flex",
     flexDirection: "column",
     gap: "10px",
@@ -2609,7 +2610,7 @@ const styles = {
 
   pushItemImageBox: {
     width: "100%",
-    height: "230px",
+    height: "185px",
     background: "#ffffff",
     borderRadius: "20px",
     border: "1px solid #e5e7eb",
@@ -2623,6 +2624,7 @@ const styles = {
     width: "100%",
     height: "100%",
     objectFit: "contain",
+    cursor: "pointer",
   },
 
   pushNoImage: {
@@ -2634,8 +2636,8 @@ const styles = {
   pushItemContent: {
     minWidth: 0,
     color: "#111827",
-    fontSize: "16px",
-    lineHeight: "1.3",
+    fontSize: "15px",
+    lineHeight: "1.25",
     textAlign: "center",
   },
 
@@ -2643,10 +2645,10 @@ const styles = {
     width: "100%",
     border: "none",
     borderRadius: "999px",
-    padding: "15px 16px",
+    padding: "13px 15px",
     background: "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)",
     color: "#ffffff",
-    fontSize: "17px",
+    fontSize: "16px",
     fontWeight: "1000",
     marginTop: "10px",
     boxShadow: "0 14px 26px rgba(34,197,94,0.34)",
