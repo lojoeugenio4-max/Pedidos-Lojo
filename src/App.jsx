@@ -241,24 +241,27 @@ export default function App() {
   }, [language]);
 
   useEffect(() => {
-    const mostrarPushAlVolver = () => {
+    const abrirPushSiempre = () => {
       setPushCerrado(false);
+      setMostrarVolverPush(false);
     };
 
-    const mostrarPushSiLaAppVuelve = () => {
+    const abrirPushSiLaAppVuelve = () => {
       if (document.visibilityState === "visible") {
-        setPushCerrado(false);
+        abrirPushSiempre();
       }
     };
 
-    window.addEventListener("pageshow", mostrarPushAlVolver);
-    window.addEventListener("focus", mostrarPushAlVolver);
-    document.addEventListener("visibilitychange", mostrarPushSiLaAppVuelve);
+    abrirPushSiempre();
+
+    window.addEventListener("pageshow", abrirPushSiempre);
+    window.addEventListener("focus", abrirPushSiempre);
+    document.addEventListener("visibilitychange", abrirPushSiLaAppVuelve);
 
     return () => {
-      window.removeEventListener("pageshow", mostrarPushAlVolver);
-      window.removeEventListener("focus", mostrarPushAlVolver);
-      document.removeEventListener("visibilitychange", mostrarPushSiLaAppVuelve);
+      window.removeEventListener("pageshow", abrirPushSiempre);
+      window.removeEventListener("focus", abrirPushSiempre);
+      document.removeEventListener("visibilitychange", abrirPushSiLaAppVuelve);
     };
   }, []);
 
@@ -865,11 +868,16 @@ export default function App() {
   };
 
   const irAlArticuloPush = (articuloPush) => {
-    const articuloId = String(articuloPush?.id || pushOferta?.articulos?.id || "");
-    const totalComprables =
-      Array.isArray(pushOferta?.articulos)
-        ? pushOferta.articulos.filter((item) => item.comprable && item.id).length
-        : 0;
+    const articuloId = String(articuloPush?.id || "");
+
+    if (!articuloId) {
+      alert("Este bloque del push es informativo y no tiene artículo asociado.");
+      return;
+    }
+
+    const totalComprables = Array.isArray(pushOferta?.articulos)
+      ? pushOferta.articulos.filter((item) => item.comprable && item.id).length
+      : 0;
 
     setPushCerrado(true);
     setMostrarVolverPush(totalComprables > 1);
@@ -878,14 +886,6 @@ export default function App() {
     setSearchInput("");
     setSearch("");
     setDepartmentDropdownOpen(false);
-
-    if (!articuloId) {
-      setTimeout(() => {
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      }, 80);
-      return;
-    }
-
     setArticuloDestacado(articuloId);
 
     setTimeout(() => {
@@ -896,9 +896,10 @@ export default function App() {
       asegurarArticuloVisible(articuloId);
     };
 
-    setTimeout(intentarScroll, 180);
-    setTimeout(intentarScroll, 450);
-    setTimeout(intentarScroll, 800);
+    setTimeout(intentarScroll, 120);
+    setTimeout(intentarScroll, 350);
+    setTimeout(intentarScroll, 700);
+    setTimeout(intentarScroll, 1100);
   };
 
   const asegurarArticuloVisible = (productId) => {
@@ -1236,19 +1237,17 @@ export default function App() {
                       {item.texto && <p>{item.texto}</p>}
 
                       {item.comprable && item.id ? (
-                        quantities[String(item.id)]?.boxes || quantities[String(item.id)]?.units ? (
-                          <div style={styles.pushAddedBadge}>
-                            ✓ Añadido al pedido
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => irAlArticuloPush(item)}
-                            style={styles.pushOrderButton}
-                          >
-                            PEDIR ARTÍCULO
-                          </button>
-                        )
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            irAlArticuloPush(item);
+                          }}
+                          style={styles.pushOrderButton}
+                        >
+                          PEDIR ARTÍCULO
+                        </button>
                       ) : null}
                     </div>
                   </div>
