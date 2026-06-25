@@ -11,33 +11,46 @@ const DIAS = [
   { id: "0", label: "Domingo" },
 ];
 
+function articuloVacio(orden) {
+  return {
+    orden,
+    articulo_id: "",
+    codigo_articulo: "",
+    nombre_articulo: "",
+    texto: "",
+    imagen_url: "",
+    comprable: true,
+  };
+}
+
+function nuevoForm() {
+  return {
+    titulo: "🔥 Ofertas del día",
+    descripcion: "",
+    fecha_inicio: "",
+    fecha_fin: "",
+    dias_semana: [],
+    activo: true,
+    ruta: "",
+    departamento: "",
+    numero_articulos: 1,
+    articulos_push: [articuloVacio(1), articuloVacio(2), articuloVacio(3)],
+  };
+}
+
 export default function Pushes() {
   const formRef = useRef(null);
 
   const [pushes, setPushes] = useState([]);
+  const [pushArticulos, setPushArticulos] = useState([]);
   const [calendario, setCalendario] = useState([]);
   const [articulos, setArticulos] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [editando, setEditando] = useState(null);
-  const [busquedaArticulo, setBusquedaArticulo] = useState("");
-
-  const [form, setForm] = useState({
-    titulo: "🔥 Oferta del día",
-    descripcion: "",
-    articulo_id: "",
-    codigo_articulo: "",
-    nombre_articulo: "",
-    departamento: "",
-    texto: "",
-    ruta: "",
-    fecha_inicio: "",
-    fecha_fin: "",
-    dias_semana: [],
-    activo: true,
-    imagen_url: "",
-  });
+  const [busquedas, setBusquedas] = useState(["", "", ""]);
+  const [form, setForm] = useState(() => nuevoForm());
 
   useEffect(() => {
     cargarDatos();
@@ -52,24 +65,29 @@ export default function Pushes() {
         .from("push_ofertas")
         .select("*")
         .order("fecha_inicio", { ascending: true });
-
       if (pushesError) throw pushesError;
+
+      const { data: pushArticulosData, error: pushArticulosError } = await supabase
+        .from("push_articulos")
+        .select("*")
+        .order("orden", { ascending: true });
+      if (pushArticulosError) throw pushArticulosError;
 
       const { data: calendarioData, error: calendarioError } = await supabase
         .from("push_calendario")
         .select("*")
         .order("fecha", { ascending: true });
-
       if (calendarioError) throw calendarioError;
 
       const { data: articulosData, error: articulosError } = await supabase
         .from("articulos")
-        .select("id, codigo, nombre, activo, oculto")
+        .select("id, codigo, nombre, activo, oculto, foto, departamentos(nombre)")
+        .eq("activo", true)
         .order("nombre", { ascending: true });
-
       if (articulosError) throw articulosError;
 
       setPushes(pushesData || []);
+      setPushArticulos(pushArticulosData || []);
       setCalendario(calendarioData || []);
       setArticulos(articulosData || []);
     } catch (err) {
@@ -80,6 +98,37 @@ export default function Pushes() {
     }
   }
 
+  const articulosPorPush = useMemo(() => {
+    const mapa = new Map();
+
+    pushArticulos.forEach((item) => {
+      const lista = mapa.get(item.push_id) || [];
+      lista.push(item);
+      mapa.set(item.push_id, lista.sort((a, b) => Number(a.orden) - Number(b.orden)));
+    });
+
+    // Compatibilidad con pushes antiguos que aún no tengan registros en push_articulos.
+    pushes.forEach((push) => {
+      if (!mapa.has(push.id) && push.articulo_id) {
+        mapa.set(push.id, [
+          {
+            id: `legacy-${push.id}`,
+            push_id: push.id,
+            orden: 1,
+            articulo_id: push.articulo_id,
+            codigo_articulo: push.codigo_articulo,
+            nombre_articulo: push.nombre_articulo,
+            texto: push.descripcion || push.texto || "",
+            imagen_url: "",
+            comprable: true,
+          },
+        ]);
+      }
+    });
+
+    return mapa;
+  }, [pushArticulos, pushes]);
+
   const calendarioConPush = useMemo(() => {
     return calendario.map((dia) => {
       const push = pushes.find((p) => p.id === dia.push_id);
@@ -87,72 +136,87 @@ export default function Pushes() {
     });
   }, [calendario, pushes]);
 
-  const articulosFiltrados = useMemo(() => {
-    const texto = busquedaArticulo.trim().toLowerCase();
+  const fechasCalculadas = useMemo(() => {
+    return calcularFechas(form.fecha_inicio, form.fecha_fin, form.dias_semana);
+  }, [form.fecha_inicio, form.fecha_fin, form.dias_semana]);
 
-    return articulos
-      .filter((articulo) => !articulo.oculto)
-      .filter((articulo) => {
-        if (!texto) return true;
-        return `${articulo.codigo || ""} ${articulo.nombre || ""}`
-          .toLowerCase()
-          .includes(texto);
-      })
-      .slice(0, 80);
-  }, [articulos, busquedaArticulo]);
+  const conflictosFormulario = useMemo(() => {
+    if (!form.activo) return [];
+
+    return calendarioConPush.filter((dia) => {
+      if (editando && dia.push_id === editando.id) return false;
+      return fechasCalculadas.includes(dia.fecha);
+    });
+  }, [calendarioConPush, editando, fechasCalculadas, form.activo]);
 
   function abrirFormulario() {
     setEditando(null);
+    setForm(nuevoForm());
+    setBusquedas(["", "", ""]);
     setMostrarFormulario(true);
-
-    setTimeout(() => {
-      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 100);
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
   }
 
   function cerrarFormulario() {
     setEditando(null);
     setMostrarFormulario(false);
-    setBusquedaArticulo("");
-    setForm({
-      titulo: "🔥 Oferta del día",
-      descripcion: "",
-      articulo_id: "",
-      codigo_articulo: "",
-      nombre_articulo: "",
-      departamento: "",
-      texto: "",
-      ruta: "",
-      fecha_inicio: "",
-      fecha_fin: "",
-      dias_semana: [],
-      activo: true,
-      imagen_url: "",
-    });
+    setForm(nuevoForm());
+    setBusquedas(["", "", ""]);
   }
 
   function cambiarCampo(campo, valor) {
-    setForm((actual) => ({
-      ...actual,
-      [campo]: valor,
-    }));
+    setForm((actual) => ({ ...actual, [campo]: valor }));
   }
 
-  function seleccionarArticulo(articulo) {
-    setForm((actual) => ({
-      ...actual,
-      articulo_id: String(articulo.id),
-      codigo_articulo: articulo.codigo || "",
-      nombre_articulo: articulo.nombre || "",
-    }));
+  function cambiarArticuloPush(index, campo, valor) {
+    setForm((actual) => {
+      const copia = actual.articulos_push.map((item) => ({ ...item }));
+      copia[index] = { ...copia[index], [campo]: valor };
+      return { ...actual, articulos_push: copia };
+    });
+  }
 
-    setBusquedaArticulo(articulo.nombre || "");
+  function seleccionarArticulo(index, articulo) {
+    setForm((actual) => {
+      const copia = actual.articulos_push.map((item) => ({ ...item }));
+      copia[index] = {
+        ...copia[index],
+        articulo_id: String(articulo.id),
+        codigo_articulo: articulo.codigo || "",
+        nombre_articulo: articulo.nombre || "",
+      };
+
+      return {
+        ...actual,
+        departamento: actual.departamento || String(articulo.departamentos?.nombre || "").trim(),
+        articulos_push: copia,
+      };
+    });
+
+    setBusquedas((actual) => {
+      const copia = [...actual];
+      copia[index] = articulo.nombre || "";
+      return copia;
+    });
+  }
+
+  function limpiarArticulo(index) {
+    setForm((actual) => {
+      const copia = actual.articulos_push.map((item) => ({ ...item }));
+      copia[index] = articuloVacio(index + 1);
+      return { ...actual, articulos_push: copia };
+    });
+
+    setBusquedas((actual) => {
+      const copia = [...actual];
+      copia[index] = "";
+      return copia;
+    });
   }
 
   function alternarDia(diaId) {
     setForm((actual) => {
       const existe = actual.dias_semana.includes(diaId);
-
       return {
         ...actual,
         dias_semana: existe
@@ -162,124 +226,118 @@ export default function Pushes() {
     });
   }
 
-  function calcularFechas(fechaInicio, fechaFin, diasSemana) {
-    if (!fechaInicio || !fechaFin) return [];
-
-    const inicio = crearFechaLocal(fechaInicio);
-    const fin = crearFechaLocal(fechaFin);
-    const diasPermitidos = new Set((diasSemana || []).map(String));
-    const fechas = [];
-
-    const actual = new Date(inicio);
-
-    while (actual <= fin) {
-      const diaSemana = String(actual.getDay());
-
-      if (diasPermitidos.has(diaSemana)) {
-        fechas.push(fechaLocalISO(actual));
-      }
-
-      actual.setDate(actual.getDate() + 1);
-    }
-
-    return fechas;
+  function marcarTodosLosDias() {
+    setForm((actual) => ({ ...actual, dias_semana: DIAS.map((dia) => dia.id) }));
   }
 
+  function limpiarDias() {
+    setForm((actual) => ({ ...actual, dias_semana: [] }));
+  }
 
   function editarPush(push) {
-    setEditando(push);
-    setBusquedaArticulo(push.nombre_articulo || "");
+    const articulosActuales = articulosPorPush.get(push.id) || [];
+    const normalizados = [articuloVacio(1), articuloVacio(2), articuloVacio(3)];
 
+    articulosActuales.slice(0, 3).forEach((item, index) => {
+      normalizados[index] = {
+        orden: index + 1,
+        articulo_id: item.articulo_id ? String(item.articulo_id) : "",
+        codigo_articulo: item.codigo_articulo || "",
+        nombre_articulo: item.nombre_articulo || "",
+        texto: item.texto || "",
+        imagen_url: item.imagen_url || "",
+        comprable: item.comprable !== false,
+      };
+    });
+
+    setEditando(push);
+    setBusquedas(normalizados.map((item) => item.nombre_articulo || ""));
     setForm({
-      titulo: push.titulo || "🔥 Oferta del día",
+      titulo: push.titulo || "🔥 Ofertas del día",
       descripcion: push.descripcion || push.texto || "",
-      articulo_id: String(push.articulo_id || ""),
-      codigo_articulo: push.codigo_articulo || "",
-      nombre_articulo: push.nombre_articulo || "",
-      departamento: push.departamento || "",
-      texto: push.texto || "",
-      ruta: push.ruta || "",
       fecha_inicio: push.fecha_inicio || "",
       fecha_fin: push.fecha_fin || "",
-      dias_semana: Array.isArray(push.dias_semana)
-        ? push.dias_semana.map(String)
-        : [],
+      dias_semana: Array.isArray(push.dias_semana) ? push.dias_semana.map(String) : [],
       activo: Boolean(push.activo),
-      imagen_url: push.imagen_url || "",
+      ruta: push.ruta || "",
+      departamento: push.departamento || "",
+      numero_articulos: Math.max(1, Math.min(3, articulosActuales.length || 1)),
+      articulos_push: normalizados,
     });
 
     setMostrarFormulario(true);
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+  }
 
-    setTimeout(() => {
-      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 100);
+  function obtenerArticulosFormulario() {
+    return form.articulos_push
+      .slice(0, Number(form.numero_articulos))
+      .map((item, index) => ({ ...item, orden: index + 1 }))
+      .filter((item) => item.articulo_id || item.texto.trim() || item.imagen_url.trim());
+  }
+
+  function validarFormulario() {
+    if (!form.titulo.trim()) return "El título es obligatorio";
+    if (!form.descripcion.trim()) return "El texto general del push es obligatorio";
+    if (!form.fecha_inicio) return "La fecha de inicio es obligatoria";
+    if (!form.fecha_fin) return "La fecha fin es obligatoria";
+    if (!form.dias_semana.length) return "Selecciona al menos un día de la semana";
+    if (form.fecha_fin < form.fecha_inicio) return "La fecha fin no puede ser anterior a la fecha inicio";
+    if (!fechasCalculadas.length) return "No hay ningún día válido en ese rango";
+
+    const articulosValidos = obtenerArticulosFormulario();
+
+    if (articulosValidos.length !== Number(form.numero_articulos)) {
+      return `Has elegido ${form.numero_articulos} artículo(s). Completa todos los bloques.`;
+    }
+
+    const sinArticulo = articulosValidos.find((item) => !item.articulo_id);
+    if (sinArticulo) {
+      return `El bloque ${sinArticulo.orden} necesita un artículo seleccionado.`;
+    }
+
+    const sinTexto = articulosValidos.find((item) => !String(item.texto || "").trim());
+    if (sinTexto) return `El artículo ${sinTexto.orden} necesita texto visible para el push.`;
+
+    if (form.activo && conflictosFormulario.length > 0) {
+      const listado = conflictosFormulario
+        .slice(0, 12)
+        .map((dia) => `${formatearFecha(dia.fecha)} - ${dia.push?.titulo || "Push existente"}`)
+        .join("\n");
+      return `No se puede activar este push.\n\nEstos días ya están ocupados por otros push activos:\n\n${listado}`;
+    }
+
+    return "";
+  }
+
+  function crearDatosPush(primerArticulo) {
+    return {
+      titulo: form.titulo.trim(),
+      descripcion: form.descripcion.trim(),
+      articulo_id: primerArticulo?.articulo_id ? Number(primerArticulo.articulo_id) : null,
+      codigo_articulo: primerArticulo?.codigo_articulo || null,
+      nombre_articulo: primerArticulo?.nombre_articulo || null,
+      departamento: form.departamento.trim() || null,
+      texto: form.descripcion.trim(),
+      ruta: form.ruta.trim() || null,
+      fecha_inicio: form.fecha_inicio,
+      fecha_fin: form.fecha_fin,
+      dias_semana: form.dias_semana,
+      activo: Boolean(form.activo),
+    };
   }
 
   async function guardarPush() {
     setError("");
 
-    if (!form.titulo.trim()) return alert("El título es obligatorio");
-    if (!form.articulo_id) return alert("Selecciona un artículo");
-    if (!form.descripcion.trim()) return alert("El texto del push es obligatorio");
-    if (!form.fecha_inicio) return alert("La fecha de inicio es obligatoria");
-    if (!form.fecha_fin) return alert("La fecha fin es obligatoria");
-    if (!form.dias_semana || form.dias_semana.length === 0) {
-      return alert("Selecciona al menos un día de la semana para activar el push");
-    }
-    if (form.fecha_fin < form.fecha_inicio) {
-      return alert("La fecha fin no puede ser anterior a la fecha inicio");
-    }
-
-    const fechas = calcularFechas(
-      form.fecha_inicio,
-      form.fecha_fin,
-      form.dias_semana
-    );
-
-    if (fechas.length === 0) {
-      return alert("No hay ningún día válido en ese rango");
-    }
-
-    const fechasOcupadas = form.activo
-      ? calendarioConPush.filter((dia) => {
-          if (editando && dia.push_id === editando.id) return false;
-          return fechas.includes(dia.fecha);
-        })
-      : [];
-
-    if (form.activo && fechasOcupadas.length > 0) {
-      const listado = fechasOcupadas
-        .slice(0, 10)
-        .map(
-          (dia) =>
-            `${formatearFecha(dia.fecha)} - ${
-              dia.push?.titulo || "Push existente"
-            }`
-        )
-        .join("\n");
-
-      return alert(`No se puede guardar.\n\nEstos días ya tienen push:\n\n${listado}`);
-    }
+    const errorValidacion = validarFormulario();
+    if (errorValidacion) return alert(errorValidacion);
 
     setCargando(true);
 
     try {
-      const datosPush = {
-        titulo: form.titulo.trim(),
-        descripcion: form.descripcion.trim(),
-        articulo_id: Number(form.articulo_id),
-        codigo_articulo: form.codigo_articulo,
-        nombre_articulo: form.nombre_articulo,
-        departamento: form.departamento.trim() || null,
-        texto: form.descripcion.trim(),
-        ruta: form.ruta.trim() || null,
-        fecha_inicio: form.fecha_inicio,
-        fecha_fin: form.fecha_fin,
-        dias_semana: form.dias_semana,
-        activo: Boolean(form.activo),
-        imagen_url: form.imagen_url.trim() || null,
-      };
-
+      const articulosValidos = obtenerArticulosFormulario();
+      const datosPush = crearDatosPush(articulosValidos[0]);
       let pushId = editando?.id;
 
       if (editando) {
@@ -287,43 +345,33 @@ export default function Pushes() {
           .from("push_ofertas")
           .update(datosPush)
           .eq("id", editando.id);
-
         if (pushError) throw pushError;
 
         const { error: borrarCalendarioError } = await supabase
           .from("push_calendario")
           .delete()
           .eq("push_id", editando.id);
-
         if (borrarCalendarioError) throw borrarCalendarioError;
+
+        const { error: borrarArticulosError } = await supabase
+          .from("push_articulos")
+          .delete()
+          .eq("push_id", editando.id);
+        if (borrarArticulosError) throw borrarArticulosError;
       } else {
         const { data: pushCreado, error: pushError } = await supabase
           .from("push_ofertas")
           .insert([datosPush])
           .select("id")
           .single();
-
         if (pushError) throw pushError;
-
         pushId = pushCreado.id;
       }
 
+      await guardarArticulosPush(pushId, articulosValidos);
+
       if (form.activo) {
-        const registrosCalendario = fechas.map((fecha) => ({
-          push_id: pushId,
-          fecha,
-        }));
-
-        const { error: calendarioError } = await supabase
-          .from("push_calendario")
-          .insert(registrosCalendario);
-
-        if (calendarioError) {
-          if (!editando) {
-            await supabase.from("push_ofertas").delete().eq("id", pushId);
-          }
-          throw calendarioError;
-        }
+        await reservarCalendario(pushId, fechasCalculadas);
       }
 
       cerrarFormulario();
@@ -337,7 +385,29 @@ export default function Pushes() {
     }
   }
 
+  async function guardarArticulosPush(pushId, articulosValidos) {
+    const registros = articulosValidos.map((item, index) => ({
+      push_id: pushId,
+      orden: index + 1,
+      articulo_id: Number(item.articulo_id),
+      codigo_articulo: item.codigo_articulo || null,
+      nombre_articulo: item.nombre_articulo || null,
+      texto: item.texto.trim() || null,
+      imagen_url: item.imagen_url.trim() || null,
+      comprable: Boolean(item.comprable),
+    }));
 
+    const { error: articulosError } = await supabase.from("push_articulos").insert(registros);
+    if (articulosError) throw articulosError;
+  }
+
+  async function reservarCalendario(pushId, fechas) {
+    if (!pushId || !fechas.length) return;
+
+    const registrosCalendario = fechas.map((fecha) => ({ push_id: pushId, fecha }));
+    const { error: calendarioError } = await supabase.from("push_calendario").insert(registrosCalendario);
+    if (calendarioError) throw calendarioError;
+  }
 
   async function cambiarEstadoPush(push) {
     setCargando(true);
@@ -345,71 +415,37 @@ export default function Pushes() {
 
     try {
       if (push.activo) {
-        // Al desactivar, liberamos el calendario.
-        const { error: calendarioError } = await supabase
-          .from("push_calendario")
-          .delete()
-          .eq("push_id", push.id);
-
+        const { error: calendarioError } = await supabase.from("push_calendario").delete().eq("push_id", push.id);
         if (calendarioError) throw calendarioError;
 
-        const { error: pushError } = await supabase
-          .from("push_ofertas")
-          .update({ activo: false })
-          .eq("id", push.id);
-
+        const { error: pushError } = await supabase.from("push_ofertas").update({ activo: false }).eq("id", push.id);
         if (pushError) throw pushError;
       } else {
-        // Al activar, intentamos reservar de nuevo sus fechas.
         const fechas = calcularFechas(
           push.fecha_inicio,
           push.fecha_fin,
           Array.isArray(push.dias_semana) ? push.dias_semana.map(String) : []
         );
 
-        if (fechas.length === 0) {
+        if (!fechas.length) {
           alert("Este push no tiene fechas válidas. Edítalo antes de activarlo.");
           return;
         }
 
-        const fechasOcupadas = calendarioConPush.filter((dia) =>
-          fechas.includes(dia.fecha)
-        );
-
+        const fechasOcupadas = calendarioConPush.filter((dia) => fechas.includes(dia.fecha));
         if (fechasOcupadas.length > 0) {
           const listado = fechasOcupadas
             .slice(0, 12)
-            .map(
-              (dia) =>
-                `${formatearFecha(dia.fecha)} - ${
-                  dia.push?.titulo || "Push existente"
-                }`
-            )
+            .map((dia) => `${formatearFecha(dia.fecha)} - ${dia.push?.titulo || "Push existente"}`)
             .join("\n");
-
-          alert(
-            `No se puede activar.\n\nEstos días ya están ocupados:\n\n${listado}`
-          );
+          alert(`No se puede activar.\n\nEstos días ya están ocupados:\n\n${listado}`);
           return;
         }
 
-        const { error: pushError } = await supabase
-          .from("push_ofertas")
-          .update({ activo: true })
-          .eq("id", push.id);
-
+        const { error: pushError } = await supabase.from("push_ofertas").update({ activo: true }).eq("id", push.id);
         if (pushError) throw pushError;
 
-        const registrosCalendario = fechas.map((fecha) => ({
-          push_id: push.id,
-          fecha,
-        }));
-
-        const { error: calendarioError } = await supabase
-          .from("push_calendario")
-          .insert(registrosCalendario);
-
-        if (calendarioError) throw calendarioError;
+        await reservarCalendario(push.id, fechas);
       }
 
       await cargarDatos();
@@ -426,25 +462,16 @@ export default function Pushes() {
     const confirmar = confirm(
       `¿Liberar calendario de este push?\n\n${push.titulo || "Sin título"}\n\nEl push quedará inactivo.`
     );
-
     if (!confirmar) return;
 
     setCargando(true);
     setError("");
 
     try {
-      const { error: calendarioError } = await supabase
-        .from("push_calendario")
-        .delete()
-        .eq("push_id", push.id);
-
+      const { error: calendarioError } = await supabase.from("push_calendario").delete().eq("push_id", push.id);
       if (calendarioError) throw calendarioError;
 
-      const { error: pushError } = await supabase
-        .from("push_ofertas")
-        .update({ activo: false })
-        .eq("id", push.id);
-
+      const { error: pushError } = await supabase.from("push_ofertas").update({ activo: false }).eq("id", push.id);
       if (pushError) throw pushError;
 
       await cargarDatos();
@@ -458,28 +485,20 @@ export default function Pushes() {
   }
 
   async function eliminarPush(push) {
-    const confirmar = confirm(
-      `¿Eliminar este push?\n\n${push.titulo || "Sin título"}\n${push.nombre_articulo || ""}`
-    );
-
+    const confirmar = confirm(`¿Eliminar este push?\n\n${push.titulo || "Sin título"}`);
     if (!confirmar) return;
 
     setCargando(true);
     setError("");
 
     try {
-      const { error: calendarioError } = await supabase
-        .from("push_calendario")
-        .delete()
-        .eq("push_id", push.id);
-
+      const { error: calendarioError } = await supabase.from("push_calendario").delete().eq("push_id", push.id);
       if (calendarioError) throw calendarioError;
 
-      const { error: pushError } = await supabase
-        .from("push_ofertas")
-        .delete()
-        .eq("id", push.id);
+      const { error: articulosError } = await supabase.from("push_articulos").delete().eq("push_id", push.id);
+      if (articulosError) throw articulosError;
 
+      const { error: pushError } = await supabase.from("push_ofertas").delete().eq("id", push.id);
       if (pushError) throw pushError;
 
       await cargarDatos();
@@ -492,12 +511,6 @@ export default function Pushes() {
     }
   }
 
-  const totalPushes = pushes.length;
-  const totalDias = calendario.length;
-  const totalActivos = pushes.filter((p) => p.activo).length;
-  const totalInactivos = pushes.filter((p) => !p.activo).length;
-  const fechas = calcularFechas(form.fecha_inicio, form.fecha_fin, form.dias_semana);
-
   return (
     <div style={page}>
       <section style={hero}>
@@ -505,34 +518,29 @@ export default function Pushes() {
           <div style={eyebrow}>Administración</div>
           <h1 style={title}>Push Diario</h1>
           <p style={subtitle}>
-            Programa un único artículo push por día para no saturar a los clientes.
+            Programa un push con 1, 2 o 3 artículos. Cada artículo puede ser comprable o informativo.
           </p>
         </div>
 
         <div style={heroActions}>
-          <button type="button" onClick={abrirFormulario} style={newButton}>
-            + Nuevo Push
-          </button>
-
-          <button type="button" onClick={cargarDatos} style={refreshHeroButton}>
-            Actualizar
-          </button>
+          <button type="button" onClick={abrirFormulario} style={newButton}>+ Nuevo Push</button>
+          <button type="button" onClick={cargarDatos} style={refreshHeroButton}>Actualizar</button>
         </div>
       </section>
 
       <section style={infoBox}>
-        <strong>Nuevo funcionamiento</strong>
+        <strong>Nuevo sistema</strong>
         <p>
-          Los push inactivos ya no ocupan calendario. Al desactivar un push se liberan sus días.
-          Al activarlo de nuevo se comprueba que las fechas estén libres.
+          Un mismo push puede mostrar hasta 3 ofertas. Si un artículo es informativo, no aparecerá botón de compra en la app.
+          Los push inactivos no ocupan calendario.
         </p>
       </section>
 
       <section style={statsGrid}>
-        <StatCard label="Pushes creados" value={totalPushes} />
-        <StatCard label="Pushes activos" value={totalActivos} />
-        <StatCard label="Pushes inactivos" value={totalInactivos} />
-        <StatCard label="Días calendario" value={totalDias} />
+        <StatCard label="Pushes creados" value={pushes.length} />
+        <StatCard label="Pushes activos" value={pushes.filter((p) => p.activo).length} />
+        <StatCard label="Pushes inactivos" value={pushes.filter((p) => !p.activo).length} />
+        <StatCard label="Días ocupados" value={calendario.length} />
       </section>
 
       {error && (
@@ -547,184 +555,108 @@ export default function Pushes() {
           <div style={formHeader}>
             <div>
               <h2 style={formTitle}>{editando ? "Editar Push" : "Nuevo Push"}</h2>
-              <p style={formSubtitle}>
-                Selecciona artículo, fechas y días. El sistema bloqueará días ya usados.
-              </p>
+              <p style={formSubtitle}>Elige cuántos artículos tendrá el push y configura cada bloque.</p>
             </div>
-
-            <button type="button" onClick={cerrarFormulario} style={closeButton}>
-              Cerrar
-            </button>
+            <button type="button" onClick={cerrarFormulario} style={closeButton}>Cerrar</button>
           </div>
 
           <div style={formGrid}>
             <div>
-              <label style={label}>Buscar artículo</label>
-              <input
-                type="text"
-                value={busquedaArticulo}
-                onChange={(e) => {
-                  setBusquedaArticulo(e.target.value);
-                  cambiarCampo("articulo_id", "");
-                  cambiarCampo("codigo_articulo", "");
-                  cambiarCampo("nombre_articulo", "");
-                }}
-                placeholder="Buscar por nombre o código..."
-                style={input}
-              />
+              <label style={label}>Título general</label>
+              <input type="text" value={form.titulo} onChange={(e) => cambiarCampo("titulo", e.target.value)} style={input} />
 
-              <div style={articleList}>
-                {articulosFiltrados.map((articulo) => {
-                  const seleccionado =
-                    String(articulo.id) === String(form.articulo_id);
+              <label style={label}>Texto general del push</label>
+              <textarea value={form.descripcion} onChange={(e) => cambiarCampo("descripcion", e.target.value)} placeholder="Ej: Ofertas especiales de hoy" style={textarea} />
 
-                  return (
-                    <button
-                      key={articulo.id}
-                      type="button"
-                      onClick={() => seleccionarArticulo(articulo)}
-                      style={articleOption(seleccionado)}
-                    >
-                      <span>
-                        <strong>{articulo.nombre}</strong>
-                        <small style={articleCode}>
-                          Código {articulo.codigo || "-"}
-                        </small>
-                      </span>
-
-                      {seleccionado && (
-                        <span style={selectedBadge}>Seleccionado</span>
-                      )}
-                    </button>
-                  );
-                })}
+              <label style={label}>Número de artículos</label>
+              <div style={numberButtons}>
+                {[1, 2, 3].map((numero) => (
+                  <button key={numero} type="button" onClick={() => cambiarCampo("numero_articulos", numero)} style={numberButton(Number(form.numero_articulos) === numero)}>
+                    {numero} artículo{numero > 1 ? "s" : ""}
+                  </button>
+                ))}
               </div>
-            </div>
-
-            <div>
-              <label style={label}>Título</label>
-              <input
-                type="text"
-                value={form.titulo}
-                onChange={(e) => cambiarCampo("titulo", e.target.value)}
-                style={input}
-              />
-
-              <label style={label}>Texto visible del push</label>
-              <textarea
-                value={form.descripcion}
-                onChange={(e) => cambiarCampo("descripcion", e.target.value)}
-                placeholder="Ej: 2,50 € docena. Comprando 1 caja sale a 2 €"
-                style={textarea}
-              />
-
-              <label style={label}>Imagen propia de la oferta opcional</label>
-              <input
-                type="text"
-                value={form.imagen_url}
-                onChange={(e) => cambiarCampo("imagen_url", e.target.value)}
-                placeholder="Pega aquí una URL de imagen si quieres usar una foto especial"
-                style={input}
-              />
-
-              <p style={hint}>
-                Si dejas este campo vacío, la app usará la foto del artículo.
-              </p>
 
               <div style={dateGrid}>
                 <div>
                   <label style={label}>Fecha inicio</label>
-                  <input
-                    type="date"
-                    value={form.fecha_inicio}
-                    onChange={(e) => cambiarCampo("fecha_inicio", e.target.value)}
-                    style={input}
-                  />
+                  <input type="date" value={form.fecha_inicio} onChange={(e) => cambiarCampo("fecha_inicio", e.target.value)} style={input} />
                 </div>
-
                 <div>
                   <label style={label}>Fecha fin</label>
-                  <input
-                    type="date"
-                    value={form.fecha_fin}
-                    onChange={(e) => cambiarCampo("fecha_fin", e.target.value)}
-                    style={input}
-                  />
+                  <input type="date" value={form.fecha_fin} onChange={(e) => cambiarCampo("fecha_fin", e.target.value)} style={input} />
                 </div>
               </div>
 
               <label style={label}>Días de la semana</label>
               <div style={weekGrid}>
                 {DIAS.map((dia) => (
-                  <button
-                    key={dia.id}
-                    type="button"
-                    onClick={() => alternarDia(dia.id)}
-                    style={weekButton(form.dias_semana.includes(dia.id))}
-                  >
-                    {dia.label}
-                  </button>
+                  <button key={dia.id} type="button" onClick={() => alternarDia(dia.id)} style={weekButton(form.dias_semana.includes(dia.id))}>{dia.label}</button>
                 ))}
               </div>
-
-              <p style={hint}>
-                Selecciona al menos un día. Si guardas el push inactivo, no ocupará calendario.
-              </p>
+              <div style={miniActions}>
+                <button type="button" onClick={marcarTodosLosDias} style={miniButton}>Marcar todos</button>
+                <button type="button" onClick={limpiarDias} style={miniButtonMuted}>Limpiar días</button>
+              </div>
 
               <div style={dateGrid}>
                 <div>
                   <label style={label}>Departamento opcional</label>
-                  <input
-                    type="text"
-                    value={form.departamento}
-                    onChange={(e) => cambiarCampo("departamento", e.target.value)}
-                    placeholder="Bebidas / Charcutería"
-                    style={input}
-                  />
+                  <input type="text" value={form.departamento} onChange={(e) => cambiarCampo("departamento", e.target.value)} placeholder="Bebidas / Charcutería" style={input} />
                 </div>
-
                 <div>
                   <label style={label}>Ruta opcional</label>
-                  <input
-                    type="text"
-                    value={form.ruta}
-                    onChange={(e) => cambiarCampo("ruta", e.target.value)}
-                    placeholder="Ej: Ruta Vigo"
-                    style={input}
-                  />
+                  <input type="text" value={form.ruta} onChange={(e) => cambiarCampo("ruta", e.target.value)} placeholder="Ej: Ruta Vigo" style={input} />
                 </div>
               </div>
 
               <label style={checkboxLabel}>
-                <input
-                  type="checkbox"
-                  checked={form.activo}
-                  onChange={(e) => cambiarCampo("activo", e.target.checked)}
-                />{" "}
-                Push activo
+                <input type="checkbox" checked={form.activo} onChange={(e) => cambiarCampo("activo", e.target.checked)} /> Push activo
               </label>
 
               <div style={previewBox}>
-                <strong>{form.titulo || "🔥 Oferta del día"}</strong>
-                <p>{form.descripcion || "Texto del push..."}</p>
-                <small>{form.nombre_articulo || "Artículo seleccionado"}</small>
-                <div style={previewDates}>
-                  {form.activo ? (
-                    <span style={activeBadge}>Reservará {fechas.length} día(s)</span>
-                  ) : (
-                    <span style={inactiveBadge}>Inactivo: no ocupa calendario</span>
-                  )}
-                </div>
+                <strong>{form.titulo || "🔥 Ofertas del día"}</strong>
+                <p>{form.descripcion || "Texto general del push..."}</p>
+                {form.activo ? <span style={activeBadge}>Reservará {fechasCalculadas.length} día(s)</span> : <span style={inactiveBadge}>Inactivo: no ocupa calendario</span>}
               </div>
 
-              <div style={formActions}>
-                <button type="button" onClick={guardarPush} style={saveButton}>
-                  {editando ? "Actualizar Push" : "Guardar Push"}
-                </button>
+              {conflictosFormulario.length > 0 && (
+                <div style={warningBox}>
+                  <strong>Conflictos detectados</strong>
+                  <p>Estas fechas ya están ocupadas por otros push activos.</p>
+                  <ul style={conflictList}>
+                    {conflictosFormulario.slice(0, 12).map((dia) => (
+                      <li key={dia.id || dia.fecha}>{formatearFecha(dia.fecha)} — {dia.push?.titulo || "Push existente"}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
 
-                <button type="button" onClick={cerrarFormulario} style={cancelButton}>
-                  Cancelar
-                </button>
+            <div>
+              {form.articulos_push.slice(0, Number(form.numero_articulos)).map((item, index) => (
+                <ArticuloPushEditor
+                  key={item.orden}
+                  index={index}
+                  item={item}
+                  busqueda={busquedas[index] || ""}
+                  articulos={articulos}
+                  onBusqueda={(valor) => {
+                    setBusquedas((actual) => {
+                      const copia = [...actual];
+                      copia[index] = valor;
+                      return copia;
+                    });
+                  }}
+                  onSeleccionar={(articulo) => seleccionarArticulo(index, articulo)}
+                  onCambiar={(campo, valor) => cambiarArticuloPush(index, campo, valor)}
+                  onLimpiar={() => limpiarArticulo(index)}
+                />
+              ))}
+
+              <div style={formActions}>
+                <button type="button" onClick={guardarPush} style={saveButton}>{editando ? "Actualizar Push" : "Guardar Push"}</button>
+                <button type="button" onClick={cerrarFormulario} style={cancelButton}>Cancelar</button>
               </div>
             </div>
           </div>
@@ -738,66 +670,18 @@ export default function Pushes() {
           <section style={tableShell}>
             <div style={tableHeader}>
               <div>
-                <h2 style={tableTitle}>Calendario Push</h2>
-                <p style={tableSubtitle}>
-                  Estos son los días realmente programados en push_calendario.
-                </p>
+                <h2 style={tableTitle}>Calendario ocupado</h2>
+                <p style={tableSubtitle}>Solo aparecen días reservados por push activos.</p>
               </div>
             </div>
-
-            <div style={tableCard}>
-              <table style={table}>
-                <thead>
-                  <tr>
-                    <th style={th}>Fecha</th>
-                    <th style={th}>Título</th>
-                    <th style={th}>Artículo</th>
-                    <th style={th}>Estado</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {calendarioConPush.length === 0 ? (
-                    <tr>
-                      <td colSpan="4" style={emptyCell}>
-                        No hay días programados en push_calendario
-                      </td>
-                    </tr>
-                  ) : (
-                    calendarioConPush.map((dia) => (
-                      <tr key={dia.id}>
-                        <td style={td}>{formatearFecha(dia.fecha)}</td>
-                        <td style={td}>
-                          <strong>{dia.push?.titulo || "Push no encontrado"}</strong>
-                        </td>
-                        <td style={td}>
-                          {dia.push?.nombre_articulo || "Sin artículo"}
-                          <div style={smallText}>
-                            Código: {dia.push?.codigo_articulo || "-"}
-                          </div>
-                        </td>
-                        <td style={td}>
-                          {dia.push?.activo ? (
-                            <span style={activeBadge}>Activo</span>
-                          ) : (
-                            <span style={inactiveBadge}>Inactivo</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <TablaCalendario calendarioConPush={calendarioConPush} />
           </section>
 
           <section style={tableShell}>
             <div style={tableHeader}>
               <div>
                 <h2 style={tableTitle}>Pushes creados</h2>
-                <p style={tableSubtitle}>
-                  Estos son los registros existentes en push_ofertas.
-                </p>
+                <p style={tableSubtitle}>Puedes editar, activar, desactivar/liberar o eliminar.</p>
               </div>
             </div>
 
@@ -806,79 +690,46 @@ export default function Pushes() {
                 <thead>
                   <tr>
                     <th style={th}>Título</th>
-                    <th style={th}>Artículo</th>
+                    <th style={th}>Artículos</th>
                     <th style={th}>Inicio</th>
                     <th style={th}>Fin</th>
                     <th style={th}>Estado</th>
                     <th style={th}>Acciones</th>
                   </tr>
                 </thead>
-
                 <tbody>
                   {pushes.length === 0 ? (
-                    <tr>
-                      <td colSpan="6" style={emptyCell}>
-                        No hay registros en push_ofertas
-                      </td>
-                    </tr>
+                    <tr><td colSpan="6" style={emptyCell}>No hay registros en push_ofertas</td></tr>
                   ) : (
-                    pushes.map((push) => (
-                      <tr key={push.id}>
-                        <td style={td}>
-                          <strong>{push.titulo || "Sin título"}</strong>
-                          <div style={smallText}>{push.descripcion || push.texto || ""}</div>
-                        </td>
-                        <td style={td}>
-                          {push.nombre_articulo || "Sin artículo"}
-                          <div style={smallText}>Código: {push.codigo_articulo || "-"}</div>
-                        </td>
-                        <td style={td}>{push.fecha_inicio || "—"}</td>
-                        <td style={td}>{push.fecha_fin || "—"}</td>
-                        <td style={td}>
-                          {push.activo ? (
-                            <span style={activeBadge}>Activo</span>
-                          ) : (
-                            <span style={inactiveBadge}>Inactivo</span>
-                          )}
-                        </td>
-
-                        <td style={td}>
-                          <div style={actionButtons}>
-                            <button
-                              type="button"
-                              onClick={() => editarPush(push)}
-                              style={editButton}
-                            >
-                              Editar
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => cambiarEstadoPush(push)}
-                              style={push.activo ? deactivateButton : activateButton}
-                            >
-                              {push.activo ? "Desactivar y liberar" : "Activar"}
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => liberarCalendarioPush(push)}
-                              style={releaseButton}
-                            >
-                              Liberar calendario
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => eliminarPush(push)}
-                              style={deleteButton}
-                            >
-                              Eliminar
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                    pushes.map((push) => {
+                      const lista = articulosPorPush.get(push.id) || [];
+                      return (
+                        <tr key={push.id}>
+                          <td style={td}>
+                            <strong>{push.titulo || "Sin título"}</strong>
+                            <div style={smallText}>{push.descripcion || push.texto || ""}</div>
+                          </td>
+                          <td style={td}>
+                            {lista.length === 0 ? "Sin artículos" : lista.map((item) => (
+                              <div key={item.id || item.orden} style={pushItemLine}>
+                                <strong>{item.orden}.</strong> {item.nombre_articulo || "Sin artículo"} {item.comprable ? <span style={buyBadge}>Comprable</span> : <span style={infoBadge}>Informativo</span>}
+                              </div>
+                            ))}
+                          </td>
+                          <td style={td}>{push.fecha_inicio || "—"}</td>
+                          <td style={td}>{push.fecha_fin || "—"}</td>
+                          <td style={td}>{push.activo ? <span style={activeBadge}>Activo</span> : <span style={inactiveBadge}>Inactivo</span>}</td>
+                          <td style={td}>
+                            <div style={actionButtons}>
+                              <button type="button" onClick={() => editarPush(push)} style={editButton}>Editar</button>
+                              <button type="button" onClick={() => cambiarEstadoPush(push)} style={push.activo ? deactivateButton : activateButton}>{push.activo ? "Desactivar y liberar" : "Activar"}</button>
+                              <button type="button" onClick={() => liberarCalendarioPush(push)} style={releaseButton}>Liberar calendario</button>
+                              <button type="button" onClick={() => eliminarPush(push)} style={deleteButton}>Eliminar</button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -888,6 +739,99 @@ export default function Pushes() {
       )}
     </div>
   );
+}
+
+function ArticuloPushEditor({ index, item, busqueda, articulos, onBusqueda, onSeleccionar, onCambiar, onLimpiar }) {
+  const textoBusqueda = busqueda.trim().toLowerCase();
+  const articulosFiltrados = articulos
+    .filter((articulo) => !articulo.oculto)
+    .filter((articulo) => {
+      if (!textoBusqueda) return true;
+      return `${articulo.codigo || ""} ${articulo.nombre || ""}`.toLowerCase().includes(textoBusqueda);
+    })
+    .slice(0, 40);
+
+  return (
+    <section style={articleEditor}>
+      <div style={articleEditorHeader}>
+        <h3 style={articleEditorTitle}>Artículo {index + 1}</h3>
+        <button type="button" onClick={onLimpiar} style={miniButtonMuted}>Limpiar</button>
+      </div>
+
+      <label style={label}>Buscar artículo</label>
+      <input type="text" value={busqueda} onChange={(e) => onBusqueda(e.target.value)} placeholder="Buscar por nombre o código..." style={input} />
+
+      <div style={articleList}>
+        {articulosFiltrados.map((articulo) => {
+          const seleccionado = String(articulo.id) === String(item.articulo_id);
+          return (
+            <button key={articulo.id} type="button" onClick={() => onSeleccionar(articulo)} style={articleOption(seleccionado)}>
+              <span><strong>{articulo.nombre}</strong><small style={articleCode}>Código {articulo.codigo || "-"}</small></span>
+              {seleccionado && <span style={selectedBadge}>Seleccionado</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <label style={label}>Texto de este artículo</label>
+      <textarea value={item.texto} onChange={(e) => onCambiar("texto", e.target.value)} placeholder="Ej: Oferta especial, regalo, precio, condiciones..." style={smallTextarea} />
+
+      <label style={label}>Imagen propia opcional</label>
+      <input type="text" value={item.imagen_url} onChange={(e) => onCambiar("imagen_url", e.target.value)} placeholder="URL de imagen. Si está vacío, usará la foto del artículo." style={input} />
+
+      <label style={checkboxLabel}>
+        <input type="checkbox" checked={item.comprable} onChange={(e) => onCambiar("comprable", e.target.checked)} /> Se puede pedir desde el push
+      </label>
+
+      {!item.comprable && <p style={hint}>Este bloque será solo informativo y no mostrará botón de compra.</p>}
+    </section>
+  );
+}
+
+function TablaCalendario({ calendarioConPush }) {
+  return (
+    <div style={tableCard}>
+      <table style={table}>
+        <thead>
+          <tr>
+            <th style={th}>Fecha</th>
+            <th style={th}>Título</th>
+            <th style={th}>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {calendarioConPush.length === 0 ? (
+            <tr><td colSpan="3" style={emptyCell}>No hay días ocupados en calendario</td></tr>
+          ) : (
+            calendarioConPush.map((dia) => (
+              <tr key={dia.id}>
+                <td style={td}>{formatearFecha(dia.fecha)}</td>
+                <td style={td}><strong>{dia.push?.titulo || "Push no encontrado"}</strong></td>
+                <td style={td}>{dia.push?.activo ? <span style={activeBadge}>Activo</span> : <span style={inactiveBadge}>Inactivo</span>}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function calcularFechas(fechaInicio, fechaFin, diasSemana) {
+  if (!fechaInicio || !fechaFin) return [];
+  const inicio = crearFechaLocal(fechaInicio);
+  const fin = crearFechaLocal(fechaFin);
+  const diasPermitidos = new Set((diasSemana || []).map(String));
+  const fechas = [];
+  const actual = new Date(inicio);
+
+  while (actual <= fin) {
+    const diaSemana = String(actual.getDay());
+    if (diasPermitidos.has(diaSemana)) fechas.push(fechaLocalISO(actual));
+    actual.setDate(actual.getDate() + 1);
+  }
+
+  return fechas;
 }
 
 function StatCard({ label, value }) {
@@ -900,7 +844,7 @@ function StatCard({ label, value }) {
 }
 
 function crearFechaLocal(fechaISO) {
-  const [year, month, day] = fechaISO.split("-").map(Number);
+  const [year, month, day] = String(fechaISO).split("-").map(Number);
   return new Date(year, month - 1, day);
 }
 
@@ -930,26 +874,36 @@ const statCard = { background: "#ffffff", border: "1px solid #e5e7eb", borderRad
 const statValue = { fontSize: "28px", fontWeight: "950", color: "#111827", lineHeight: "1" };
 const statLabel = { marginTop: "8px", fontSize: "12px", fontWeight: "850", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" };
 const errorBox = { background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca", padding: "16px", borderRadius: "18px", marginBottom: "18px" };
+const warningBox = { background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa", padding: "14px", borderRadius: "16px", marginTop: "12px" };
+const conflictList = { margin: "8px 0 0", paddingLeft: "18px" };
 const formBox = { background: "#ffffff", border: "1px solid #fed7aa", borderRadius: "22px", padding: "18px", marginBottom: "18px", boxShadow: "0 18px 40px rgba(234,88,12,0.12)" };
 const formHeader = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "14px", marginBottom: "14px" };
 const formTitle = { margin: 0, color: "#111827", fontSize: "21px", fontWeight: "950" };
 const formSubtitle = { margin: "5px 0 0", color: "#64748b", fontSize: "13px" };
 const closeButton = { border: "none", borderRadius: "999px", padding: "9px 14px", background: "#f1f5f9", color: "#334155", fontWeight: "900", cursor: "pointer" };
-const formGrid = { display: "grid", gridTemplateColumns: "minmax(280px, 0.9fr) minmax(320px, 1.1fr)", gap: "18px", alignItems: "start" };
+const formGrid = { display: "grid", gridTemplateColumns: "minmax(280px, 0.85fr) minmax(360px, 1.15fr)", gap: "18px", alignItems: "start" };
 const label = { display: "block", fontWeight: "900", marginBottom: "7px", color: "#334155", fontSize: "13px" };
 const input = { width: "100%", boxSizing: "border-box", padding: "12px 13px", border: "1px solid #d1d5db", borderRadius: "13px", fontSize: "14px", marginBottom: "12px", outline: "none", background: "#ffffff" };
 const textarea = { ...input, minHeight: "108px", resize: "vertical" };
-const articleList = { maxHeight: "360px", overflowY: "auto", border: "1px solid #e5e7eb", borderRadius: "16px", background: "#fff", marginBottom: "14px" };
+const smallTextarea = { ...input, minHeight: "72px", resize: "vertical" };
+const articleList = { maxHeight: "190px", overflowY: "auto", border: "1px solid #e5e7eb", borderRadius: "16px", background: "#fff", marginBottom: "14px" };
 const articleOption = (selected) => ({ width: "100%", border: "none", borderBottom: "1px solid #f1f5f9", background: selected ? "#ffedd5" : "#fff", padding: "12px 13px", cursor: "pointer", textAlign: "left", display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center" });
 const articleCode = { display: "block", color: "#64748b", fontSize: "12px", marginTop: "3px" };
 const selectedBadge = { background: "#ea580c", color: "#fff", padding: "6px 9px", borderRadius: "999px", fontSize: "11px", fontWeight: "900", whiteSpace: "nowrap" };
+const articleEditor = { border: "1px solid #fed7aa", background: "#fff7ed", borderRadius: "18px", padding: "14px", marginBottom: "14px" };
+const articleEditorHeader = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginBottom: "8px" };
+const articleEditorTitle = { margin: 0, color: "#9a3412", fontSize: "17px", fontWeight: "950" };
 const dateGrid = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" };
+const numberButtons = { display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "14px" };
+const numberButton = (selected) => ({ border: "none", borderRadius: "999px", padding: "10px 13px", background: selected ? "#ea580c" : "#f1f5f9", color: selected ? "#fff" : "#334155", cursor: "pointer", fontWeight: "950" });
 const weekGrid = { display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "8px" };
 const weekButton = (selected) => ({ border: "none", borderRadius: "999px", padding: "9px 12px", background: selected ? "#ea580c" : "#f1f5f9", color: selected ? "#fff" : "#334155", cursor: "pointer", fontWeight: "950" });
+const miniActions = { display: "flex", gap: "8px", marginBottom: "10px", flexWrap: "wrap" };
+const miniButton = { border: "none", borderRadius: "999px", padding: "8px 12px", background: "#dbeafe", color: "#1d4ed8", fontWeight: "900", cursor: "pointer" };
+const miniButtonMuted = { ...miniButton, background: "#f1f5f9", color: "#475569" };
 const hint = { margin: "0 0 12px", color: "#64748b", fontSize: "12px", fontWeight: "800" };
 const checkboxLabel = { display: "block", marginBottom: "10px", fontWeight: "850", color: "#334155" };
 const previewBox = { background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: "16px", padding: "14px", color: "#9a3412" };
-const previewDates = { marginTop: "10px" };
 const formActions = { display: "flex", gap: "10px", marginTop: "12px" };
 const saveButton = { background: "#22c55e", color: "white", border: "none", padding: "12px 18px", borderRadius: "14px", fontWeight: "950", cursor: "pointer" };
 const cancelButton = { background: "#e5e7eb", color: "#111827", border: "none", padding: "12px 18px", borderRadius: "14px", fontWeight: "950", cursor: "pointer" };
@@ -966,65 +920,12 @@ const emptyCell = { textAlign: "center", padding: "30px", color: "#94a3b8", font
 const smallText = { marginTop: "4px", color: "#64748b", fontSize: "12px" };
 const activeBadge = { background: "#dcfce7", color: "#166534", padding: "6px 10px", borderRadius: "999px", fontWeight: "950", fontSize: "12px" };
 const inactiveBadge = { background: "#fee2e2", color: "#991b1b", padding: "6px 10px", borderRadius: "999px", fontWeight: "950", fontSize: "12px" };
-
-const deleteButton = {
-  background: "#fee2e2",
-  color: "#b91c1c",
-  border: "none",
-  padding: "8px 12px",
-  borderRadius: "10px",
-  fontWeight: "950",
-  cursor: "pointer",
-  fontSize: "12px",
-};
-
-const actionButtons = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "6px",
-  minWidth: "110px",
-};
-
-const activateButton = {
-  background: "#dcfce7",
-  color: "#166534",
-  border: "none",
-  padding: "8px 12px",
-  borderRadius: "10px",
-  fontWeight: "950",
-  cursor: "pointer",
-  fontSize: "12px",
-};
-
-const deactivateButton = {
-  background: "#e5e7eb",
-  color: "#374151",
-  border: "none",
-  padding: "8px 12px",
-  borderRadius: "10px",
-  fontWeight: "950",
-  cursor: "pointer",
-  fontSize: "12px",
-};
-
-const editButton = {
-  background: "#dbeafe",
-  color: "#1d4ed8",
-  border: "none",
-  padding: "8px 12px",
-  borderRadius: "10px",
-  fontWeight: "950",
-  cursor: "pointer",
-  fontSize: "12px",
-};
-
-const releaseButton = {
-  background: "#fef3c7",
-  color: "#92400e",
-  border: "none",
-  padding: "8px 12px",
-  borderRadius: "10px",
-  fontWeight: "950",
-  cursor: "pointer",
-  fontSize: "12px",
-};
+const buyBadge = { background: "#dcfce7", color: "#166534", padding: "3px 7px", borderRadius: "999px", fontWeight: "900", fontSize: "11px" };
+const infoBadge = { background: "#e0f2fe", color: "#075985", padding: "3px 7px", borderRadius: "999px", fontWeight: "900", fontSize: "11px" };
+const pushItemLine = { marginBottom: "5px" };
+const actionButtons = { display: "flex", flexDirection: "column", gap: "6px", minWidth: "135px" };
+const editButton = { background: "#dbeafe", color: "#1d4ed8", border: "none", padding: "8px 12px", borderRadius: "10px", fontWeight: "950", cursor: "pointer", fontSize: "12px" };
+const activateButton = { background: "#dcfce7", color: "#166534", border: "none", padding: "8px 12px", borderRadius: "10px", fontWeight: "950", cursor: "pointer", fontSize: "12px" };
+const deactivateButton = { background: "#e5e7eb", color: "#374151", border: "none", padding: "8px 12px", borderRadius: "10px", fontWeight: "950", cursor: "pointer", fontSize: "12px" };
+const releaseButton = { background: "#fef3c7", color: "#92400e", border: "none", padding: "8px 12px", borderRadius: "10px", fontWeight: "950", cursor: "pointer", fontSize: "12px" };
+const deleteButton = { background: "#fee2e2", color: "#b91c1c", border: "none", padding: "8px 12px", borderRadius: "10px", fontWeight: "950", cursor: "pointer", fontSize: "12px" };
