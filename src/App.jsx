@@ -194,8 +194,6 @@ export default function App() {
   const rowRefs = useRef({});
   const departmentDropdownRef = useRef(null);
   const stickyCardRef = useRef(null);
-  const topAreaRef = useRef(null);
-  const catalogScrollRef = useRef(null);
 
   const getSavedOrder = () => {
     try {
@@ -235,8 +233,6 @@ export default function App() {
     () => localStorage.getItem(LANGUAGE_STORAGE_KEY) || "es"
   );
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
-  const [topAreaHeight, setTopAreaHeight] = useState(0);
-  const [stickySummaryHeight, setStickySummaryHeight] = useState(0);
 
   const t = translations[language];
 
@@ -300,38 +296,20 @@ export default function App() {
     document.body.style.width = "100%";
     document.body.style.maxWidth = "100%";
     document.body.style.overflowX = "hidden";
-    document.body.style.overflowY = "hidden";
     document.body.style.margin = "0";
     document.body.style.boxSizing = "border-box";
   }, []);
 
   useEffect(() => {
-    const medirZonasFijas = () => {
-      setTopAreaHeight(topAreaRef.current?.getBoundingClientRect().height || 0);
-      setStickySummaryHeight(stickyCardRef.current?.getBoundingClientRect().height || 0);
+    const handleScroll = () => {
+      setHeaderCollapsed(window.scrollY > 90);
     };
 
-    medirZonasFijas();
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
 
-    const resizeObserver =
-      typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(medirZonasFijas)
-        : null;
-
-    if (resizeObserver) {
-      if (topAreaRef.current) resizeObserver.observe(topAreaRef.current);
-      if (stickyCardRef.current) resizeObserver.observe(stickyCardRef.current);
-    }
-
-    window.addEventListener("resize", medirZonasFijas);
-    window.visualViewport?.addEventListener("resize", medirZonasFijas);
-
-    return () => {
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", medirZonasFijas);
-      window.visualViewport?.removeEventListener("resize", medirZonasFijas);
-    };
-  }, [headerCollapsed, language, selectedCount]);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -806,16 +784,9 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    const scrollElement = catalogScrollRef.current;
-
-    if (scrollElement) {
-      scrollElement.scrollTo({ top: 0, behavior: "auto" });
-    } else {
-      scrollCatalogTo(0, "auto");
-    }
-
-    setHeaderCollapsed(false);
-  }, [search, selectedDepartment]);
+    // No forzamos scroll automático al primer artículo.
+    // Así evitamos que el primer artículo quede tapado debajo de la cabecera fija.
+  }, [filteredDepartments]);
 
   const orderedItems = useMemo(() => {
     return Object.entries(quantities)
@@ -887,23 +858,12 @@ export default function App() {
     }));
   };
 
-  const scrollCatalogTo = (top, behavior = "smooth") => {
-    const scrollElement = catalogScrollRef.current;
-
-    if (scrollElement) {
-      scrollElement.scrollTo({ top, behavior });
-      return;
-    }
-
-    window.scrollTo({ top, behavior });
-  };
-
   const cerrarPush = () => {
     setPushCerrado(true);
     setHeaderCollapsed(false);
 
     setTimeout(() => {
-      scrollCatalogTo(0, "smooth");
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }, 40);
   };
 
@@ -947,26 +907,10 @@ export default function App() {
       const element = rowRefs.current[productId];
       if (!element) return;
 
+      const topArea = document.querySelector("[data-top-area='true']");
+      const topHeight = topArea ? topArea.getBoundingClientRect().height : 0;
       const margin = 10;
       const rect = element.getBoundingClientRect();
-      const scrollElement = catalogScrollRef.current;
-
-      if (scrollElement) {
-        const containerRect = scrollElement.getBoundingClientRect();
-        const targetTop = Math.max(
-          0,
-          scrollElement.scrollTop + rect.top - containerRect.top - margin
-        );
-
-        scrollElement.scrollTo({
-          top: targetTop,
-          behavior: "smooth",
-        });
-
-        return;
-      }
-
-      const topHeight = topAreaRef.current?.getBoundingClientRect().height || 0;
       const absoluteTop = window.scrollY + rect.top;
       const targetTop = Math.max(0, absoluteTop - topHeight - margin);
 
@@ -1043,7 +987,7 @@ export default function App() {
     setHeaderCollapsed(false);
     localStorage.removeItem(ORDER_STORAGE_KEY);
 
-    scrollCatalogTo(0, "auto");
+    window.scrollTo({ top: 0, behavior: "auto" });
   };
 
   async function guardarEstadisticasPedido() {
@@ -1293,7 +1237,7 @@ export default function App() {
         </div>
       )}
 
-      <div ref={topAreaRef} style={styles.topArea} data-top-area="true">
+      <div style={styles.topArea} data-top-area="true">
         {!headerCollapsed && (
           <>
             <header style={styles.header}>
@@ -1357,7 +1301,9 @@ export default function App() {
                 onChange={(event) => {
                   setSearchInput(event.target.value);
                   setSearch(event.target.value);
-                  if (event.target.value.trim()) {
+                  const hasSearchText = Boolean(event.target.value.trim());
+                  setHeaderCollapsed(hasSearchText);
+                  if (hasSearchText) {
                     setSelectedDepartment("TODOS");
                   }
                 }}
@@ -1422,15 +1368,7 @@ export default function App() {
         </section>
       </div>
 
-      <main
-        ref={catalogScrollRef}
-        onScroll={(event) => setHeaderCollapsed(event.currentTarget.scrollTop > 90)}
-        style={{
-          ...styles.catalog,
-          top: `${topAreaHeight}px`,
-          bottom: `${stickySummaryHeight}px`,
-        }}
-      >
+      <main style={styles.catalog}>
         {cargando && <p style={styles.loading}>{t.loading}</p>}
         {errorCatalogo && <p style={styles.error}>{errorCatalogo}</p>}
 
@@ -1688,26 +1626,22 @@ export default function App() {
 
 const styles = {
   page: {
-    height: "100dvh",
     minHeight: "100dvh",
     width: "100%",
     maxWidth: "100vw",
     overflowX: "hidden",
+    touchAction: "pan-y",
     background: "#eef1f8",
     color: "#06145f",
     fontFamily:
       '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    paddingBottom: 0,
+    paddingBottom: "calc(78px + env(safe-area-inset-bottom))",
     boxSizing: "border-box",
-    overflowY: "hidden",
-    position: "relative",
   },
 
   topArea: {
-    position: "fixed",
+    position: "sticky",
     top: 0,
-    left: 0,
-    right: 0,
     zIndex: 100,
     background: "#eef1f8",
     padding: "2px 0 4px",
@@ -2114,17 +2048,15 @@ const styles = {
   },
 
   catalog: {
-    position: "fixed",
-    left: 0,
-    right: 0,
     width: "min(1100px, 100vw)",
     margin: "0 auto",
-    padding: "6px 6px 12px",
+    padding: "6px 6px",
     boxSizing: "border-box",
-    overflowY: "auto",
     overflowX: "hidden",
     WebkitOverflowScrolling: "touch",
-    overscrollBehavior: "contain",
+    touchAction: "pan-y",
+    overscrollBehaviorY: "contain",
+    position: "relative",
     zIndex: 1,
   },
 
@@ -2395,7 +2327,7 @@ const styles = {
     position: "fixed",
     inset: 0,
     background: "rgba(15,23,42,0.65)",
-    zIndex: 2000,
+    zIndex: 1000,
     padding: "12px 10px 0",
     boxSizing: "border-box",
     display: "flex",
@@ -2403,8 +2335,6 @@ const styles = {
     width: "100vw",
     maxWidth: "100vw",
     overflowX: "hidden",
-    overflowY: "hidden",
-    touchAction: "none",
   },
 
   summaryPanel: {
@@ -2414,7 +2344,7 @@ const styles = {
     overflowY: "auto",
     overflowX: "hidden",
     WebkitOverflowScrolling: "touch",
-    overscrollBehavior: "contain",
+    touchAction: "pan-y",
     background: "#fff",
     borderRadius: "22px 22px 0 0",
     padding: "16px",
