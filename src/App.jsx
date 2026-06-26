@@ -293,9 +293,15 @@ export default function App() {
     document.documentElement.style.width = "100%";
     document.documentElement.style.maxWidth = "100%";
     document.documentElement.style.overflowX = "hidden";
+    document.documentElement.style.overflowY = "auto";
+    document.documentElement.style.height = "100%";
+    document.documentElement.style.WebkitOverflowScrolling = "touch";
     document.body.style.width = "100%";
     document.body.style.maxWidth = "100%";
     document.body.style.overflowX = "hidden";
+    document.body.style.overflowY = "auto";
+    document.body.style.minHeight = "100%";
+    document.body.style.WebkitOverflowScrolling = "touch";
     document.body.style.margin = "0";
     document.body.style.boxSizing = "border-box";
   }, []);
@@ -1628,6 +1634,8 @@ const styles = {
     width: "100%",
     maxWidth: "100vw",
     overflowX: "hidden",
+    overflowY: "visible",
+    touchAction: "pan-y",
     background: "#eef1f8",
     color: "#06145f",
     fontFamily:
@@ -1647,6 +1655,7 @@ const styles = {
     maxWidth: "100vw",
     boxSizing: "border-box",
     overflow: "visible",
+    pointerEvents: "auto",
   },
 
   headerWrap: {
@@ -2022,9 +2031,11 @@ const styles = {
     border: "1px solid #e5e7eb",
     borderRadius: "12px",
     boxShadow: "0 16px 34px rgba(15,23,42,0.28)",
-    maxHeight: "60vh",
+    maxHeight: "min(60dvh, 420px)",
     overflowY: "auto",
+    overscrollBehavior: "contain",
     WebkitOverflowScrolling: "touch",
+    touchAction: "pan-y",
   },
 
   departmentOption: {
@@ -2050,6 +2061,9 @@ const styles = {
     padding: "6px 6px",
     boxSizing: "border-box",
     overflowX: "hidden",
+    overflowY: "visible",
+    WebkitOverflowScrolling: "touch",
+    touchAction: "pan-y",
     position: "relative",
     zIndex: 1,
   },
@@ -2321,7 +2335,7 @@ const styles = {
     position: "fixed",
     inset: 0,
     background: "rgba(15,23,42,0.65)",
-    zIndex: 50,
+    zIndex: 1000,
     padding: "12px 10px 0",
     boxSizing: "border-box",
     display: "flex",
@@ -2329,14 +2343,20 @@ const styles = {
     width: "100vw",
     maxWidth: "100vw",
     overflowX: "hidden",
+    overflowY: "hidden",
+    overscrollBehavior: "contain",
+    touchAction: "pan-y",
   },
 
   summaryPanel: {
     width: "100%",
     maxWidth: "100%",
-    maxHeight: "90dvh",
+    maxHeight: "calc(100dvh - 12px - env(safe-area-inset-top))",
     overflowY: "auto",
     overflowX: "hidden",
+    overscrollBehavior: "contain",
+    WebkitOverflowScrolling: "touch",
+    touchAction: "pan-y",
     background: "#fff",
     borderRadius: "22px 22px 0 0",
     padding: "16px",
