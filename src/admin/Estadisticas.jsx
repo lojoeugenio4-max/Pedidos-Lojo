@@ -121,7 +121,7 @@ export default function Estadisticas() {
 
       const { data, error: movimientosError } = await supabase
         .from("estadisticas_movimientos")
-        .select("id, created_at, codigo_articulo, nombre_articulo, departamento, cajas, unidades")
+        .select("id, pedido_id, created_at, codigo_articulo, nombre_articulo, departamento, cajas, unidades")
         .gte("created_at", inicio)
         .lt("created_at", fin)
         .order("created_at", { ascending: true });
@@ -172,7 +172,10 @@ export default function Estadisticas() {
   }
 
   const resumen = useMemo(() => {
-    const diasConPedido = new Set(movimientos.map((fila) => claveDiaEstadistico(fila.created_at)));
+    const pedidosUnicos = new Set(
+      movimientos.map((fila) => String(fila.pedido_id || fila.id || ""))
+    );
+
     const totalCajas = movimientos.reduce((total, fila) => total + Number(fila.cajas || 0), 0);
     const totalUnidades = movimientos.reduce((total, fila) => total + Number(fila.unidades || 0), 0);
     const articulosDistintos = new Set(
@@ -180,8 +183,8 @@ export default function Estadisticas() {
     ).size;
 
     return {
+      totalPedidos: pedidosUnicos.size,
       totalLineas: movimientos.length,
-      diasConPedido: diasConPedido.size,
       totalCajas,
       totalUnidades,
       articulosDistintos,
@@ -195,11 +198,14 @@ export default function Estadisticas() {
       const dia = claveDiaEstadistico(fila.created_at);
       const actual = mapa.get(dia) || {
         fecha: dia,
+        pedidosSet: new Set(),
+        pedidos: 0,
         lineas: 0,
         cajas: 0,
         unidades: 0,
       };
 
+      actual.pedidosSet.add(String(fila.pedido_id || fila.id || ""));
       actual.lineas += 1;
       actual.cajas += Number(fila.cajas || 0);
       actual.unidades += Number(fila.unidades || 0);
@@ -207,7 +213,13 @@ export default function Estadisticas() {
       mapa.set(dia, actual);
     });
 
-    return Array.from(mapa.values()).sort((a, b) => a.fecha.localeCompare(b.fecha));
+    return Array.from(mapa.values())
+      .map((fila) => ({
+        ...fila,
+        pedidos: fila.pedidosSet.size,
+        pedidosSet: undefined,
+      }))
+      .sort((a, b) => a.fecha.localeCompare(b.fecha));
   }, [movimientos]);
 
   const pedidosPorMes = useMemo(() => {
@@ -215,8 +227,9 @@ export default function Estadisticas() {
 
     pedidosPorDia.forEach((fila) => {
       const mes = obtenerMes(fila.fecha);
-      const actual = mapa.get(mes) || { mes, lineas: 0, cajas: 0, unidades: 0 };
+      const actual = mapa.get(mes) || { mes, pedidos: 0, lineas: 0, cajas: 0, unidades: 0 };
 
+      actual.pedidos += fila.pedidos;
       actual.lineas += fila.lineas;
       actual.cajas += fila.cajas;
       actual.unidades += fila.unidades;
@@ -323,14 +336,14 @@ export default function Estadisticas() {
       ) : (
         <>
           <section style={statsGrid}>
-            <StatCard label="Líneas pedidas" value={formatearNumero(resumen.totalLineas)} />
+            <StatCard label="Pedidos" value={formatearNumero(resumen.totalPedidos)} />
             <StatCard label="Cajas" value={formatearNumero(resumen.totalCajas)} />
             <StatCard label="Unidades" value={formatearNumero(resumen.totalUnidades)} />
             <StatCard label="Artículos distintos" value={formatearNumero(resumen.articulosDistintos)} />
           </section>
 
           <section style={noticeBox}>
-            <strong>Importante:</strong> desde ahora los datos salen de movimientos reales con hora. Las estadísticas anteriores a este cambio no pueden reconstruirse con corte 14:30 exacto.
+            <strong>Importante:</strong> desde ahora se cuentan pedidos reales usando pedido_id. Las estadísticas anteriores a este cambio pueden aparecer como líneas si no tenían pedido_id.
           </section>
 
           <section style={gridTwo}>
@@ -338,15 +351,17 @@ export default function Estadisticas() {
               <MiniBarChart
                 data={pedidosPorDia.map((fila) => ({
                   label: formatearFecha(fila.fecha),
-                  value: Number(fila.lineas || 0),
+                  value: Number(fila.pedidos || 0),
                 }))}
-                valueLabel="líneas"
+                valueLabel="pedidos"
               />
 
               <table style={table}>
                 <thead>
                   <tr>
                     <th style={th}>Día estadístico</th>
+                    <th style={thRight}>Pedidos</th>
+                    <th style={thRight}>Pedidos</th>
                     <th style={thRight}>Líneas</th>
                     <th style={thRight}>Cajas</th>
                     <th style={thRight}>Unid.</th>
@@ -354,12 +369,13 @@ export default function Estadisticas() {
                 </thead>
                 <tbody>
                   {pedidosPorDia.length === 0 ? (
-                    <FilaVacia columnas={4} />
+                    <FilaVacia columnas={5} />
                   ) : (
                     pedidosPorDia.map((fila) => (
                       <tr key={fila.fecha}>
                         <td style={td}>{formatearFecha(fila.fecha)}</td>
-                        <td style={tdRightStrong}>{formatearNumero(fila.lineas)}</td>
+                        <td style={tdRightStrong}>{formatearNumero(fila.pedidos)}</td>
+                        <td style={tdRight}>{formatearNumero(fila.lineas)}</td>
                         <td style={tdRight}>{formatearNumero(fila.cajas)}</td>
                         <td style={tdRight}>{formatearNumero(fila.unidades)}</td>
                       </tr>
@@ -373,9 +389,9 @@ export default function Estadisticas() {
               <MiniBarChart
                 data={pedidosPorMes.map((fila) => ({
                   label: nombreMes(fila.mes),
-                  value: Number(fila.lineas || 0),
+                  value: Number(fila.pedidos || 0),
                 }))}
-                valueLabel="líneas"
+                valueLabel="pedidos"
               />
 
               <table style={table}>
@@ -389,12 +405,13 @@ export default function Estadisticas() {
                 </thead>
                 <tbody>
                   {pedidosPorMes.length === 0 ? (
-                    <FilaVacia columnas={4} />
+                    <FilaVacia columnas={5} />
                   ) : (
                     pedidosPorMes.map((fila) => (
                       <tr key={fila.mes}>
                         <td style={td}>{nombreMes(fila.mes)}</td>
-                        <td style={tdRightStrong}>{formatearNumero(fila.lineas)}</td>
+                        <td style={tdRightStrong}>{formatearNumero(fila.pedidos)}</td>
+                        <td style={tdRight}>{formatearNumero(fila.lineas)}</td>
                         <td style={tdRight}>{formatearNumero(fila.cajas)}</td>
                         <td style={tdRight}>{formatearNumero(fila.unidades)}</td>
                       </tr>
