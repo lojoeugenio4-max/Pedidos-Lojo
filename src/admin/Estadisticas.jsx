@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 
+const CORTE_HORA = 14;
+const CORTE_MINUTO = 30;
+
 function fechaLocalISO(fecha = new Date()) {
   const year = fecha.getFullYear();
   const month = String(fecha.getMonth() + 1).padStart(2, "0");
@@ -13,36 +16,47 @@ function crearFechaLocal(fechaISO) {
   return new Date(year, month - 1, day);
 }
 
-function getDiaEstadisticoISO() {
+function inicioDiaEstadistico(fechaISO) {
+  const fecha = crearFechaLocal(fechaISO);
+  fecha.setHours(CORTE_HORA, CORTE_MINUTO, 0, 0);
+  return fecha;
+}
+
+function finDiaEstadistico(fechaISO) {
+  const fecha = inicioDiaEstadistico(fechaISO);
+  fecha.setDate(fecha.getDate() + 1);
+  return fecha;
+}
+
+function diaEstadisticoActualISO() {
   const ahora = new Date();
-  const corte = new Date();
+  const corteHoy = new Date();
+  corteHoy.setHours(CORTE_HORA, CORTE_MINUTO, 0, 0);
 
-  corte.setHours(14, 30, 0, 0);
-
-  if (ahora < corte) {
+  if (ahora < corteHoy) {
     ahora.setDate(ahora.getDate() - 1);
   }
 
   return fechaLocalISO(ahora);
 }
 
-function getInicioSemanaEstadisticaISO() {
-  const fecha = crearFechaLocal(getDiaEstadisticoISO());
+function sumarDias(fechaISO, dias) {
+  const fecha = crearFechaLocal(fechaISO);
+  fecha.setDate(fecha.getDate() + dias);
+  return fechaLocalISO(fecha);
+}
+
+function inicioSemanaISO(fechaISO) {
+  const fecha = crearFechaLocal(fechaISO);
   const diaSemana = fecha.getDay();
   const diferenciaLunes = diaSemana === 0 ? -6 : 1 - diaSemana;
   fecha.setDate(fecha.getDate() + diferenciaLunes);
   return fechaLocalISO(fecha);
 }
 
-function getInicioMesEstadisticoISO() {
-  const fecha = crearFechaLocal(getDiaEstadisticoISO());
-  return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}-01`;
-}
-
-function sumarDias(fechaISO, dias) {
+function inicioMesISO(fechaISO) {
   const fecha = crearFechaLocal(fechaISO);
-  fecha.setDate(fecha.getDate() + dias);
-  return fechaLocalISO(fecha);
+  return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
 function formatearFecha(fechaISO) {
@@ -54,6 +68,18 @@ function formatearNumero(valor) {
   return Number(valor || 0).toLocaleString("es-ES", {
     maximumFractionDigits: 2,
   });
+}
+
+function claveDiaEstadistico(createdAt) {
+  const fecha = new Date(createdAt);
+  const corte = new Date(fecha);
+  corte.setHours(CORTE_HORA, CORTE_MINUTO, 0, 0);
+
+  if (fecha < corte) {
+    fecha.setDate(fecha.getDate() - 1);
+  }
+
+  return fechaLocalISO(fecha);
 }
 
 function obtenerMes(fechaISO) {
@@ -70,42 +96,39 @@ function nombreMes(mesISO) {
 }
 
 export default function Estadisticas() {
-  const [pedidosDia, setPedidosDia] = useState([]);
-  const [articulosDia, setArticulosDia] = useState([]);
-  const [desde, setDesde] = useState(getDiaEstadisticoISO());
-  const [hasta, setHasta] = useState(getDiaEstadisticoISO());
+  const hoyEstadistico = diaEstadisticoActualISO();
+
+  const [movimientos, setMovimientos] = useState([]);
+  const [desde, setDesde] = useState(hoyEstadistico);
+  const [hasta, setHasta] = useState(hoyEstadistico);
+  const [periodoActivo, setPeriodoActivo] = useState("hoy");
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    cargarEstadisticas(getDiaEstadisticoISO(), getDiaEstadisticoISO());
+    cargarEstadisticas(hoyEstadistico, hoyEstadistico);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function cargarEstadisticas(desdeFiltro = desde, hastaFiltro = hasta) {
+  async function cargarEstadisticas(desdeFiltro = desde, hastaFiltro = hasta, periodo = periodoActivo) {
     setCargando(true);
     setError("");
+    setPeriodoActivo(periodo);
 
     try {
-      const { data: pedidosData, error: pedidosError } = await supabase
-        .from("estadisticas_pedidos_dia")
-        .select("fecha, total_pedidos")
-        .gte("fecha", desdeFiltro)
-        .lte("fecha", hastaFiltro)
-        .order("fecha", { ascending: true });
+      const inicio = inicioDiaEstadistico(desdeFiltro).toISOString();
+      const fin = finDiaEstadistico(hastaFiltro).toISOString();
 
-      if (pedidosError) throw pedidosError;
+      const { data, error: movimientosError } = await supabase
+        .from("estadisticas_movimientos")
+        .select("id, created_at, codigo_articulo, nombre_articulo, departamento, cajas, unidades")
+        .gte("created_at", inicio)
+        .lt("created_at", fin)
+        .order("created_at", { ascending: true });
 
-      const { data: articulosData, error: articulosError } = await supabase
-        .from("estadisticas_articulos_dia")
-        .select("fecha, articulo_id, codigo_articulo, nombre_articulo, departamento, cajas, unidades, veces_pedido")
-        .gte("fecha", desdeFiltro)
-        .lte("fecha", hastaFiltro)
-        .order("fecha", { ascending: true });
+      if (movimientosError) throw movimientosError;
 
-      if (articulosError) throw articulosError;
-
-      setPedidosDia(pedidosData || []);
-      setArticulosDia(articulosData || []);
+      setMovimientos(data || []);
     } catch (err) {
       console.error("Error cargando estadísticas:", err);
       setError(err?.message || JSON.stringify(err));
@@ -115,96 +138,103 @@ export default function Estadisticas() {
   }
 
   function aplicarHoy() {
-    const hoy = getDiaEstadisticoISO();
+    const hoy = diaEstadisticoActualISO();
     setDesde(hoy);
     setHasta(hoy);
-    cargarEstadisticas(hoy, hoy);
+    cargarEstadisticas(hoy, hoy, "hoy");
   }
 
   function aplicarAyer() {
-    const ayer = sumarDias(getDiaEstadisticoISO(), -1);
+    const ayer = sumarDias(diaEstadisticoActualISO(), -1);
     setDesde(ayer);
     setHasta(ayer);
-    cargarEstadisticas(ayer, ayer);
+    cargarEstadisticas(ayer, ayer, "ayer");
   }
 
   function aplicarSemana() {
-    const inicio = getInicioSemanaEstadisticaISO();
-    const fin = getDiaEstadisticoISO();
+    const hoy = diaEstadisticoActualISO();
+    const inicio = inicioSemanaISO(hoy);
     setDesde(inicio);
-    setHasta(fin);
-    cargarEstadisticas(inicio, fin);
+    setHasta(hoy);
+    cargarEstadisticas(inicio, hoy, "semana");
   }
 
   function aplicarMes() {
-    const inicio = getInicioMesEstadisticoISO();
-    const fin = getDiaEstadisticoISO();
+    const hoy = diaEstadisticoActualISO();
+    const inicio = inicioMesISO(hoy);
     setDesde(inicio);
-    setHasta(fin);
-    cargarEstadisticas(inicio, fin);
+    setHasta(hoy);
+    cargarEstadisticas(inicio, hoy, "mes");
+  }
+
+  function aplicarFiltroManual() {
+    cargarEstadisticas(desde, hasta, "manual");
   }
 
   const resumen = useMemo(() => {
-    const totalPedidos = pedidosDia.reduce(
-      (total, fila) => total + Number(fila.total_pedidos || 0),
-      0
-    );
-
-    const totalCajas = articulosDia.reduce(
-      (total, fila) => total + Number(fila.cajas || 0),
-      0
-    );
-
-    const totalUnidades = articulosDia.reduce(
-      (total, fila) => total + Number(fila.unidades || 0),
-      0
-    );
-
+    const diasConPedido = new Set(movimientos.map((fila) => claveDiaEstadistico(fila.created_at)));
+    const totalCajas = movimientos.reduce((total, fila) => total + Number(fila.cajas || 0), 0);
+    const totalUnidades = movimientos.reduce((total, fila) => total + Number(fila.unidades || 0), 0);
     const articulosDistintos = new Set(
-      articulosDia.map((fila) => String(fila.articulo_id || fila.codigo_articulo || fila.nombre_articulo || ""))
+      movimientos.map((fila) => String(fila.codigo_articulo || fila.nombre_articulo || ""))
     ).size;
 
     return {
-      totalPedidos,
+      totalLineas: movimientos.length,
+      diasConPedido: diasConPedido.size,
       totalCajas,
       totalUnidades,
       articulosDistintos,
     };
-  }, [pedidosDia, articulosDia]);
+  }, [movimientos]);
 
   const pedidosPorDia = useMemo(() => {
-    return [...pedidosDia].sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
-  }, [pedidosDia]);
+    const mapa = new Map();
+
+    movimientos.forEach((fila) => {
+      const dia = claveDiaEstadistico(fila.created_at);
+      const actual = mapa.get(dia) || {
+        fecha: dia,
+        lineas: 0,
+        cajas: 0,
+        unidades: 0,
+      };
+
+      actual.lineas += 1;
+      actual.cajas += Number(fila.cajas || 0);
+      actual.unidades += Number(fila.unidades || 0);
+
+      mapa.set(dia, actual);
+    });
+
+    return Array.from(mapa.values()).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  }, [movimientos]);
 
   const pedidosPorMes = useMemo(() => {
     const mapa = new Map();
 
-    pedidosDia.forEach((fila) => {
+    pedidosPorDia.forEach((fila) => {
       const mes = obtenerMes(fila.fecha);
-      mapa.set(mes, (mapa.get(mes) || 0) + Number(fila.total_pedidos || 0));
+      const actual = mapa.get(mes) || { mes, lineas: 0, cajas: 0, unidades: 0 };
+
+      actual.lineas += fila.lineas;
+      actual.cajas += fila.cajas;
+      actual.unidades += fila.unidades;
+
+      mapa.set(mes, actual);
     });
 
-    return Array.from(mapa.entries())
-      .map(([mes, total_pedidos]) => ({ mes, total_pedidos }))
-      .sort((a, b) => a.mes.localeCompare(b.mes));
-  }, [pedidosDia]);
+    return Array.from(mapa.values()).sort((a, b) => a.mes.localeCompare(b.mes));
+  }, [pedidosPorDia]);
 
-  const topCajas = useMemo(() => {
-    return agruparArticulos(articulosDia, "cajas").slice(0, 20);
-  }, [articulosDia]);
-
-  const topUnidades = useMemo(() => {
-    return agruparArticulos(articulosDia, "unidades").slice(0, 20);
-  }, [articulosDia]);
-
-  const topVecesPedido = useMemo(() => {
-    return agruparArticulos(articulosDia, "veces_pedido").slice(0, 20);
-  }, [articulosDia]);
+  const topCajas = useMemo(() => agruparArticulos(movimientos, "cajas").slice(0, 20), [movimientos]);
+  const topUnidades = useMemo(() => agruparArticulos(movimientos, "unidades").slice(0, 20), [movimientos]);
+  const topVecesPedido = useMemo(() => agruparArticulos(movimientos, "veces_pedido").slice(0, 20), [movimientos]);
 
   const departamentos = useMemo(() => {
     const mapa = new Map();
 
-    articulosDia.forEach((fila) => {
+    movimientos.forEach((fila) => {
       const departamento = fila.departamento || "Sin departamento";
       const actual = mapa.get(departamento) || {
         departamento,
@@ -215,7 +245,7 @@ export default function Estadisticas() {
 
       actual.cajas += Number(fila.cajas || 0);
       actual.unidades += Number(fila.unidades || 0);
-      actual.veces_pedido += Number(fila.veces_pedido || 0);
+      actual.veces_pedido += 1;
 
       mapa.set(departamento, actual);
     });
@@ -225,7 +255,7 @@ export default function Estadisticas() {
         b.cajas + b.unidades + b.veces_pedido -
         (a.cajas + a.unidades + a.veces_pedido)
     );
-  }, [articulosDia]);
+  }, [movimientos]);
 
   return (
     <div style={page}>
@@ -234,11 +264,11 @@ export default function Estadisticas() {
           <div style={eyebrow}>Administración</div>
           <h1 style={title}>📊 Estadísticas</h1>
           <p style={subtitle}>
-            Día estadístico: de 14:30 a 14:30. Hoy corresponde a {formatearFecha(getDiaEstadisticoISO())}.
+            Día estadístico real: de 14:30 a 14:30. Hoy es {formatearFecha(hoyEstadistico)}.
           </p>
         </div>
 
-        <button type="button" onClick={() => cargarEstadisticas(desde, hasta)} style={refreshButton}>
+        <button type="button" onClick={() => cargarEstadisticas(desde, hasta, periodoActivo)} style={refreshButton}>
           Actualizar
         </button>
       </section>
@@ -256,7 +286,10 @@ export default function Estadisticas() {
           <input
             type="date"
             value={desde}
-            onChange={(event) => setDesde(event.target.value)}
+            onChange={(event) => {
+              setDesde(event.target.value);
+              setPeriodoActivo("manual");
+            }}
             style={input}
           />
         </div>
@@ -266,17 +299,20 @@ export default function Estadisticas() {
           <input
             type="date"
             value={hasta}
-            onChange={(event) => setHasta(event.target.value)}
+            onChange={(event) => {
+              setHasta(event.target.value);
+              setPeriodoActivo("manual");
+            }}
             style={input}
           />
         </div>
 
         <div style={filterActions}>
-          <button type="button" onClick={aplicarHoy} style={todayButton}>Hoy</button>
-          <button type="button" onClick={aplicarAyer} style={periodButton}>Ayer</button>
-          <button type="button" onClick={aplicarSemana} style={periodButton}>Semana</button>
-          <button type="button" onClick={aplicarMes} style={periodButton}>Mes</button>
-          <button type="button" onClick={() => cargarEstadisticas(desde, hasta)} style={applyButton}>
+          <button type="button" onClick={aplicarHoy} style={periodoActivo === "hoy" ? activeFilterButton : periodButton}>Hoy</button>
+          <button type="button" onClick={aplicarAyer} style={periodoActivo === "ayer" ? activeFilterButton : periodButton}>Ayer</button>
+          <button type="button" onClick={aplicarSemana} style={periodoActivo === "semana" ? activeFilterButton : periodButton}>Semana</button>
+          <button type="button" onClick={aplicarMes} style={periodoActivo === "mes" ? activeFilterButton : periodButton}>Mes</button>
+          <button type="button" onClick={aplicarFiltroManual} style={periodoActivo === "manual" ? activeApplyButton : applyButton}>
             Aplicar filtro
           </button>
         </div>
@@ -287,37 +323,45 @@ export default function Estadisticas() {
       ) : (
         <>
           <section style={statsGrid}>
-            <StatCard label="Pedidos" value={formatearNumero(resumen.totalPedidos)} />
+            <StatCard label="Líneas pedidas" value={formatearNumero(resumen.totalLineas)} />
             <StatCard label="Cajas" value={formatearNumero(resumen.totalCajas)} />
             <StatCard label="Unidades" value={formatearNumero(resumen.totalUnidades)} />
             <StatCard label="Artículos distintos" value={formatearNumero(resumen.articulosDistintos)} />
           </section>
 
+          <section style={noticeBox}>
+            <strong>Importante:</strong> desde ahora los datos salen de movimientos reales con hora. Las estadísticas anteriores a este cambio no pueden reconstruirse con corte 14:30 exacto.
+          </section>
+
           <section style={gridTwo}>
-            <Panel title="Pedidos por día" subtitle="Cada día va de 14:30 a 14:30">
+            <Panel title="Actividad por día" subtitle="Cada día va de 14:30 a 14:30">
               <MiniBarChart
                 data={pedidosPorDia.map((fila) => ({
                   label: formatearFecha(fila.fecha),
-                  value: Number(fila.total_pedidos || 0),
+                  value: Number(fila.lineas || 0),
                 }))}
-                valueLabel="pedidos"
+                valueLabel="líneas"
               />
 
               <table style={table}>
                 <thead>
                   <tr>
                     <th style={th}>Día estadístico</th>
-                    <th style={thRight}>Pedidos</th>
+                    <th style={thRight}>Líneas</th>
+                    <th style={thRight}>Cajas</th>
+                    <th style={thRight}>Unid.</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pedidosPorDia.length === 0 ? (
-                    <FilaVacia columnas={2} />
+                    <FilaVacia columnas={4} />
                   ) : (
                     pedidosPorDia.map((fila) => (
                       <tr key={fila.fecha}>
                         <td style={td}>{formatearFecha(fila.fecha)}</td>
-                        <td style={tdRightStrong}>{formatearNumero(fila.total_pedidos)}</td>
+                        <td style={tdRightStrong}>{formatearNumero(fila.lineas)}</td>
+                        <td style={tdRight}>{formatearNumero(fila.cajas)}</td>
+                        <td style={tdRight}>{formatearNumero(fila.unidades)}</td>
                       </tr>
                     ))
                   )}
@@ -325,30 +369,34 @@ export default function Estadisticas() {
               </table>
             </Panel>
 
-            <Panel title="Pedidos por mes" subtitle="Agrupado por día estadístico">
+            <Panel title="Actividad por mes" subtitle="Agrupado por día estadístico">
               <MiniBarChart
                 data={pedidosPorMes.map((fila) => ({
                   label: nombreMes(fila.mes),
-                  value: Number(fila.total_pedidos || 0),
+                  value: Number(fila.lineas || 0),
                 }))}
-                valueLabel="pedidos"
+                valueLabel="líneas"
               />
 
               <table style={table}>
                 <thead>
                   <tr>
                     <th style={th}>Mes</th>
-                    <th style={thRight}>Pedidos</th>
+                    <th style={thRight}>Líneas</th>
+                    <th style={thRight}>Cajas</th>
+                    <th style={thRight}>Unid.</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pedidosPorMes.length === 0 ? (
-                    <FilaVacia columnas={2} />
+                    <FilaVacia columnas={4} />
                   ) : (
                     pedidosPorMes.map((fila) => (
                       <tr key={fila.mes}>
                         <td style={td}>{nombreMes(fila.mes)}</td>
-                        <td style={tdRightStrong}>{formatearNumero(fila.total_pedidos)}</td>
+                        <td style={tdRightStrong}>{formatearNumero(fila.lineas)}</td>
+                        <td style={tdRight}>{formatearNumero(fila.cajas)}</td>
+                        <td style={tdRight}>{formatearNumero(fila.unidades)}</td>
                       </tr>
                     ))
                   )}
@@ -439,9 +487,8 @@ function agruparArticulos(filas, campoOrden) {
   const mapa = new Map();
 
   filas.forEach((fila) => {
-    const key = String(fila.articulo_id || fila.codigo_articulo || fila.nombre_articulo || "");
+    const key = String(fila.codigo_articulo || fila.nombre_articulo || "");
     const actual = mapa.get(key) || {
-      articulo_id: fila.articulo_id,
       codigo_articulo: fila.codigo_articulo || "",
       nombre_articulo: fila.nombre_articulo || "Sin nombre",
       departamento: fila.departamento || "",
@@ -452,7 +499,7 @@ function agruparArticulos(filas, campoOrden) {
 
     actual.cajas += Number(fila.cajas || 0);
     actual.unidades += Number(fila.unidades || 0);
-    actual.veces_pedido += Number(fila.veces_pedido || 0);
+    actual.veces_pedido += 1;
 
     mapa.set(key, actual);
   });
@@ -542,7 +589,7 @@ function TablaArticulos({ filas, campo, etiqueta }) {
             <FilaVacia columnas={6} />
           ) : (
             filas.map((fila) => (
-              <tr key={`${fila.articulo_id}-${fila.codigo_articulo}-${fila.nombre_articulo}`}>
+              <tr key={`${fila.codigo_articulo}-${fila.nombre_articulo}`}>
                 <td style={td}>
                   <strong>{fila.nombre_articulo}</strong>
                   <div style={smallText}>Código: {fila.codigo_articulo || "-"}</div>
@@ -581,13 +628,15 @@ const filtersBox = { display: "grid", gridTemplateColumns: "180px 180px 1fr", ga
 const label = { display: "block", fontWeight: "900", marginBottom: "7px", color: "#334155", fontSize: "13px" };
 const input = { width: "100%", boxSizing: "border-box", padding: "12px 13px", border: "1px solid #d1d5db", borderRadius: "13px", fontSize: "14px", outline: "none", background: "#ffffff" };
 const filterActions = { display: "flex", gap: "8px", flexWrap: "wrap" };
-const todayButton = { background: "#22c55e", color: "#ffffff", border: "none", borderRadius: "13px", padding: "12px 14px", fontWeight: "950", cursor: "pointer" };
 const periodButton = { background: "#eff6ff", color: "#1d4ed8", border: "none", borderRadius: "13px", padding: "12px 14px", fontWeight: "950", cursor: "pointer" };
+const activeFilterButton = { ...periodButton, background: "#22c55e", color: "#ffffff", boxShadow: "0 10px 20px rgba(34,197,94,0.24)" };
 const applyButton = { background: "#111827", color: "#ffffff", border: "none", borderRadius: "13px", padding: "12px 14px", fontWeight: "950", cursor: "pointer" };
+const activeApplyButton = { ...applyButton, background: "#2563eb" };
 const statsGrid = { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "12px", marginBottom: "18px" };
 const statCard = { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "18px", padding: "16px", boxShadow: "0 10px 28px rgba(15,23,42,0.06)" };
 const statValue = { fontSize: "28px", fontWeight: "950", color: "#111827", lineHeight: "1" };
 const statLabel = { marginTop: "8px", fontSize: "12px", fontWeight: "850", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" };
+const noticeBox = { background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa", borderRadius: "16px", padding: "13px 15px", marginBottom: "18px", fontSize: "13px" };
 const gridTwo = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px" };
 const panel = { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "22px", padding: "16px", boxShadow: "0 14px 35px rgba(15,23,42,0.07)", marginBottom: "18px" };
 const panelHeader = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "14px", marginBottom: "14px" };
