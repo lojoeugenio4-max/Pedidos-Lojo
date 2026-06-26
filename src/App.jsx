@@ -1301,9 +1301,7 @@ export default function App() {
                 onChange={(event) => {
                   setSearchInput(event.target.value);
                   setSearch(event.target.value);
-                  const hasSearchText = Boolean(event.target.value.trim());
-                  setHeaderCollapsed(hasSearchText);
-                  if (hasSearchText) {
+                  if (event.target.value.trim()) {
                     setSelectedDepartment("TODOS");
                   }
                 }}
@@ -1630,7 +1628,6 @@ const styles = {
     width: "100%",
     maxWidth: "100vw",
     overflowX: "hidden",
-    touchAction: "pan-y",
     background: "#eef1f8",
     color: "#06145f",
     fontFamily:
@@ -1640,9 +1637,8 @@ const styles = {
   },
 
   topArea: {
-    position: "sticky",
-    top: 0,
-    zIndex: 100,
+    position: "relative",
+    zIndex: 20,
     background: "#eef1f8",
     padding: "2px 0 4px",
     boxShadow: "0 4px 10px rgba(15,23,42,0.07)",
@@ -2050,14 +2046,12 @@ const styles = {
   catalog: {
     width: "min(1100px, 100vw)",
     margin: "0 auto",
-    padding: "6px 6px",
+    padding: "6px 6px calc(150px + env(safe-area-inset-bottom))",
     boxSizing: "border-box",
     overflowX: "hidden",
-    WebkitOverflowScrolling: "touch",
-    touchAction: "pan-y",
-    overscrollBehaviorY: "contain",
     position: "relative",
     zIndex: 1,
+    WebkitOverflowScrolling: "touch",
   },
 
   departmentSection: {
@@ -2335,21 +2329,22 @@ const styles = {
     width: "100vw",
     maxWidth: "100vw",
     overflowX: "hidden",
+    overflowY: "auto",
+    WebkitOverflowScrolling: "touch",
   },
 
   summaryPanel: {
     width: "100%",
     maxWidth: "100%",
-    maxHeight: "90dvh",
+    maxHeight: "calc(100dvh - 24px)",
     overflowY: "auto",
     overflowX: "hidden",
-    WebkitOverflowScrolling: "touch",
-    touchAction: "pan-y",
     background: "#fff",
     borderRadius: "22px 22px 0 0",
-    padding: "16px",
+    padding: "16px 16px calc(110px + env(safe-area-inset-bottom))",
     position: "relative",
     boxSizing: "border-box",
+    WebkitOverflowScrolling: "touch",
   },
 
   summaryClose: {
