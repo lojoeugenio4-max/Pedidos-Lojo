@@ -190,23 +190,6 @@ function getTodayISO() {
   return `${year}-${month}-${day}`;
 }
 
-function getDiaEstadisticoISO() {
-  const ahora = new Date();
-  const corte = new Date();
-
-  corte.setHours(14, 30, 0, 0);
-
-  if (ahora < corte) {
-    ahora.setDate(ahora.getDate() - 1);
-  }
-
-  const year = ahora.getFullYear();
-  const month = String(ahora.getMonth() + 1).padStart(2, "0");
-  const day = String(ahora.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
 export default function App() {
   const rowRefs = useRef({});
   const departmentDropdownRef = useRef(null);
@@ -1008,104 +991,33 @@ export default function App() {
   };
 
   async function guardarEstadisticasPedido() {
-    const hoy = getDiaEstadisticoISO();
-
     try {
-      const { data: pedidoDiaActual, error: pedidoDiaSelectError } = await supabase
-        .from("estadisticas_pedidos_dia")
-        .select("fecha, total_pedidos")
-        .eq("fecha", hoy)
-        .maybeSingle();
+      const movimientos = orderedItems
+        .map((item) => {
+          const product = item.product;
+          const cajas = Number(item.boxes || 0);
+          const unidades = Number(item.units || 0);
 
-      if (pedidoDiaSelectError) {
-        throw pedidoDiaSelectError;
-      }
+          if (!cajas && !unidades) return null;
 
-      if (pedidoDiaActual) {
-        const { error: pedidoDiaUpdateError } = await supabase
-          .from("estadisticas_pedidos_dia")
-          .update({
-            total_pedidos: Number(pedidoDiaActual.total_pedidos || 0) + 1,
-          })
-          .eq("fecha", hoy);
+          return {
+            codigo_articulo: product.codigo || product.idnum || "",
+            nombre_articulo: product.name || product.nombre || "",
+            departamento: product.department || product.departamento || "",
+            cajas,
+            unidades,
+          };
+        })
+        .filter(Boolean);
 
-        if (pedidoDiaUpdateError) {
-          throw pedidoDiaUpdateError;
-        }
-      } else {
-        const { error: pedidoDiaInsertError } = await supabase
-          .from("estadisticas_pedidos_dia")
-          .insert([
-            {
-              fecha: hoy,
-              total_pedidos: 1,
-            },
-          ]);
+      if (!movimientos.length) return;
 
-        if (pedidoDiaInsertError) {
-          throw pedidoDiaInsertError;
-        }
-      }
+      const { error: movimientosError } = await supabase
+        .from("estadisticas_movimientos")
+        .insert(movimientos);
 
-      for (const item of orderedItems) {
-        const product = item.product;
-        const cajas = Number(item.boxes || 0);
-        const unidades = Number(item.units || 0);
-
-        if (!cajas && !unidades) continue;
-
-        const articuloId = Number(product.id);
-        const departamento = product.department || product.departamento || "";
-
-        const { data: articuloDiaActual, error: articuloDiaSelectError } =
-          await supabase
-            .from("estadisticas_articulos_dia")
-            .select("fecha, articulo_id, cajas, unidades, veces_pedido")
-            .eq("fecha", hoy)
-            .eq("articulo_id", articuloId)
-            .maybeSingle();
-
-        if (articuloDiaSelectError) {
-          throw articuloDiaSelectError;
-        }
-
-        if (articuloDiaActual) {
-          const { error: articuloDiaUpdateError } = await supabase
-            .from("estadisticas_articulos_dia")
-            .update({
-              codigo_articulo: product.codigo || product.idnum || "",
-              nombre_articulo: product.name || product.nombre || "",
-              departamento,
-              cajas: Number(articuloDiaActual.cajas || 0) + cajas,
-              unidades: Number(articuloDiaActual.unidades || 0) + unidades,
-              veces_pedido: Number(articuloDiaActual.veces_pedido || 0) + 1,
-            })
-            .eq("fecha", hoy)
-            .eq("articulo_id", articuloId);
-
-          if (articuloDiaUpdateError) {
-            throw articuloDiaUpdateError;
-          }
-        } else {
-          const { error: articuloDiaInsertError } = await supabase
-            .from("estadisticas_articulos_dia")
-            .insert([
-              {
-                fecha: hoy,
-                articulo_id: articuloId,
-                codigo_articulo: product.codigo || product.idnum || "",
-                nombre_articulo: product.name || product.nombre || "",
-                departamento,
-                cajas,
-                unidades,
-                veces_pedido: 1,
-              },
-            ]);
-
-          if (articuloDiaInsertError) {
-            throw articuloDiaInsertError;
-          }
-        }
+      if (movimientosError) {
+        throw movimientosError;
       }
     } catch (err) {
       console.error("Error guardando estadísticas:", err);
