@@ -992,6 +992,11 @@ export default function App() {
 
   async function guardarEstadisticasPedido() {
     try {
+      const pedidoId =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
       const movimientos = orderedItems
         .map((item) => {
           const product = item.product;
@@ -1001,6 +1006,7 @@ export default function App() {
           if (!cajas && !unidades) return null;
 
           return {
+            pedido_id: pedidoId,
             codigo_articulo: product.codigo || product.idnum || "",
             nombre_articulo: product.name || product.nombre || "",
             departamento: product.department || product.departamento || "",
