@@ -1030,14 +1030,14 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "auto" });
   };
 
-  async function guardarEstadisticasPedido() {
+  async function guardarEstadisticasPedido(itemsPedido = orderedItems) {
     try {
       const pedidoId =
         typeof crypto !== "undefined" && crypto.randomUUID
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-      const movimientos = orderedItems
+      const movimientos = itemsPedido
         .map((item) => {
           const product = item.product;
           const cajas = Number(item.boxes || 0);
@@ -1077,17 +1077,23 @@ export default function App() {
       return;
     }
 
+    // Snapshot del pedido en el momento exacto del clic.
+    // Así podemos limpiar la app sin perder el contenido que irá a WhatsApp.
+    const itemsPedido = [...orderedItems];
+    const customerNamePedido = customerName.trim();
+    const notesPedido = notes.trim();
+
     const lines = [];
 
     lines.push(`*${t.orderSummary}*`);
     lines.push("");
 
-    if (customerName.trim()) {
-      lines.push(`*${t.customer}:* ${customerName.trim()}`);
+    if (customerNamePedido) {
+      lines.push(`*${t.customer}:* ${customerNamePedido}`);
       lines.push("");
     }
 
-    const itemsOrdenados = [...orderedItems].sort((a, b) => {
+    const itemsOrdenados = [...itemsPedido].sort((a, b) => {
       const departamentoA = String(
         a.product.department || a.product.departamento || "SIN DEPARTAMENTO"
       );
@@ -1132,8 +1138,8 @@ export default function App() {
       lines.push("");
     });
 
-    if (notes.trim()) {
-      lines.push(`*${t.notes}:* ${notes.trim()}`);
+    if (notesPedido) {
+      lines.push(`*${t.notes}:* ${notesPedido}`);
       lines.push("");
     }
 
@@ -1142,29 +1148,30 @@ export default function App() {
     const message = encodeURIComponent(lines.join("\n"));
     const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${message}`;
 
-    // Guardamos una copia local justo antes de salir hacia WhatsApp.
-    // Así, si WhatsApp no se abre o el cliente vuelve atrás, el pedido no se pierde.
-    localStorage.setItem(
-      ORDER_STORAGE_KEY,
-      JSON.stringify({
-        quantities,
-        customerName,
-        notes,
-      })
-    );
+    // Dejamos el pedido eliminado ANTES de abandonar la app.
+    // No usamos await antes de abrir WhatsApp para no perder el gesto del usuario.
+    localStorage.removeItem(ORDER_STORAGE_KEY);
+    setQuantities({});
+    setCustomerName("");
+    setCustomerNameFocused(false);
+    setSoloCajasAviso(null);
+    setNotes("");
+    setSearchInput("");
+    setSearch("");
+    setSelectedDepartment("OFERTAS");
+    setDepartmentDropdownOpen(false);
+    setShowOrderSummary(false);
+    setSelectedImage(null);
+    setPushCerrado(false);
+    setMostrarVolverPush(false);
+    setHeaderCollapsed(false);
 
-    // Marcamos que el pedido debe borrarse cuando el cliente vuelva desde WhatsApp.
-    // No lo borramos antes para evitar pérdidas si WhatsApp no llega a abrirse.
-    sessionStorage.setItem(ORDER_SENT_PENDING_CLEAR_KEY, "true");
+    // Guardamos estadísticas en segundo plano, sin bloquear WhatsApp.
+    guardarEstadisticasPedido(itemsPedido);
 
-    // No esperamos a Supabase antes de abrir WhatsApp: en móvil puede bloquear la apertura
-    // si deja de considerarse una acción directa del usuario.
-    guardarEstadisticasPedido();
-
-    // Abrir en la misma pestaña es más fiable en iOS/Android que crear un enlace _blank.
-    window.location.href = whatsappUrl;
+    // Abrir en la misma pestaña es lo más fiable en móviles.
+    window.location.assign(whatsappUrl);
   };
-
 
   const pushItems = Array.isArray(pushOferta?.articulos)
     ? pushOferta.articulos
