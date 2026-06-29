@@ -13,6 +13,7 @@ import logoLojo from "./assets/logo-lojo.jpg";
 
 const WHATSAPP_NUMBER = "34670716744";
 const ORDER_STORAGE_KEY = "cash-lojo-pedido";
+const ORDER_SENT_PENDING_CLEAR_KEY = "cash-lojo-pedido-enviado-pendiente-borrar";
 const LANGUAGE_STORAGE_KEY = "cash-lojo-language";
 const SUPABASE_URL = "https://bohlxagrtpjvqrgkonlo.supabase.co";
 
@@ -275,6 +276,45 @@ export default function App() {
       })
     );
   }, [quantities, customerName, notes]);
+
+  useEffect(() => {
+    const borrarPedidoSiVuelveDeWhatsApp = () => {
+      if (sessionStorage.getItem(ORDER_SENT_PENDING_CLEAR_KEY) !== "true") return;
+
+      sessionStorage.removeItem(ORDER_SENT_PENDING_CLEAR_KEY);
+      localStorage.removeItem(ORDER_STORAGE_KEY);
+      setQuantities({});
+      setCustomerName("");
+      setCustomerNameFocused(false);
+      setSoloCajasAviso(null);
+      setNotes("");
+      setSearchInput("");
+      setSearch("");
+      setSelectedDepartment("OFERTAS");
+      setDepartmentDropdownOpen(false);
+      setShowOrderSummary(false);
+      setSelectedImage(null);
+      setHeaderCollapsed(false);
+    };
+
+    const comprobarVisibilidad = () => {
+      if (document.visibilityState === "visible") {
+        borrarPedidoSiVuelveDeWhatsApp();
+      }
+    };
+
+    window.addEventListener("pageshow", borrarPedidoSiVuelveDeWhatsApp);
+    window.addEventListener("focus", borrarPedidoSiVuelveDeWhatsApp);
+    document.addEventListener("visibilitychange", comprobarVisibilidad);
+
+    borrarPedidoSiVuelveDeWhatsApp();
+
+    return () => {
+      window.removeEventListener("pageshow", borrarPedidoSiVuelveDeWhatsApp);
+      window.removeEventListener("focus", borrarPedidoSiVuelveDeWhatsApp);
+      document.removeEventListener("visibilitychange", comprobarVisibilidad);
+    };
+  }, []);
 
   useEffect(() => {
     let viewport = document.querySelector("meta[name=viewport]");
@@ -1112,6 +1152,10 @@ export default function App() {
         notes,
       })
     );
+
+    // Marcamos que el pedido debe borrarse cuando el cliente vuelva desde WhatsApp.
+    // No lo borramos antes para evitar pérdidas si WhatsApp no llega a abrirse.
+    sessionStorage.setItem(ORDER_SENT_PENDING_CLEAR_KEY, "true");
 
     // No esperamos a Supabase antes de abrir WhatsApp: en móvil puede bloquear la apertura
     // si deja de considerarse una acción directa del usuario.
