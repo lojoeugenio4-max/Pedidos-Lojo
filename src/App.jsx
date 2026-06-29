@@ -1031,13 +1031,11 @@ export default function App() {
     }
   }
 
-  const sendByWhatsApp = async () => {
+  const sendByWhatsApp = () => {
     if (!orderedItems.length) {
       alert(t.alertEmpty);
       return;
     }
-
-    await guardarEstadisticasPedido();
 
     const lines = [];
 
@@ -1104,16 +1102,25 @@ export default function App() {
     const message = encodeURIComponent(lines.join("\n"));
     const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${message}`;
 
-    const link = document.createElement("a");
-    link.href = whatsappUrl;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Guardamos una copia local justo antes de salir hacia WhatsApp.
+    // Así, si WhatsApp no se abre o el cliente vuelve atrás, el pedido no se pierde.
+    localStorage.setItem(
+      ORDER_STORAGE_KEY,
+      JSON.stringify({
+        quantities,
+        customerName,
+        notes,
+      })
+    );
 
-    resetToInitialState();
+    // No esperamos a Supabase antes de abrir WhatsApp: en móvil puede bloquear la apertura
+    // si deja de considerarse una acción directa del usuario.
+    guardarEstadisticasPedido();
+
+    // Abrir en la misma pestaña es más fiable en iOS/Android que crear un enlace _blank.
+    window.location.href = whatsappUrl;
   };
+
 
   const pushItems = Array.isArray(pushOferta?.articulos)
     ? pushOferta.articulos
