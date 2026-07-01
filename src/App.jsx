@@ -1695,7 +1695,8 @@ const styles = {
   },
 
   topArea: {
-    position: "relative",
+    position: "sticky",
+    top: 0,
     zIndex: 20,
     background: "#eef1f8",
     padding: "2px 0 4px",
