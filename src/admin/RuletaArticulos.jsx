@@ -25,11 +25,13 @@ export default function RuletaArticulos() {
 
   const [departamentoFiltro, setDepartamentoFiltro] = useState("TODOS");
   const [busqueda, setBusqueda] = useState("");
+  const [vistaFiltro, setVistaFiltro] = useState("TODOS");
 
   const [cargando, setCargando] = useState(true);
   const [guardandoId, setGuardandoId] = useState(null);
   const [guardandoLote, setGuardandoLote] = useState(false);
   const [actualizandoId, setActualizandoId] = useState(null);
+  const [actualizandoVentaId, setActualizandoVentaId] = useState(null);
   const [eliminandoId, setEliminandoId] = useState(null);
 
   const [error, setError] = useState("");
@@ -116,12 +118,15 @@ export default function RuletaArticulos() {
     setCargando(false);
   }
 
-  const codigosSeleccionados = useMemo(() => {
-    return new Set(
-      articulosSeleccionados.map((item) =>
-        String(item.codigo_articulo || "").trim()
-      )
-    );
+  const seleccionadosPorCodigo = useMemo(() => {
+    const mapa = new Map();
+
+    articulosSeleccionados.forEach((item) => {
+      const codigo = String(item.codigo_articulo || "").trim();
+      if (codigo) mapa.set(codigo, item);
+    });
+
+    return mapa;
   }, [articulosSeleccionados]);
 
   const articulosFiltrados = useMemo(() => {
@@ -129,9 +134,17 @@ export default function RuletaArticulos() {
     const palabras = texto.split(/\s+/).filter(Boolean);
 
     return articulos.filter((articulo) => {
+      const codigo = String(articulo.codigo || "").trim();
+      const seleccionado = seleccionadosPorCodigo.has(codigo);
+
       const coincideDepartamento =
         departamentoFiltro === "TODOS" ||
         String(articulo.departamento_id) === String(departamentoFiltro);
+
+      const coincideVista =
+        vistaFiltro === "TODOS" ||
+        (vistaFiltro === "EN_RULETA" && seleccionado) ||
+        (vistaFiltro === "FUERA_RULETA" && !seleccionado);
 
       const searchable = normalizar(
         `${articulo.codigo || ""} ${articulo.nombre || ""} ${
@@ -143,35 +156,37 @@ export default function RuletaArticulos() {
         palabras.length === 0 ||
         palabras.every((palabra) => searchable.includes(palabra));
 
-      return coincideDepartamento && coincideBusqueda;
+      return coincideDepartamento && coincideVista && coincideBusqueda;
     });
-  }, [articulos, busqueda, departamentoFiltro]);
+  }, [articulos, busqueda, departamentoFiltro, seleccionadosPorCodigo, vistaFiltro]);
 
   const articulosFiltradosNoSeleccionados = useMemo(() => {
     return articulosFiltrados.filter((articulo) => {
       const codigo = String(articulo.codigo || "").trim();
-      return codigo && !codigosSeleccionados.has(codigo);
+      return codigo && !seleccionadosPorCodigo.has(codigo);
     });
-  }, [articulosFiltrados, codigosSeleccionados]);
+  }, [articulosFiltrados, seleccionadosPorCodigo]);
 
-  async function agregarArticulo(articulo) {
-    if (!promocion) return;
+  async function agregarArticulo(articulo, cantidadInicial = 1) {
+    if (!promocion) return null;
 
     const codigo = String(articulo.codigo || "").trim();
 
     if (!codigo) {
       setError("Este artículo no tiene código.");
-      return;
+      return null;
     }
 
-    if (codigosSeleccionados.has(codigo)) {
+    if (seleccionadosPorCodigo.has(codigo)) {
       setMensaje("Ese artículo ya está en la promoción.");
-      return;
+      return seleccionadosPorCodigo.get(codigo);
     }
 
     setError("");
     setMensaje("");
     setGuardandoId(articulo.id);
+
+    const cantidad = Math.max(1, Number.parseInt(cantidadInicial, 10) || 1);
 
     const { data, error } = await supabase
       .from("promociones_ruleta_articulos")
@@ -180,7 +195,7 @@ export default function RuletaArticulos() {
         articulo_id: articulo.id,
         codigo_articulo: codigo,
         nombre_articulo: articulo.nombre || "",
-        cantidad_minima: 1,
+        cantidad_minima: cantidad,
       })
       .select("*")
       .single();
@@ -188,20 +203,22 @@ export default function RuletaArticulos() {
     if (error) {
       console.error(error);
       setError("No se ha podido añadir el artículo.");
-    } else {
-      setArticulosSeleccionados((actual) =>
-        [...actual, data].sort((a, b) =>
-          String(a.nombre_articulo || "").localeCompare(
-            String(b.nombre_articulo || ""),
-            "es",
-            { sensitivity: "base" }
-          )
-        )
-      );
-      setMensaje("Artículo añadido correctamente.");
+      setGuardandoId(null);
+      return null;
     }
 
+    setArticulosSeleccionados((actual) =>
+      [...actual, data].sort((a, b) =>
+        String(a.nombre_articulo || "").localeCompare(
+          String(b.nombre_articulo || ""),
+          "es",
+          { sensitivity: "base" }
+        )
+      )
+    );
+    setMensaje("Artículo añadido correctamente.");
     setGuardandoId(null);
+    return data;
   }
 
   async function agregarArticulosFiltrados() {
@@ -263,6 +280,7 @@ export default function RuletaArticulos() {
       return;
     }
 
+
     setError("");
     setMensaje("");
     setActualizandoId(item.id);
@@ -294,12 +312,60 @@ export default function RuletaArticulos() {
     setActualizandoId(null);
   }
 
-  async function eliminarArticulo(item) {
-    const confirmar = window.confirm(
-      `¿Quitar "${item.nombre_articulo}" de la promoción?`
-    );
+  async function cambiarEstadoRuleta(articulo, seleccionadoActual) {
+    const codigo = String(articulo.codigo || "").trim();
+    const item = seleccionadosPorCodigo.get(codigo);
 
-    if (!confirmar) return;
+    if (seleccionadoActual && item) {
+      await eliminarArticulo(item, false);
+      return;
+    }
+
+    await agregarArticulo(articulo);
+  }
+
+  async function cambiarPermiteUnidades(articulo, permiteUnidades) {
+    setError("");
+    setMensaje("");
+    setActualizandoVentaId(articulo.id);
+
+    const { error } = await supabase
+      .from("articulos")
+      .update({ permite_unidades: permiteUnidades })
+      .eq("id", articulo.id);
+
+    if (error) {
+      console.error(error);
+      setError("No se ha podido actualizar si el artículo permite unidades.");
+    } else {
+      setArticulos((actual) =>
+        actual.map((item) =>
+          item.id === articulo.id
+            ? {
+                ...item,
+                permite_unidades: permiteUnidades,
+              }
+            : item
+        )
+      );
+      setMensaje(
+        permiteUnidades
+          ? "Artículo configurado para Cajas y Unidades."
+          : "Artículo configurado solo para Cajas."
+      );
+    }
+
+    setActualizandoVentaId(null);
+  }
+
+  async function eliminarArticulo(item, pedirConfirmacion = true) {
+    if (pedirConfirmacion) {
+      const confirmar = window.confirm(
+        `¿Quitar "${item.nombre_articulo}" de la promoción?`
+      );
+
+      if (!confirmar) return;
+    }
 
     setError("");
     setMensaje("");
@@ -341,7 +407,7 @@ export default function RuletaArticulos() {
       {mensaje && <div style={okStyle}>{mensaje}</div>}
 
       <section style={bloque}>
-        <h5 style={subtitulo}>Añadir artículos a la promoción</h5>
+        <h5 style={subtitulo}>Gestionar artículos de la promoción</h5>
 
         <div style={filtros}>
           <label style={label}>
@@ -371,11 +437,24 @@ export default function RuletaArticulos() {
               placeholder="Buscar por código, nombre o departamento..."
             />
           </label>
+
+          <label style={label}>
+            Ver
+            <select
+              style={input}
+              value={vistaFiltro}
+              onChange={(e) => setVistaFiltro(e.target.value)}
+            >
+              <option value="TODOS">Todos</option>
+              <option value="EN_RULETA">Solo en ruleta</option>
+              <option value="FUERA_RULETA">Solo fuera de ruleta</option>
+            </select>
+          </label>
         </div>
 
         <div style={accionesFiltro}>
           <div style={contadorFiltro}>
-            {articulosFiltradosNoSeleccionados.length} artículos nuevos con estos filtros
+            {articulosFiltrados.length} artículos visibles · {articulosFiltradosNoSeleccionados.length} sin añadir
           </div>
 
           <button
@@ -397,121 +476,123 @@ export default function RuletaArticulos() {
           </button>
         </div>
 
-        <div style={resultados}>
-          {articulosFiltrados.length === 0 ? (
-            <div style={vacio}>No hay artículos con esos filtros.</div>
-          ) : (
-            articulosFiltrados.slice(0, 160).map((articulo) => {
-              const codigo = String(articulo.codigo || "").trim();
-              const seleccionado = codigosSeleccionados.has(codigo);
+        <div style={tablaWrap}>
+          <table style={tabla}>
+            <thead>
+              <tr>
+                <th style={th}>Artículo</th>
+                <th style={thDepartamento}>Departamento</th>
+                <th style={thVenta}>Cajas y Unidades</th>
+                <th style={thRuleta}>En ruleta</th>
+                <th style={thCantidad}>Cantidad mínima</th>
+              </tr>
+            </thead>
 
-              return (
-                <article
-                  key={articulo.id}
-                  style={{
-                    ...articuloCard,
-                    ...(seleccionado ? articuloCardSeleccionado : {}),
-                  }}
-                >
-                  <div style={articuloInfo}>
-                    <strong style={articuloNombre}>
-                      {articulo.codigo ? `${articulo.codigo} · ` : ""}
-                      {articulo.nombre}
-                    </strong>
-
-                    <span style={departamentoTexto}>
-                      {articulo.departamentos?.nombre || "Sin departamento"}
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    style={{
-                      ...botonAgregar,
-                      ...(seleccionado ? botonAgregado : {}),
-                    }}
-                    disabled={seleccionado || guardandoId === articulo.id || guardandoLote}
-                    onClick={() => agregarArticulo(articulo)}
-                  >
-                    {seleccionado
-                      ? "Añadido"
-                      : guardandoId === articulo.id
-                        ? "..."
-                        : "+"}
-                  </button>
-                </article>
-              );
-            })
-          )}
-        </div>
-      </section>
-
-      <section style={bloque}>
-        <h5 style={subtitulo}>Artículos participantes</h5>
-
-        {articulosSeleccionados.length === 0 ? (
-          <div style={vacio}>
-            Todavía no hay artículos configurados. Añade artículos desde el
-            buscador superior.
-          </div>
-        ) : (
-          <div style={tablaWrap}>
-            <table style={tabla}>
-              <thead>
+            <tbody>
+              {articulosFiltrados.length === 0 ? (
                 <tr>
-                  <th style={th}>Artículo</th>
-                  <th style={thCantidad}>Cantidad mínima</th>
-                  <th style={thAcciones}>Eliminar</th>
+                  <td style={tdVacio} colSpan="5">
+                    No hay artículos con esos filtros.
+                  </td>
                 </tr>
-              </thead>
+              ) : (
+                articulosFiltrados.slice(0, 220).map((articulo) => {
+                  const codigo = String(articulo.codigo || "").trim();
+                  const itemSeleccionado = seleccionadosPorCodigo.get(codigo);
+                  const seleccionado = Boolean(itemSeleccionado);
+                  const guardandoEste =
+                    guardandoId === articulo.id ||
+                    eliminandoId === itemSeleccionado?.id ||
+                    guardandoLote;
 
-              <tbody>
-                {articulosSeleccionados.map((item) => (
-                  <tr key={item.id}>
-                    <td style={td}>
-                      <strong>{item.nombre_articulo}</strong>
+                  return (
+                    <tr
+                      key={articulo.id}
+                      style={seleccionado ? filaSeleccionada : undefined}
+                    >
+                      <td style={td}>
+                        <strong>{articulo.nombre}</strong>
 
-                      {item.codigo_articulo && (
-                        <div style={codigoTexto}>
-                          Código: {item.codigo_articulo}
-                        </div>
-                      )}
-                    </td>
+                        {articulo.codigo && (
+                          <div style={codigoTexto}>Código: {articulo.codigo}</div>
+                        )}
+                      </td>
 
-                    <td style={tdCantidad}>
-                      <input
-                        style={inputCantidad}
-                        type="number"
-                        min="1"
-                        step="1"
-                        defaultValue={item.cantidad_minima || 1}
-                        disabled={actualizandoId === item.id}
-                        onBlur={(e) =>
-                          cambiarCantidadMinima(item, e.target.value)
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            e.currentTarget.blur();
+                      <td style={tdDepartamento}>
+                        {articulo.departamentos?.nombre || "Sin departamento"}
+                      </td>
+
+                      <td style={tdCentro}>
+                        <label style={checkboxLabel}>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(articulo.permite_unidades)}
+                            disabled={actualizandoVentaId === articulo.id}
+                            onChange={(e) =>
+                              cambiarPermiteUnidades(articulo, e.target.checked)
+                            }
+                          />
+                          <span>
+                            {articulo.permite_unidades ? "Cajas y Unidades" : "Solo Cajas"}
+                          </span>
+                        </label>
+                      </td>
+
+                      <td style={tdCentro}>
+                        <label style={switchLabel}>
+                          <input
+                            type="checkbox"
+                            checked={seleccionado}
+                            disabled={guardandoEste}
+                            onChange={() => cambiarEstadoRuleta(articulo, seleccionado)}
+                          />
+                          <span>{seleccionado ? "Sí" : "No"}</span>
+                        </label>
+                      </td>
+
+                      <td style={tdCantidad}>
+                        <input
+                          style={{
+                            ...inputCantidad,
+                            ...(!seleccionado ? inputCantidadDeshabilitado : {}),
+                          }}
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={itemSeleccionado?.cantidad_minima || 1}
+                          disabled={!seleccionado || actualizandoId === itemSeleccionado?.id}
+                          onChange={(e) => {
+                            const valor = Number.parseInt(e.target.value, 10) || 1;
+                            setArticulosSeleccionados((actual) =>
+                              actual.map((actualItem) =>
+                                actualItem.id === itemSeleccionado?.id
+                                  ? { ...actualItem, cantidad_minima: valor }
+                                  : actualItem
+                              )
+                            );
+                          }}
+                          onBlur={(e) =>
+                            itemSeleccionado && cambiarCantidadMinima(itemSeleccionado, e.target.value)
                           }
-                        }}
-                      />
-                    </td>
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              e.currentTarget.blur();
+                            }
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
 
-                    <td style={tdAcciones}>
-                      <button
-                        type="button"
-                        style={botonEliminar}
-                        disabled={eliminandoId === item.id}
-                        onClick={() => eliminarArticulo(item)}
-                      >
-                        {eliminandoId === item.id ? "..." : "Eliminar"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {articulosFiltrados.length > 220 && (
+          <div style={avisoLimite}>
+            Mostrando los primeros 220 resultados. Usa el buscador o el departamento para afinar más.
           </div>
         )}
       </section>
@@ -565,7 +646,7 @@ const bloque = {
 
 const filtros = {
   display: "grid",
-  gridTemplateColumns: "minmax(190px, 260px) minmax(240px, 1fr)",
+  gridTemplateColumns: "minmax(190px, 260px) minmax(240px, 1fr) minmax(160px, 200px)",
   gap: "12px",
   marginBottom: "12px",
 };
@@ -622,81 +703,27 @@ const botonDeshabilitado = {
   cursor: "not-allowed",
 };
 
-const resultados = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-  gap: "10px",
-  maxHeight: "390px",
-  overflowY: "auto",
-  paddingRight: "4px",
-};
-
-const articuloCard = {
-  border: "1px solid #e5e7eb",
-  background: "#ffffff",
-  borderRadius: "12px",
-  padding: "10px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "10px",
-};
-
-const articuloCardSeleccionado = {
-  borderColor: "#22c55e",
-  background: "#f0fdf4",
-};
-
-const articuloInfo = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "4px",
-  minWidth: 0,
-};
-
-const articuloNombre = {
-  color: "#111827",
-  fontSize: "13px",
-  lineHeight: 1.25,
-};
-
-const departamentoTexto = {
-  color: "#6b7280",
-  fontSize: "12px",
-};
-
-const botonAgregar = {
-  minWidth: "46px",
-  height: "38px",
-  border: "none",
-  borderRadius: "10px",
-  background: "#111827",
-  color: "#ffffff",
-  fontSize: "20px",
-  fontWeight: "900",
-  cursor: "pointer",
-};
-
-const botonAgregado = {
-  background: "#22c55e",
-  fontSize: "12px",
-};
-
 const tablaWrap = {
   width: "100%",
   overflowX: "auto",
+  maxHeight: "560px",
+  overflowY: "auto",
+  borderRadius: "12px",
+  border: "1px solid #e5e7eb",
+  background: "#ffffff",
 };
 
 const tabla = {
   width: "100%",
   borderCollapse: "collapse",
   background: "#ffffff",
-  borderRadius: "12px",
-  overflow: "hidden",
   fontSize: "14px",
 };
 
 const th = {
+  position: "sticky",
+  top: 0,
+  zIndex: 1,
   textAlign: "left",
   borderBottom: "1px solid #e5e7eb",
   padding: "10px",
@@ -704,15 +731,26 @@ const th = {
   background: "#ffffff",
 };
 
-const thCantidad = {
+const thDepartamento = {
+  ...th,
+  width: "180px",
+};
+
+const thVenta = {
   ...th,
   width: "170px",
   textAlign: "center",
 };
 
-const thAcciones = {
+const thRuleta = {
   ...th,
-  width: "120px",
+  width: "110px",
+  textAlign: "center",
+};
+
+const thCantidad = {
+  ...th,
+  width: "150px",
   textAlign: "center",
 };
 
@@ -720,6 +758,18 @@ const td = {
   borderBottom: "1px solid #f3f4f6",
   padding: "10px",
   color: "#111827",
+  verticalAlign: "middle",
+};
+
+const tdDepartamento = {
+  ...td,
+  color: "#6b7280",
+  fontSize: "13px",
+};
+
+const tdCentro = {
+  ...td,
+  textAlign: "center",
 };
 
 const tdCantidad = {
@@ -727,9 +777,15 @@ const tdCantidad = {
   textAlign: "center",
 };
 
-const tdAcciones = {
+const tdVacio = {
   ...td,
+  padding: "18px",
+  color: "#6b7280",
   textAlign: "center",
+};
+
+const filaSeleccionada = {
+  background: "#f0fdf4",
 };
 
 const codigoTexto = {
@@ -746,26 +802,35 @@ const inputCantidad = {
   fontSize: "14px",
   textAlign: "center",
   fontWeight: "800",
+  background: "#ffffff",
 };
 
-const botonEliminar = {
-  border: "none",
-  background: "#dc2626",
-  color: "#ffffff",
-  borderRadius: "9px",
-  padding: "8px 10px",
+const inputCantidadDeshabilitado = {
+  opacity: 0.45,
+  background: "#f3f4f6",
+};
+
+const checkboxLabel = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "8px",
   fontSize: "13px",
   fontWeight: "800",
+  color: "#374151",
   cursor: "pointer",
 };
 
-const vacio = {
-  padding: "14px",
-  borderRadius: "12px",
-  background: "#ffffff",
-  border: "1px dashed #d1d5db",
+const switchLabel = {
+  ...checkboxLabel,
+  color: "#111827",
+};
+
+const avisoLimite = {
+  marginTop: "10px",
   color: "#6b7280",
-  fontSize: "14px",
+  fontSize: "13px",
+  fontWeight: "700",
 };
 
 const errorStyle = {
