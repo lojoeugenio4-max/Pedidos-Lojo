@@ -9,9 +9,15 @@ import {
   X,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import StorePage from "./pages/StorePage";
+import DisplayPage from "./pages/DisplayPage";
 import logoLojo from "./assets/logo-lojo.jpg";
+import {
+  construirTextoPedidoWhatsApp,
+  abrirPedidoEnWhatsApp,
+} from "./utils/whatsappPedido";
 
-const WHATSAPP_NUMBER = "34670716744";
+const WHATSAPP_NUMBER = "34670619113";
 const ORDER_STORAGE_KEY = "cash-lojo-pedido";
 const ORDER_SENT_PENDING_CLEAR_KEY = "cash-lojo-pedido-enviado-pendiente-borrar";
 const LANGUAGE_STORAGE_KEY = "cash-lojo-language";
@@ -140,6 +146,10 @@ function normalizeText(text) {
     .trim();
 }
 
+function normalizePromoValue(value) {
+  return normalizeText(value).replace(/[^a-z0-9ñ]/gi, "");
+}
+
 function productMatchesSearch(product, searchText) {
   const normalizedProduct = normalizeText(
     `${product.codigo || ""} ${product.nombre || ""} ${product.offerText || ""}`
@@ -191,7 +201,55 @@ function getTodayISO() {
   return `${year}-${month}-${day}`;
 }
 
+function obtenerCantidadMinimaRuletaArticulo(item) {
+  const candidatos = [
+    item?.cantidad_minima,
+    item?.unidades_minimas,
+    item?.unidades_minima,
+    item?.minimo_unidades,
+    item?.cantidad_minima_articulo,
+    item?.cantidadMinima,
+  ]
+    .map((valor) => Number(String(valor ?? "").replace(",", ".")))
+    .filter((valor) => Number.isFinite(valor) && valor > 0);
+
+  return Math.max(1, ...candidatos);
+}
+
+function MiniRuletaPromocion({ cantidadMinima = 1, permiteUnidades = true }) {
+  const minimo = Math.max(1, Number(cantidadMinima || 1));
+  const unidadMinima = permiteUnidades ? "ud." : "cajas";
+
+  return (
+    <div style={styles.ruletaPromoBadge} aria-label={`Ruleta, mínimo ${minimo} ${unidadMinima}`}>
+      <img
+        src="/productos/Ruleta.webp"
+        alt="Ruleta"
+        style={styles.ruletaPromoImage}
+      />
+      <span style={styles.ruletaPromoText}>Ruleta</span>
+      <span style={styles.ruletaPromoMinimo}>Mín. {minimo} {unidadMinima}</span>
+    </div>
+  );
+}
+
 export default function App() {
+  const searchParams =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search)
+      : null;
+
+  const isStoreMode = searchParams?.get("store") === "1";
+  const isDisplayMode = searchParams?.get("display") === "1";
+
+  if (isDisplayMode) {
+    return <DisplayPage />;
+  }
+
+  if (isStoreMode) {
+    return <StorePage />;
+  }
+
   const rowRefs = useRef({});
   const departmentDropdownRef = useRef(null);
   const stickyCardRef = useRef(null);
@@ -235,11 +293,95 @@ export default function App() {
   );
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
 
+  const [premiosRuleta, setPremiosRuleta] = useState([]);
+  const [configuracionRuleta, setConfiguracionRuleta] = useState(null);
+  const [articulosRuleta, setArticulosRuleta] = useState([]);
+  const [departamentosRuleta, setDepartamentosRuleta] = useState([]);
+
   const t = translations[language];
 
   useEffect(() => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
   }, [language]);
+
+  useEffect(() => {
+    cargarConfiguracionRuleta();
+  }, []);
+
+  async function cargarConfiguracionRuleta() {
+    try {
+      const hoy = getTodayISO();
+
+      const { data: promociones, error: promocionError } = await supabase
+        .from("promociones_ruleta")
+        .select("*")
+        .eq("activa", true)
+        .order("created_at", { ascending: true });
+
+      if (promocionError) {
+        throw promocionError;
+      }
+
+      const promocion = (promociones || []).find((item) => {
+        const inicioOk = !item.fecha_inicio || item.fecha_inicio <= hoy;
+        const finOk = !item.fecha_fin || item.fecha_fin >= hoy;
+        return inicioOk && finOk;
+      });
+
+      if (!promocion) {
+        setConfiguracionRuleta(null);
+        setArticulosRuleta([]);
+        setDepartamentosRuleta([]);
+        setPremiosRuleta([]);
+        return;
+      }
+
+      setConfiguracionRuleta(promocion);
+
+      const { data: articulos, error: articulosError } = await supabase
+        .from("promociones_ruleta_articulos")
+        .select("*")
+        .eq("promocion_id", promocion.id);
+
+      if (articulosError) {
+        throw articulosError;
+      }
+
+      setArticulosRuleta(articulos || []);
+
+      const { data: departamentosPromo, error: departamentosPromoError } =
+        await supabase
+          .from("promociones_ruleta_departamentos")
+          .select("departamento_id")
+          .eq("promocion_id", promocion.id);
+
+      if (departamentosPromoError) {
+        throw departamentosPromoError;
+      }
+
+      setDepartamentosRuleta(departamentosPromo || []);
+
+      const { data: premios, error: premiosError } = await supabase
+        .from("promociones_ruleta_premios")
+        .select("*")
+        .eq("promocion_id", promocion.id)
+        .eq("activo", true)
+        .order("orden", { ascending: true })
+        .order("created_at", { ascending: true });
+
+      if (premiosError) {
+        throw premiosError;
+      }
+
+      setPremiosRuleta(premios || []);
+    } catch (error) {
+      console.error("Error cargando configuración de ruleta:", error);
+      setConfiguracionRuleta(null);
+      setArticulosRuleta([]);
+      setDepartamentosRuleta([]);
+      setPremiosRuleta([]);
+    }
+  }
 
   useEffect(() => {
     const abrirPushSiempre = () => {
@@ -642,16 +784,82 @@ export default function App() {
       )
     );
 
+  const codigosRuleta = useMemo(() => {
+    return new Set(
+      articulosRuleta
+        .map((item) => normalizePromoValue(item.codigo_articulo))
+        .filter(Boolean)
+    );
+  }, [articulosRuleta]);
+
+  const idsArticulosRuleta = useMemo(() => {
+    return new Set(
+      articulosRuleta
+        .map((item) => normalizePromoValue(item.articulo_id))
+        .filter(Boolean)
+    );
+  }, [articulosRuleta]);
+
+  const nombresArticulosRuleta = useMemo(() => {
+    return new Set(
+      articulosRuleta
+        .map((item) => normalizePromoValue(item.nombre_articulo))
+        .filter(Boolean)
+    );
+  }, [articulosRuleta]);
+
+  const idsDepartamentosRuleta = useMemo(() => {
+    return new Set(
+      departamentosRuleta
+        .map((item) => normalizePromoValue(item.departamento_id))
+        .filter(Boolean)
+    );
+  }, [departamentosRuleta]);
+
+  const cantidadesMinimasRuletaPorArticulo = useMemo(() => {
+    const reglas = new Map();
+
+    articulosRuleta.forEach((item) => {
+      const cantidadMinima = obtenerCantidadMinimaRuletaArticulo(item);
+      const claves = [
+        item.articulo_id,
+        item.codigo_articulo,
+        item.nombre_articulo,
+      ]
+        .map((valor) => normalizePromoValue(valor))
+        .filter(Boolean);
+
+      claves.forEach((clave) => {
+        reglas.set(clave, cantidadMinima);
+      });
+    });
+
+    return reglas;
+  }, [articulosRuleta]);
+
   const productos = useMemo(() => {
     return ordenarProductos(
       articulos
         .filter((articulo) => articulo.activo)
         .map((articulo) => {
         const oferta = getActiveOffer(articulo.ofertas);
+        const articuloId = normalizePromoValue(articulo.id);
+        const codigoArticulo = normalizePromoValue(articulo.codigo);
+        const nombreArticulo = normalizePromoValue(articulo.nombre);
+        const participaRuleta =
+          idsArticulosRuleta.has(articuloId) ||
+          codigosRuleta.has(codigoArticulo) ||
+          nombresArticulosRuleta.has(nombreArticulo);
+        const cantidadMinimaRuleta =
+          cantidadesMinimasRuletaPorArticulo.get(articuloId) ||
+          cantidadesMinimasRuletaPorArticulo.get(codigoArticulo) ||
+          cantidadesMinimasRuletaPorArticulo.get(nombreArticulo) ||
+          1;
 
         return {
           id: String(articulo.id),
           codigo: articulo.codigo,
+          departamento_id: articulo.departamento_id,
           idnum: articulo.codigo,
           nombre: articulo.nombre,
           name: articulo.nombre,
@@ -664,10 +872,18 @@ export default function App() {
           department: String(articulo.departamentos?.nombre || "").trim(),
           offerText: oferta?.texto || "",
           ofertas: articulo.ofertas || [],
+          participaRuleta,
+          cantidadMinimaRuleta,
         };
       })
     );
-  }, [articulos]);
+  }, [
+    articulos,
+    codigosRuleta,
+    idsArticulosRuleta,
+    nombresArticulosRuleta,
+    cantidadesMinimasRuletaPorArticulo,
+  ]);
 
   const productosVisibles = useMemo(
     () => productos.filter((product) => !product.oculto),
@@ -861,6 +1077,68 @@ export default function App() {
     (item) => item.boxes > 0 || item.units > 0
   ).length;
 
+  const obtenerResumenPedidoRuleta = (itemsPedido = []) => {
+    if (!configuracionRuleta || articulosRuleta.length === 0) {
+      return null;
+    }
+
+    const variedadMinima = Math.max(
+      1,
+      Number(configuracionRuleta.variedad_minima || 1)
+    );
+
+    const reglasPorCodigo = new Map(
+      articulosRuleta
+        .map((item) => {
+          const codigo = normalizarCodigoRuleta(item.codigo_articulo);
+          if (!codigo) return null;
+
+          return [codigo, obtenerCantidadMinimaRuletaArticulo(item)];
+        })
+        .filter(Boolean)
+    );
+
+    const codigosValidos = new Set();
+
+    itemsPedido.forEach((item) => {
+      if (!item?.product?.participaRuleta) return;
+
+      const codigoArticulo = normalizarCodigoRuleta(
+        item.product.codigo || item.product.idnum || item.product.id || ""
+      );
+      const cantidadMinima = reglasPorCodigo.get(codigoArticulo) || 1;
+
+      if (articuloPedidoCumpleCantidadMinimaRuleta(item, cantidadMinima)) {
+        codigosValidos.add(codigoArticulo || item.product.id);
+      }
+    });
+
+    const variedadActual = codigosValidos.size;
+    const tiradasConseguidas = Math.floor(variedadActual / variedadMinima);
+    const variedadParaSiguienteTirada = variedadActual % variedadMinima;
+    const variedadRestante = Math.max(0, variedadMinima - variedadActual);
+    const variedadRestanteSiguienteTirada =
+      variedadParaSiguienteTirada === 0
+        ? variedadMinima
+        : variedadMinima - variedadParaSiguienteTirada;
+
+    return {
+      cumple: tiradasConseguidas > 0,
+      variedadActual,
+      variedadMinima,
+      variedadRestante,
+      tiradasConseguidas,
+      variedadParaSiguienteTirada,
+      variedadRestanteSiguienteTirada,
+    };
+  };
+
+  const resumenRuletaPedido = useMemo(
+    () => obtenerResumenPedidoRuleta(orderedItems),
+    [orderedItems, configuracionRuleta, articulosRuleta]
+  );
+
+
   const updateQuantity = (productId, field, value) => {
     const product = productos.find((item) => item.id === productId);
 
@@ -1030,13 +1308,14 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "auto" });
   };
 
-  async function guardarEstadisticasPedido(itemsPedido = orderedItems) {
-    try {
-      const pedidoId =
-        typeof crypto !== "undefined" && crypto.randomUUID
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  function crearPedidoId() {
+    return typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
 
+  async function guardarEstadisticasPedido(itemsPedido = orderedItems, pedidoId = crearPedidoId()) {
+    try {
       const movimientos = itemsPedido
         .map((item) => {
           const product = item.product;
@@ -1071,85 +1350,7 @@ export default function App() {
     }
   }
 
-  const sendByWhatsApp = () => {
-    if (!orderedItems.length) {
-      alert(t.alertEmpty);
-      return;
-    }
-
-    // Snapshot del pedido en el momento exacto del clic.
-    // Así podemos limpiar la app sin perder el contenido que irá a WhatsApp.
-    const itemsPedido = [...orderedItems];
-    const customerNamePedido = customerName.trim();
-    const notesPedido = notes.trim();
-
-    const lines = [];
-
-    lines.push(`*${t.orderSummary}*`);
-    lines.push("");
-
-    if (customerNamePedido) {
-      lines.push(`*${t.customer}:* ${customerNamePedido}`);
-      lines.push("");
-    }
-
-    const itemsOrdenados = [...itemsPedido].sort((a, b) => {
-      const departamentoA = String(
-        a.product.department || a.product.departamento || "SIN DEPARTAMENTO"
-      );
-      const departamentoB = String(
-        b.product.department || b.product.departamento || "SIN DEPARTAMENTO"
-      );
-
-      const compararDepartamento = departamentoA.localeCompare(
-        departamentoB,
-        "es",
-        { sensitivity: "base" }
-      );
-
-      if (compararDepartamento !== 0) return compararDepartamento;
-
-      return String(a.product.name || "").localeCompare(
-        String(b.product.name || ""),
-        "es",
-        { sensitivity: "base" }
-      );
-    });
-
-    itemsOrdenados.forEach((item) => {
-      const product = item.product;
-
-      // Nombre sin código y sin negrita
-      lines.push(String(product.name || "").trim());
-
-      // Cantidades en negrita
-      if (item.boxes) {
-        lines.push(`*${item.boxes} ${t.boxesLower}*`);
-      }
-
-      if (item.units) {
-        lines.push(`*${item.units} ${t.unitsLower}*`);
-      }
-
-      if (item.notes.trim()) {
-        lines.push(`${t.notes}: ${item.notes.trim()}`);
-      }
-
-      lines.push("");
-    });
-
-    if (notesPedido) {
-      lines.push(`*${t.notes}:* ${notesPedido}`);
-      lines.push("");
-    }
-
-    lines.push(t.sentFrom);
-
-    const message = encodeURIComponent(lines.join("\n"));
-    const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${message}`;
-
-    // Dejamos el pedido eliminado ANTES de abandonar la app.
-    // No usamos await antes de abrir WhatsApp para no perder el gesto del usuario.
+  function limpiarPedidoDespuesEnvio() {
     localStorage.removeItem(ORDER_STORAGE_KEY);
     setQuantities({});
     setCustomerName("");
@@ -1165,12 +1366,204 @@ export default function App() {
     setPushCerrado(false);
     setMostrarVolverPush(false);
     setHeaderCollapsed(false);
+  }
+
+  function normalizarCodigoRuleta(codigo) {
+    return String(codigo || "").trim();
+  }
+
+  function obtenerCantidadPedidoArticuloRuleta(item) {
+    return Number(item.boxes || 0) + Number(item.units || 0);
+  }
+
+  function articuloPedidoCumpleCantidadMinimaRuleta(item, cantidadMinima = 1) {
+    const minimo = Math.max(1, Number(cantidadMinima || 1));
+    const cajasPedidas = Number(item?.boxes || 0);
+    const unidadesPedidas = Number(item?.units || 0);
+    const permiteUnidades = Boolean(item?.product?.permite_unidades);
+
+    // Si el artículo permite pedir por unidades, el mínimo de la promoción
+    // está expresado en unidades. En ese caso, cualquier caja pedida cumple
+    // siempre, porque 1 caja es más que pedir unidades sueltas.
+    if (permiteUnidades) {
+      return cajasPedidas > 0 || unidadesPedidas >= minimo;
+    }
+
+    // Si el artículo no permite unidades, el mínimo se evalúa en cajas.
+    return cajasPedidas >= minimo;
+  }
+
+  function pedidoCumplePromocionRuletaActual({
+    itemsPedido = [],
+    articulosPromocion = [],
+    variedadMinima = 1,
+  }) {
+    const reglasPorCodigo = new Map(
+      articulosPromocion
+        .map((item) => {
+          const codigo = normalizarCodigoRuleta(item.codigo_articulo);
+          if (!codigo) return null;
+
+          return [
+            codigo,
+            obtenerCantidadMinimaRuletaArticulo(item),
+          ];
+        })
+        .filter(Boolean)
+    );
+
+    if (reglasPorCodigo.size === 0) return false;
+
+    const codigosCumplidos = new Set();
+
+    itemsPedido.forEach((item) => {
+      const codigoArticulo = normalizarCodigoRuleta(
+        item.product.codigo || item.product.idnum || ""
+      );
+
+      if (!reglasPorCodigo.has(codigoArticulo)) return;
+
+      const cantidadMinima = reglasPorCodigo.get(codigoArticulo);
+
+      if (articuloPedidoCumpleCantidadMinimaRuleta(item, cantidadMinima)) {
+        codigosCumplidos.add(codigoArticulo);
+      }
+    });
+
+    return codigosCumplidos.size >= Math.max(1, Number(variedadMinima || 1));
+  }
+
+  async function crearParticipacionPromocion({
+    promocionId,
+    pedidoId,
+    customerNamePedido,
+    tiradasRuleta = 1,
+  }) {
+    const tiradas = Math.max(1, Number(tiradasRuleta || 1));
+    const { data, error } = await supabase.rpc("create_promotion_participation", {
+      p_promotion_id: promocionId,
+      p_order_id: pedidoId,
+      p_customer_phone: null,
+      p_customer_name: customerNamePedido || null,
+      p_expires_at: null,
+      p_created_by: "miweb-staging",
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    const participacion = Array.isArray(data) ? data[0] : data;
+    const participacionId = participacion?.id || participacion?.participation_id || null;
+    const participacionCode = participacion?.code || participacion?.codigo || null;
+
+    // Si la tabla ya tiene campos para varias tiradas, los dejamos guardados.
+    // Si todavía no existen en Supabase, no bloqueamos el envío del pedido.
+    if (tiradas > 1 && (participacionId || participacionCode)) {
+      try {
+        let query = supabase
+          .from("promotion_participations")
+          .update({
+            spins_total: tiradas,
+            spins_used: 0,
+            status: "pending",
+            played_at: null,
+          });
+
+        query = participacionId
+          ? query.eq("id", participacionId)
+          : query.eq("code", participacionCode);
+
+        const { error: updateError } = await query;
+        if (updateError) throw updateError;
+      } catch (errorUpdate) {
+        console.warn("No se pudieron guardar las tiradas extra de ruleta:", errorUpdate);
+      }
+    }
+
+    return {
+      ...participacion,
+      tiradas_ruleta: tiradas,
+      tiradas_totales: tiradas,
+      spins_total: tiradas,
+    };
+  }
+
+  function enviarPedidoFinal({
+    itemsPedido,
+    customerNamePedido,
+    notesPedido,
+    participacionRuleta = null,
+    pedidoId = crearPedidoId(),
+    resumenRuletaPedidoEnvio = null,
+  }) {
+    const texto = construirTextoPedidoWhatsApp({
+      t,
+      itemsPedido,
+      customerNamePedido,
+      notesPedido,
+      participacionRuleta,
+      tiradasRuleta: resumenRuletaPedidoEnvio?.tiradasConseguidas || 0,
+    });
+
+    limpiarPedidoDespuesEnvio();
 
     // Guardamos estadísticas en segundo plano, sin bloquear WhatsApp.
-    guardarEstadisticasPedido(itemsPedido);
+    guardarEstadisticasPedido(itemsPedido, pedidoId);
 
     // Abrir en la misma pestaña es lo más fiable en móviles.
-    window.location.assign(whatsappUrl);
+    abrirPedidoEnWhatsApp({
+      whatsappNumber: WHATSAPP_NUMBER,
+      texto,
+    });
+  }
+
+  const sendByWhatsApp = async () => {
+    if (!orderedItems.length) {
+      alert(t.alertEmpty);
+      return;
+    }
+
+    // Snapshot del pedido en el momento exacto del clic.
+    // Así podemos limpiar la app sin perder el contenido que irá a WhatsApp.
+    const itemsPedido = [...orderedItems];
+    const customerNamePedido = customerName.trim();
+    const notesPedido = notes.trim();
+    const pedidoId = crearPedidoId();
+
+    const resumenRuletaPedidoEnvio = obtenerResumenPedidoRuleta(itemsPedido);
+
+    const cumplePromocionRuleta =
+      configuracionRuleta &&
+      premiosRuleta.length > 0 &&
+      articulosRuleta.length > 0 &&
+      resumenRuletaPedidoEnvio?.cumple;
+
+    let participacionRuleta = null;
+
+    if (cumplePromocionRuleta) {
+      try {
+        participacionRuleta = await crearParticipacionPromocion({
+          promocionId: configuracionRuleta.id,
+          pedidoId,
+          customerNamePedido,
+          tiradasRuleta: resumenRuletaPedidoEnvio?.tiradasConseguidas || 1,
+        });
+      } catch (error) {
+        console.error("Error creando participación de ruleta:", error);
+        alert("No se ha podido generar el código de ruleta. Inténtalo de nuevo.");
+        return;
+      }
+    }
+
+    enviarPedidoFinal({
+      itemsPedido,
+      customerNamePedido,
+      notesPedido,
+      participacionRuleta,
+      pedidoId,
+      resumenRuletaPedidoEnvio,
+    });
   };
 
   const pushItems = Array.isArray(pushOferta?.articulos)
@@ -1476,7 +1869,7 @@ export default function App() {
 
                       <div style={styles.productContent}>
                         <div style={styles.productTop}>
-                          <div>
+                          <div style={styles.productTitleBlock}>
                             <h3 style={styles.productName}>
                               {product.codigo ? `${product.codigo} · ` : ""}
                               {product.name}
@@ -1494,6 +1887,13 @@ export default function App() {
                               )}
                             </div>
                           </div>
+
+                          {product.participaRuleta && (
+                            <MiniRuletaPromocion
+                              cantidadMinima={product.cantidadMinimaRuleta}
+                              permiteUnidades={product.permite_unidades}
+                            />
+                          )}
                         </div>
 
                         <div style={styles.quantityGrid}>
@@ -1622,6 +2022,34 @@ export default function App() {
               placeholder={t.optional}
               style={styles.summaryCustomerInput}
             />
+
+            {resumenRuletaPedido && orderedItems.length > 0 && (
+              <div
+                style={
+                  resumenRuletaPedido.cumple
+                    ? styles.ruletaSummaryOk
+                    : styles.ruletaSummaryPending
+                }
+              >
+                <div style={styles.ruletaSummaryTitle}>Promoción Ruleta</div>
+                <div style={styles.ruletaSummaryText}>
+                  Llevas {resumenRuletaPedido.variedadActual} artículos válidos de ruleta.
+                </div>
+                <div style={styles.ruletaSummaryText}>
+                  Tiradas conseguidas: {resumenRuletaPedido.tiradasConseguidas}
+                </div>
+                {!resumenRuletaPedido.cumple && (
+                  <div style={styles.ruletaSummaryMissing}>
+                    Te faltan {resumenRuletaPedido.variedadRestante} artículos diferentes de ruleta para conseguir 1 tirada.
+                  </div>
+                )}
+                {resumenRuletaPedido.cumple && (
+                  <div style={styles.ruletaSummaryMissing}>
+                    Ya tienes {resumenRuletaPedido.tiradasConseguidas} {resumenRuletaPedido.tiradasConseguidas === 1 ? "tirada" : "tiradas"}. Te faltan {resumenRuletaPedido.variedadRestanteSiguienteTirada} artículos diferentes más para la siguiente.
+                  </div>
+                )}
+              </div>
+            )}
 
             {orderedItems.length === 0 ? (
               <p style={styles.emptyBox}>{t.noItemsWithQuantity}</p>
@@ -2189,7 +2617,57 @@ const styles = {
   productTop: {
     display: "flex",
     justifyContent: "space-between",
+    alignItems: "flex-start",
     gap: "8px",
+  },
+
+  productTitleBlock: {
+    minWidth: 0,
+    flex: 1,
+  },
+
+  ruletaPromoBadge: {
+    width: "116px",
+    height: "auto",
+    minWidth: "116px",
+    maxWidth: "116px",
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "1px",
+    flexShrink: 0,
+    overflow: "visible",
+  },
+
+  ruletaPromoImage: {
+    width: "36px",
+    height: "36px",
+    objectFit: "contain",
+    display: "block",
+    flexShrink: 0,
+  },
+
+  ruletaPromoText: {
+    fontSize: "9px",
+    lineHeight: "9px",
+    fontWeight: "800",
+    color: "#be185d",
+    textAlign: "center",
+    whiteSpace: "nowrap",
+  },
+
+  ruletaPromoMinimo: {
+    display: "block",
+    width: "100%",
+    fontSize: "14px",
+    lineHeight: "15px",
+    fontWeight: "1000",
+    color: "#0b1185",
+    textAlign: "center",
+    whiteSpace: "nowrap",
+    overflow: "visible",
   },
 
   productName: {
@@ -2442,6 +2920,43 @@ const styles = {
   summaryItem: {
     borderBottom: "1px solid #e5e7eb",
     padding: "10px 0",
+  },
+
+  ruletaSummaryPending: {
+    border: "1px solid #fecaca",
+    background: "#fff1f2",
+    color: "#991b1b",
+    borderRadius: "14px",
+    padding: "12px",
+    marginBottom: "12px",
+  },
+
+  ruletaSummaryOk: {
+    border: "1px solid #bbf7d0",
+    background: "#f0fdf4",
+    color: "#166534",
+    borderRadius: "14px",
+    padding: "12px",
+    marginBottom: "12px",
+  },
+
+  ruletaSummaryTitle: {
+    fontSize: "15px",
+    fontWeight: "1000",
+    marginBottom: "4px",
+  },
+
+  ruletaSummaryText: {
+    fontSize: "14px",
+    fontWeight: "800",
+    lineHeight: "1.25",
+  },
+
+  ruletaSummaryMissing: {
+    fontSize: "13px",
+    fontWeight: "700",
+    lineHeight: "1.25",
+    marginTop: "5px",
   },
 
   summaryNotes: {

@@ -3,6 +3,7 @@ export default function MenuAdmin({
   setOpcion,
   esMovil = false,
   esTablet = false,
+  esBajo = false,
 }) {
   const opciones = [
     {
@@ -22,6 +23,12 @@ export default function MenuAdmin({
       icono: "🏷️",
       titulo: "Ofertas",
       descripcion: "Promociones y avisos",
+    },
+    {
+      id: "promociones",
+      icono: "🎁",
+      titulo: "Promociones",
+      descripcion: "Ruleta, regalos y campañas",
     },
     {
       id: "pushes",
@@ -44,19 +51,21 @@ export default function MenuAdmin({
   ];
 
   return (
-    <aside style={sidebar(esMovil, esTablet)}>
-      <div style={brandBox(esMovil, esTablet)}>
-        <div style={logoCircle(esMovil, esTablet)}>L</div>
+    <aside style={sidebar(esMovil, esTablet, esBajo)}>
+      <div style={brandBox(esMovil, esTablet, esBajo)}>
+        <div style={logoCircle(esMovil, esTablet, esBajo)}>L</div>
 
-        {!esTablet && (
+        {!esTablet && !esMovil && (
           <div>
-            <h2 style={brandTitle(esMovil)}>Lojo</h2>
-            <p style={brandSubtitle}>Administración</p>
+            <h2 style={brandTitle(esBajo)}>Lojo</h2>
+            {!esBajo && <p style={brandSubtitle}>Administración</p>}
           </div>
         )}
       </div>
 
-      {!esMovil && !esTablet && <div style={sectionLabel}>Menú principal</div>}
+      {!esMovil && !esTablet && !esBajo && (
+        <div style={sectionLabel}>Menú principal</div>
+      )}
 
       <nav style={nav(esMovil, esTablet)}>
         {opciones.map((item) => {
@@ -67,15 +76,17 @@ export default function MenuAdmin({
               key={item.id}
               type="button"
               onClick={() => setOpcion(item.id)}
-              style={menuButton(activo, esMovil, esTablet)}
+              style={menuButton(activo, esMovil, esTablet, esBajo)}
               title={item.titulo}
             >
-              <span style={iconBox(activo, esMovil, esTablet)}>{item.icono}</span>
+              <span style={iconBox(activo, esMovil, esTablet, esBajo)}>
+                {item.icono}
+              </span>
 
-              {!esTablet && (
+              {!esTablet && !esMovil && (
                 <span style={textBox}>
-                  <span style={menuTitle(activo, esMovil)}>{item.titulo}</span>
-                  {!esMovil && (
+                  <span style={menuTitle(activo, esBajo)}>{item.titulo}</span>
+                  {!esBajo && (
                     <span style={menuDescription(activo)}>
                       {item.descripcion}
                     </span>
@@ -83,18 +94,20 @@ export default function MenuAdmin({
                 </span>
               )}
 
-              {activo && !esMovil && !esTablet && <span style={activeDot} />}
+              {activo && !esMovil && !esTablet && !esBajo && (
+                <span style={activeDot} />
+              )}
             </button>
           );
         })}
       </nav>
 
-      {!esMovil && !esTablet && (
+      {!esMovil && !esTablet && !esBajo && (
         <div style={bottomBox}>
           <div style={statusDot} />
           <div>
-            <strong style={bottomTitle}>Producción activa</strong>
-            <p style={bottomText}>pedidos-lojo.vercel.app</p>
+            <strong style={bottomTitle}>Entorno de pruebas</strong>
+            <p style={bottomText}>miweb-staging</p>
           </div>
         </div>
       )}
@@ -102,146 +115,151 @@ export default function MenuAdmin({
   );
 }
 
-const sidebar = (esMovil, esTablet) => ({
-  width: esMovil ? "100%" : esTablet ? "82px" : "292px",
-  minWidth: esMovil ? "100%" : esTablet ? "82px" : "292px",
-  minHeight: esMovil ? "auto" : "100vh",
+const sidebar = (esMovil, esTablet, esBajo) => ({
+  width: esMovil ? "100%" : esTablet ? "74px" : esBajo ? "230px" : "270px",
+  minWidth: esMovil ? "100%" : esTablet ? "74px" : esBajo ? "230px" : "270px",
+  height: esMovil ? "74px" : "100dvh",
+  minHeight: esMovil ? "74px" : "100dvh",
   boxSizing: "border-box",
-  padding: esMovil ? "10px" : esTablet ? "14px 10px" : "22px 18px",
+  padding: esMovil ? "8px" : esTablet ? "10px 8px" : esBajo ? "12px" : "18px 14px",
   background:
     "linear-gradient(180deg, #0f172a 0%, #111827 48%, #1e1b4b 100%)",
   color: "#ffffff",
   display: "flex",
   flexDirection: esMovil ? "row" : "column",
   alignItems: esMovil ? "center" : "stretch",
-  gap: esMovil ? "10px" : "18px",
+  gap: esMovil ? "8px" : esBajo ? "10px" : "14px",
   position: "sticky",
   top: 0,
   zIndex: 1000,
   boxShadow: esMovil
     ? "0 12px 28px rgba(15,23,42,0.22)"
-    : "18px 0 40px rgba(15,23,42,0.22)",
+    : "14px 0 36px rgba(15,23,42,0.2)",
   overflowX: esMovil ? "auto" : "hidden",
+  overflowY: esMovil ? "hidden" : "auto",
+  overscrollBehavior: "contain",
 });
 
-const brandBox = (esMovil, esTablet) => ({
+const brandBox = (esMovil, esTablet, esBajo) => ({
   display: "flex",
   alignItems: "center",
   justifyContent: esTablet ? "center" : "flex-start",
-  gap: "13px",
-  padding: esMovil ? "8px" : esTablet ? "8px" : "15px",
-  borderRadius: esMovil ? "16px" : "22px",
+  gap: "11px",
+  padding: esMovil ? "7px" : esTablet ? "7px" : esBajo ? "10px" : "12px",
+  borderRadius: esMovil ? "14px" : "18px",
   background: "rgba(255,255,255,0.08)",
   border: "1px solid rgba(255,255,255,0.12)",
-  boxShadow: "0 18px 30px rgba(0,0,0,0.18)",
+  boxShadow: "0 14px 26px rgba(0,0,0,0.16)",
   flex: esMovil ? "0 0 auto" : "initial",
 });
 
-const logoCircle = (esMovil, esTablet) => ({
-  width: esMovil || esTablet ? "40px" : "48px",
-  height: esMovil || esTablet ? "40px" : "48px",
+const logoCircle = (esMovil, esTablet, esBajo) => ({
+  width: esMovil || esTablet || esBajo ? "38px" : "46px",
+  height: esMovil || esTablet || esBajo ? "38px" : "46px",
   borderRadius: "16px",
-  background: "linear-gradient(135deg, #2563eb 0%, #22c55e 100%)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontSize: esMovil || esTablet ? "21px" : "25px",
-  fontWeight: "1000",
+  background: "linear-gradient(135deg, #ef4444, #f97316)",
   color: "#ffffff",
-  boxShadow: "0 12px 25px rgba(37,99,235,0.34)",
-  flex: "0 0 auto",
+  fontWeight: "900",
+  fontSize: "21px",
+  boxShadow: "0 10px 22px rgba(239,68,68,0.28)",
+  flexShrink: 0,
 });
 
-const brandTitle = (esMovil) => ({
+const brandTitle = (esBajo) => ({
   margin: 0,
-  fontSize: esMovil ? "18px" : "23px",
-  lineHeight: "1",
-  fontWeight: "1000",
-  letterSpacing: "-0.02em",
+  fontSize: esBajo ? "20px" : "24px",
+  lineHeight: 1,
+  color: "#ffffff",
 });
 
 const brandSubtitle = {
-  margin: "5px 0 0",
+  margin: "4px 0 0",
+  color: "#cbd5e1",
   fontSize: "12px",
-  fontWeight: "800",
-  color: "#c7d2fe",
 };
 
 const sectionLabel = {
-  marginTop: "6px",
-  padding: "0 10px",
+  color: "#94a3b8",
   fontSize: "11px",
-  fontWeight: "950",
   letterSpacing: "0.08em",
   textTransform: "uppercase",
-  color: "#94a3b8",
+  fontWeight: "800",
+  padding: "0 8px",
 };
 
 const nav = (esMovil, esTablet) => ({
   display: "flex",
   flexDirection: esMovil ? "row" : "column",
-  gap: esMovil ? "8px" : "9px",
-  width: esMovil ? "auto" : "100%",
-  overflowX: esMovil ? "auto" : "visible",
-  paddingBottom: esMovil ? "2px" : 0,
+  gap: esMovil ? "8px" : "8px",
+  flex: 1,
+  minHeight: 0,
+  overflowX: esMovil ? "auto" : "hidden",
+  overflowY: esMovil ? "hidden" : "auto",
+  paddingBottom: esMovil ? 0 : "4px",
 });
 
-const menuButton = (activo, esMovil, esTablet) => ({
+const menuButton = (activo, esMovil, esTablet, esBajo) => ({
   width: esMovil ? "auto" : "100%",
-  minWidth: esMovil ? "78px" : "auto",
-  border: activo
-    ? "1px solid rgba(255,255,255,0.22)"
-    : "1px solid rgba(255,255,255,0.07)",
-  borderRadius: esMovil ? "16px" : "18px",
-  padding: esMovil ? "9px 10px" : esTablet ? "10px" : "12px",
-  background: activo
-    ? "linear-gradient(135deg, rgba(37,99,235,0.95) 0%, rgba(34,197,94,0.82) 100%)"
-    : "rgba(255,255,255,0.055)",
+  minWidth: esMovil ? "72px" : "0",
+  border: "none",
+  borderRadius: esMovil ? "13px" : "16px",
+  padding: esMovil
+    ? "8px 9px"
+    : esTablet
+      ? "9px"
+      : esBajo
+        ? "9px 10px"
+        : "11px 12px",
+  background: activo ? "rgba(255,255,255,0.14)" : "transparent",
   color: "#ffffff",
-  display: "grid",
-  gridTemplateColumns: esTablet ? "1fr" : esMovil ? "1fr" : "42px 1fr auto",
+  display: "flex",
   alignItems: "center",
-  justifyItems: esTablet || esMovil ? "center" : "stretch",
-  gap: esMovil ? "5px" : "11px",
-  textAlign: esMovil || esTablet ? "center" : "left",
+  justifyContent: esTablet ? "center" : esMovil ? "center" : "flex-start",
+  gap: "10px",
+  textAlign: "left",
   cursor: "pointer",
-  boxShadow: activo
-    ? "0 14px 26px rgba(37,99,235,0.26)"
-    : "0 8px 18px rgba(0,0,0,0.08)",
-  transition: "transform 150ms ease, background 150ms ease, box-shadow 150ms ease",
-  flex: esMovil ? "0 0 auto" : "initial",
+  position: "relative",
+  boxShadow: activo ? "0 12px 28px rgba(0,0,0,0.22)" : "none",
+  transition: "background 0.15s ease, transform 0.15s ease",
+  flexShrink: 0,
 });
 
-const iconBox = (activo, esMovil, esTablet) => ({
-  width: esMovil || esTablet ? "34px" : "42px",
-  height: esMovil || esTablet ? "34px" : "42px",
-  borderRadius: "14px",
+const iconBox = (activo, esMovil, esTablet, esBajo) => ({
+  width: esMovil || esTablet || esBajo ? "34px" : "38px",
+  height: esMovil || esTablet || esBajo ? "34px" : "38px",
+  borderRadius: "12px",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  background: activo ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.08)",
-  fontSize: esMovil || esTablet ? "18px" : "20px",
+  background: activo ? "#ffffff" : "rgba(255,255,255,0.09)",
+  color: activo ? "#111827" : "#ffffff",
+  fontSize: esMovil || esTablet || esBajo ? "17px" : "19px",
+  flexShrink: 0,
 });
 
 const textBox = {
   display: "flex",
   flexDirection: "column",
+  gap: "2px",
   minWidth: 0,
 };
 
-const menuTitle = (activo, esMovil) => ({
-  fontSize: esMovil ? "11px" : "15px",
-  fontWeight: "950",
+const menuTitle = (activo, esBajo) => ({
   color: "#ffffff",
-  lineHeight: "1.1",
+  fontSize: esBajo ? "13px" : "14px",
+  fontWeight: activo ? "900" : "800",
+  lineHeight: "1.15",
   whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
 });
 
 const menuDescription = (activo) => ({
-  marginTop: "4px",
+  color: activo ? "#e5e7eb" : "#94a3b8",
   fontSize: "11px",
-  fontWeight: "750",
-  color: activo ? "#eef2ff" : "#94a3b8",
   lineHeight: "1.15",
   whiteSpace: "nowrap",
   overflow: "hidden",
@@ -249,11 +267,13 @@ const menuDescription = (activo) => ({
 });
 
 const activeDot = {
-  width: "9px",
-  height: "9px",
+  marginLeft: "auto",
+  width: "8px",
+  height: "8px",
   borderRadius: "999px",
-  background: "#ffffff",
-  boxShadow: "0 0 0 5px rgba(255,255,255,0.18)",
+  background: "#22c55e",
+  boxShadow: "0 0 16px rgba(34,197,94,0.9)",
+  flexShrink: 0,
 };
 
 const bottomBox = {
@@ -261,31 +281,29 @@ const bottomBox = {
   display: "flex",
   alignItems: "center",
   gap: "10px",
-  padding: "14px",
-  borderRadius: "18px",
-  background: "rgba(34,197,94,0.12)",
-  border: "1px solid rgba(34,197,94,0.28)",
+  padding: "12px",
+  borderRadius: "16px",
+  background: "rgba(255,255,255,0.08)",
+  border: "1px solid rgba(255,255,255,0.12)",
 };
 
 const statusDot = {
-  width: "11px",
-  height: "11px",
+  width: "10px",
+  height: "10px",
   borderRadius: "999px",
   background: "#22c55e",
-  boxShadow: "0 0 0 5px rgba(34,197,94,0.16)",
-  flex: "0 0 auto",
+  boxShadow: "0 0 16px rgba(34,197,94,0.9)",
+  flexShrink: 0,
 };
 
 const bottomTitle = {
   display: "block",
-  color: "#dcfce7",
-  fontSize: "13px",
-  lineHeight: "1.1",
+  color: "#ffffff",
+  fontSize: "12px",
 };
 
 const bottomText = {
-  margin: "4px 0 0",
-  color: "#86efac",
+  margin: "2px 0 0",
+  color: "#94a3b8",
   fontSize: "11px",
-  fontWeight: "750",
 };
