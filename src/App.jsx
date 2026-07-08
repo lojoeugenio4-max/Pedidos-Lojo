@@ -17,7 +17,7 @@ import {
   abrirPedidoEnWhatsApp,
 } from "./utils/whatsappPedido";
 
-const WHATSAPP_NUMBER = "34670619113";
+const WHATSAPP_NUMBER = "34670716744";
 const ORDER_STORAGE_KEY = "cash-lojo-pedido";
 const ORDER_SENT_PENDING_CLEAR_KEY = "cash-lojo-pedido-enviado-pendiente-borrar";
 const LANGUAGE_STORAGE_KEY = "cash-lojo-language";
