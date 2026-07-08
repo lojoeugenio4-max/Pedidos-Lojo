@@ -350,8 +350,8 @@ export default function RuletaArticulos() {
       );
       setMensaje(
         permiteUnidades
-          ? "Artículo configurado para Cajas y Unidades."
-          : "Artículo configurado solo para Cajas."
+          ? "Artículo configurado para Cajas o Unidades."
+          : "Artículo configurado para Cajas."
       );
     }
 
@@ -482,7 +482,7 @@ export default function RuletaArticulos() {
               <tr>
                 <th style={th}>Artículo</th>
                 <th style={thDepartamento}>Departamento</th>
-                <th style={thVenta}>Cajas y Unidades</th>
+                <th style={thVenta}>Cajas/Unidades</th>
                 <th style={thRuleta}>En ruleta</th>
                 <th style={thCantidad}>Cantidad mínima</th>
               </tr>
@@ -523,19 +523,23 @@ export default function RuletaArticulos() {
                       </td>
 
                       <td style={tdCentro}>
-                        <label style={checkboxLabel}>
-                          <input
-                            type="checkbox"
-                            checked={Boolean(articulo.permite_unidades)}
-                            disabled={actualizandoVentaId === articulo.id}
-                            onChange={(e) =>
-                              cambiarPermiteUnidades(articulo, e.target.checked)
-                            }
-                          />
-                          <span>
-                            {articulo.permite_unidades ? "Cajas y Unidades" : "Solo Cajas"}
-                          </span>
-                        </label>
+                        <select
+                          style={{
+                            ...selectVenta,
+                            ...(articulo.permite_unidades ? selectVentaUnidades : {}),
+                          }}
+                          value={articulo.permite_unidades ? "CAJAS_UNIDADES" : "CAJAS"}
+                          disabled={actualizandoVentaId === articulo.id}
+                          onChange={(e) =>
+                            cambiarPermiteUnidades(
+                              articulo,
+                              e.target.value === "CAJAS_UNIDADES"
+                            )
+                          }
+                        >
+                          <option value="CAJAS">Cajas</option>
+                          <option value="CAJAS_UNIDADES">Cajas o Unidades</option>
+                        </select>
                       </td>
 
                       <td style={tdCentro}>
@@ -808,6 +812,24 @@ const inputCantidad = {
 const inputCantidadDeshabilitado = {
   opacity: 0.45,
   background: "#f3f4f6",
+};
+
+const selectVenta = {
+  width: "165px",
+  maxWidth: "100%",
+  border: "1px solid #d1d5db",
+  borderRadius: "10px",
+  padding: "9px 10px",
+  fontSize: "13px",
+  fontWeight: "800",
+  color: "#111827",
+  background: "#ffffff",
+  cursor: "pointer",
+};
+
+const selectVentaUnidades = {
+  borderColor: "#22c55e",
+  background: "#f0fdf4",
 };
 
 const checkboxLabel = {
