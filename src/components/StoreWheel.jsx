@@ -25,10 +25,28 @@ function easeCasino(t) {
   return 1 - Math.pow(1 - t, 4.6);
 }
 
+function getPrizeImageUrl(premio) {
+  return (
+    premio?.imagen_url ||
+    premio?.foto_url ||
+    premio?.image_url ||
+    premio?.foto ||
+    premio?.imagen ||
+    ""
+  );
+}
+
+function mismoPremio(a, b) {
+  if (!a || !b) return false;
+  if (a.id != null && b.id != null) return String(a.id) === String(b.id);
+  return a === b;
+}
+
 export default function StoreWheel({
   premios = [],
   girando = false,
   premioFinal,
+  premioObjetivo,
   onGirar,
   mostrarBoton = true,
   lucesReposo = false,
@@ -88,7 +106,15 @@ export default function StoreWheel({
     const inicio = rotacionRef.current;
     const inicioNormalizado = normalizarGrados(inicio);
     const vueltas = 15 + Math.floor(Math.random() * 4);
-    const ajusteFinal = 360 - inicioNormalizado;
+    const premioDestino = premioObjetivo || premioFinal;
+    const indiceDestino = segmentos.findIndex((segmento) => mismoPremio(segmento.premio, premioDestino));
+    const totalSegmentosDestino = Math.max(segmentos.length, 1);
+    const gradosSegmentoDestino = 360 / totalSegmentosDestino;
+    const centroDestino = indiceDestino >= 0
+      ? indiceDestino * gradosSegmentoDestino + gradosSegmentoDestino / 2
+      : 0;
+    const rotacionObjetivo = normalizarGrados(360 - centroDestino);
+    const ajusteFinal = normalizarGrados(rotacionObjetivo - inicioNormalizado);
     const destino = inicio + vueltas * 360 + ajusteFinal;
     const distancia = destino - inicio;
     const inicioTiempo = performance.now();
@@ -126,7 +152,7 @@ export default function StoreWheel({
         frameRef.current = null;
       }
     };
-  }, [girando, duracionGiro, segmentos.length]);
+  }, [girando, duracionGiro, segmentos, premioObjetivo, premioFinal]);
 
   const frenoActivo = girando;
   const anguloFreno = frenoActivo ? (tickFreno % 2 === 0 ? -8 : 8) : 0;
@@ -185,23 +211,40 @@ export default function StoreWheel({
             transform: `rotate(${rotacion}deg)`,
           }}
         >
-          {segmentos.map((segmento, index) => (
-            <div
-              key={index}
-              style={{
-                ...styles.segmentIcon,
-                transform: `rotate(${segmento.start + (segmento.end - segmento.start) / 2}deg) translateY(calc(var(--wheel-size) * -0.28))`,
-              }}
-            >
-              <span
+          {segmentos.map((segmento, index) => {
+            const anguloCentro = segmento.start + (segmento.end - segmento.start) / 2;
+            const imagenPremio = getPrizeImageUrl(segmento.premio);
+            const esGanador = premioFinal && mismoPremio(segmento.premio, premioFinal);
+
+            return (
+              <div
+                key={index}
                 style={{
-                  transform: `rotate(-${segmento.start + (segmento.end - segmento.start) / 2}deg)`,
+                  ...styles.segmentPrize,
+                  transform: `rotate(${anguloCentro}deg) translateY(calc(var(--wheel-size) * -0.28))`,
                 }}
               >
-                {segmento.icono}
-              </span>
-            </div>
-          ))}
+                <div
+                  style={{
+                    ...styles.segmentPrizeInner,
+                    ...(esGanador ? styles.segmentPrizeWinner : {}),
+                    transform: `rotate(-${anguloCentro}deg)${esGanador ? " scale(1.08)" : ""}`,
+                  }}
+                >
+                  {imagenPremio ? (
+                    <img
+                      src={imagenPremio}
+                      alt="Premio"
+                      style={styles.segmentPrizeImage}
+                      draggable={false}
+                    />
+                  ) : (
+                    <span style={styles.segmentPrizeFallback}>{segmento.icono}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
 
           <div style={styles.center}>
             <img src={logoLojo} alt="Lojo" style={styles.logo} />
@@ -309,22 +352,45 @@ const styles = {
     overflow: "hidden",
     willChange: "transform",
   },
-  segmentIcon: {
+  segmentPrize: {
     position: "absolute",
     left: "50%",
     top: "50%",
-    width: 68,
-    height: 68,
-    marginLeft: -34,
-    marginTop: -34,
+    width: "clamp(54px, 8vh, 82px)",
+    height: "clamp(54px, 8vh, 82px)",
+    marginLeft: "clamp(-41px, -4vh, -27px)",
+    marginTop: "clamp(-41px, -4vh, -27px)",
     display: "flex",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "center",
-    fontSize: "clamp(24px, 4.5vh, 42px)",
+    transformOrigin: "50% 50%",
+    pointerEvents: "none",
+  },
+  segmentPrizeInner: {
+    width: "100%",
+    height: "100%",
+    borderRadius: "50%",
+    background: "rgba(255,255,255,.92)",
+    border: "3px solid rgba(255,255,255,.95)",
+    boxShadow: "0 8px 22px rgba(0,0,0,.42), inset 0 0 0 2px rgba(250,204,21,.28)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  segmentPrizeWinner: {
+    boxShadow: "0 0 0 5px rgba(250,204,21,.95), 0 0 34px rgba(250,204,21,.95), 0 10px 28px rgba(0,0,0,.5)",
+  },
+  segmentPrizeImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+  segmentPrizeFallback: {
+    fontSize: "clamp(22px, 4vh, 38px)",
     fontWeight: 1000,
-    color: "#ffffff",
-    textShadow: "0 4px 12px rgba(0,0,0,.75)",
-    transformOrigin: "34px 34px",
+    color: "#b45309",
+    textShadow: "0 2px 8px rgba(255,255,255,.8)",
   },
   center: {
     position: "absolute",
