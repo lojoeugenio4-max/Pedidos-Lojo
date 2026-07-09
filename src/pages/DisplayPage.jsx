@@ -6,6 +6,9 @@ import logoLojo from "../assets/logo-lojo.jpg";
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
 const SPIN_DURATION_MS = 9200;
 
+const PRODUCTOS_PUBLIC_URL =
+  "https://bohlxagrtpjvqrgkonlo.supabase.co/storage/v1/object/public/productos";
+
 const COLORS = [
   "#ef4444",
   "#f97316",
@@ -20,14 +23,19 @@ const COLORS = [
 ];
 
 function getPrizeImageUrl(premio) {
-  return (
+  const raw =
     premio?.imagen_url ||
     premio?.foto_url ||
     premio?.image_url ||
     premio?.foto ||
     premio?.imagen ||
-    ""
-  );
+    "";
+
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  if (value.startsWith("http") || value.startsWith("data:") || value.startsWith("blob:")) return value;
+
+  return `${PRODUCTOS_PUBLIC_URL}/${value.replace(/^\/+/, "")}`;
 }
 
 function DisplayWheel({ premios = [], girando, premioFinal }) {
@@ -124,6 +132,7 @@ export default function DisplayPage() {
   const [estado, setEstado] = useState("waiting");
   const [entrada, setEntrada] = useState(null);
   const [premioFinal, setPremioFinal] = useState(null);
+  const [premioObjetivo, setPremioObjetivo] = useState(null);
   const [girando, setGirando] = useState(false);
 
   useEffect(() => {
