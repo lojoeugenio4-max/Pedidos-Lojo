@@ -183,6 +183,7 @@ export default function DisplayPage() {
       setEstado("waiting");
       setEntrada(null);
       setPremioFinal(null);
+      setPremioObjetivo(null);
       setGirando(false);
       return;
     }
@@ -192,6 +193,7 @@ export default function DisplayPage() {
       setEntrada(payload.entrada || null);
       setPremios(payload.premios || premios);
       setPremioFinal(null);
+      setPremioObjetivo(null);
       setGirando(false);
       return;
     }
@@ -201,6 +203,7 @@ export default function DisplayPage() {
       setEntrada(payload.entrada || null);
       setPremios(payload.premios || premios);
       setPremioFinal(null);
+      setPremioObjetivo(payload.premio || null);
       setGirando(true);
       return;
     }
@@ -210,12 +213,14 @@ export default function DisplayPage() {
       setEntrada(payload.entrada || null);
       setPremios(payload.premios || premios);
       setPremioFinal(payload.premio || null);
+      setPremioObjetivo(null);
       setGirando(false);
 
       window.setTimeout(() => {
         setEstado("waiting");
         setEntrada(null);
         setPremioFinal(null);
+        setPremioObjetivo(null);
         setGirando(false);
       }, 12000);
     }
@@ -323,6 +328,7 @@ export default function DisplayPage() {
             premios={premios}
             girando={girando}
             premioFinal={premioFinal}
+            premioObjetivo={premioObjetivo}
             mostrarBoton={false}
             lucesReposo={estado !== "spin" && estado !== "result"}
             modoDisplay
