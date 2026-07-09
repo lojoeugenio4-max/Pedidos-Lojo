@@ -282,7 +282,7 @@ export default function App() {
   const [notes, setNotes] = useState(() => getSavedOrder().notes || "");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [selectedDepartment, setSelectedDepartment] = useState("OFERTAS");
+  const [selectedDepartment, setSelectedDepartment] = useState("TODOS");
   const [articuloDestacado, setArticuloDestacado] = useState(null);
   const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
   const [showOrderSummary, setShowOrderSummary] = useState(false);
@@ -432,7 +432,7 @@ export default function App() {
       setNotes("");
       setSearchInput("");
       setSearch("");
-      setSelectedDepartment("OFERTAS");
+      setSelectedDepartment("TODOS");
       setDepartmentDropdownOpen(false);
       setShowOrderSummary(false);
       setSelectedImage(null);
@@ -1296,7 +1296,7 @@ export default function App() {
     setNotes("");
     setSearchInput("");
     setSearch("");
-    setSelectedDepartment("OFERTAS");
+    setSelectedDepartment("TODOS");
     setDepartmentDropdownOpen(false);
     setShowOrderSummary(false);
     setSelectedImage(null);
@@ -1359,7 +1359,7 @@ export default function App() {
     setNotes("");
     setSearchInput("");
     setSearch("");
-    setSelectedDepartment("OFERTAS");
+    setSelectedDepartment("TODOS");
     setDepartmentDropdownOpen(false);
     setShowOrderSummary(false);
     setSelectedImage(null);
