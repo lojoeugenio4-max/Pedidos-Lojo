@@ -16,6 +16,9 @@ const COLORS = [
 
 const DEFAULT_SPIN_DURATION = 9200;
 
+const PRODUCTOS_PUBLIC_URL =
+  "https://bohlxagrtpjvqrgkonlo.supabase.co/storage/v1/object/public/productos";
+
 function normalizarGrados(valor) {
   return ((valor % 360) + 360) % 360;
 }
@@ -26,14 +29,19 @@ function easeCasino(t) {
 }
 
 function getPrizeImageUrl(premio) {
-  return (
+  const raw =
     premio?.imagen_url ||
     premio?.foto_url ||
     premio?.image_url ||
     premio?.foto ||
     premio?.imagen ||
-    ""
-  );
+    "";
+
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  if (value.startsWith("http") || value.startsWith("data:") || value.startsWith("blob:")) return value;
+
+  return `${PRODUCTOS_PUBLIC_URL}/${value.replace(/^\/+/, "")}`;
 }
 
 function mismoPremio(a, b) {
