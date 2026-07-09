@@ -6,6 +6,9 @@ import StoreWheel from "../components/StoreWheel";
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
 const SPIN_DURATION_MS = 9200;
 
+const PRODUCTOS_PUBLIC_URL =
+  "https://bohlxagrtpjvqrgkonlo.supabase.co/storage/v1/object/public/productos";
+
 function enviarEventoDisplay(type, payload = {}) {
   if (typeof window === "undefined") return;
 
@@ -128,14 +131,19 @@ function normalizarCodigo(value) {
 }
 
 function getPrizeImageUrl(premio) {
-  return (
+  const raw =
     premio?.imagen_url ||
     premio?.foto_url ||
     premio?.image_url ||
     premio?.foto ||
     premio?.imagen ||
-    ""
-  );
+    "";
+
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  if (value.startsWith("http") || value.startsWith("data:") || value.startsWith("blob:")) return value;
+
+  return `${PRODUCTOS_PUBLIC_URL}/${value.replace(/^\/+/, "")}`;
 }
 
 
