@@ -234,6 +234,7 @@ export default function StorePage() {
   const [mensaje, setMensaje] = useState("");
   const [girando, setGirando] = useState(false);
   const [premioFinal, setPremioFinal] = useState(null);
+  const [premioObjetivo, setPremioObjetivo] = useState(null);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -335,15 +336,9 @@ export default function StorePage() {
       getAudioContext().resume?.();
     } catch {}
 
-    setGirando(true);
     setPremioFinal(null);
+    setPremioObjetivo(null);
     setMensaje("");
-    startSpinSound(SPIN_DURATION_MS);
-
-    enviarEventoDisplay("spin", {
-      entrada,
-      premios,
-    });
 
     const tiradasUsadasAntes = obtenerTiradasUsadasEntrada(entrada);
     const tiradasTotalesAntes = obtenerTiradasTotalesEntrada(entrada);
@@ -367,6 +362,16 @@ export default function StorePage() {
       return;
     }
 
+    setPremioObjetivo(prize);
+    setGirando(true);
+    startSpinSound(SPIN_DURATION_MS);
+
+    enviarEventoDisplay("spin", {
+      entrada,
+      premios,
+      premio: prize,
+    });
+
     window.setTimeout(() => {
       stopSpinSound();
 
@@ -385,6 +390,7 @@ export default function StorePage() {
 
       setEntrada(entryActualizada);
       setPremioFinal(prize);
+      setPremioObjetivo(null);
       setGirando(false);
       setEstado("result");
 
@@ -421,6 +427,7 @@ export default function StorePage() {
     }
 
     setPremioFinal(null);
+    setPremioObjetivo(null);
     setMensaje("");
     setEstado("ready");
     enviarEventoDisplay("ready", {
@@ -438,6 +445,7 @@ export default function StorePage() {
     setMensaje("");
     setGirando(false);
     setPremioFinal(null);
+    setPremioObjetivo(null);
     enviarEventoDisplay("waiting");
 
     window.setTimeout(() => {
@@ -577,6 +585,7 @@ export default function StorePage() {
               premios={premios}
               girando={girando}
               premioFinal={premioFinal}
+              premioObjetivo={premioObjetivo}
               onGirar={girar}
               duracionGiro={SPIN_DURATION_MS}
             />
