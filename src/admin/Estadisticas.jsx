@@ -99,6 +99,7 @@ export default function Estadisticas() {
   const hoyEstadistico = diaEstadisticoActualISO();
 
   const [movimientos, setMovimientos] = useState([]);
+  const [participacionesRuleta, setParticipacionesRuleta] = useState([]);
   const [desde, setDesde] = useState(hoyEstadistico);
   const [hasta, setHasta] = useState(hoyEstadistico);
   const [periodoActivo, setPeriodoActivo] = useState("hoy");
@@ -129,6 +130,17 @@ export default function Estadisticas() {
       if (movimientosError) throw movimientosError;
 
       setMovimientos(data || []);
+
+      const { data: participacionesData, error: participacionesError } = await supabase
+        .from("promotion_participations")
+        .select("*")
+        .gte("created_at", inicio)
+        .lt("created_at", fin)
+        .order("created_at", { ascending: false });
+
+      if (participacionesError) throw participacionesError;
+
+      setParticipacionesRuleta(participacionesData || []);
     } catch (err) {
       console.error("Error cargando estadísticas:", err);
       setError(err?.message || JSON.stringify(err));
@@ -188,8 +200,11 @@ export default function Estadisticas() {
       totalCajas,
       totalUnidades,
       articulosDistintos,
+      codigosRuleta: participacionesRuleta.length,
+      tiradasRuleta: participacionesRuleta.reduce((total, fila) => total + Math.max(1, Number(fila.spins_total || 1)), 0),
+      codigosPendientes: participacionesRuleta.filter((fila) => String(fila.status || "").toLowerCase() === "pending").length,
     };
-  }, [movimientos]);
+  }, [movimientos, participacionesRuleta]);
 
   const pedidosPorDia = useMemo(() => {
     const mapa = new Map();
@@ -243,6 +258,51 @@ export default function Estadisticas() {
   const topCajas = useMemo(() => agruparArticulos(movimientos, "cajas").slice(0, 20), [movimientos]);
   const topUnidades = useMemo(() => agruparArticulos(movimientos, "unidades").slice(0, 20), [movimientos]);
   const topVecesPedido = useMemo(() => agruparArticulos(movimientos, "veces_pedido").slice(0, 20), [movimientos]);
+
+  const codigosRuletaPorPedido = useMemo(() => {
+    const mapa = new Map();
+
+    participacionesRuleta.forEach((participacion) => {
+      const pedidoId = String(participacion.order_id || participacion.pedido_id || "");
+      if (!pedidoId) return;
+
+      const actual = mapa.get(pedidoId) || [];
+      actual.push(participacion);
+      mapa.set(pedidoId, actual);
+    });
+
+    return mapa;
+  }, [participacionesRuleta]);
+
+  const pedidosConRuleta = useMemo(() => {
+    const mapa = new Map();
+
+    movimientos.forEach((fila) => {
+      const pedidoId = String(fila.pedido_id || fila.id || "");
+      if (!pedidoId || mapa.has(pedidoId)) return;
+
+      mapa.set(pedidoId, {
+        pedido_id: pedidoId,
+        created_at: fila.created_at,
+        codigos: codigosRuletaPorPedido.get(pedidoId) || [],
+      });
+    });
+
+    participacionesRuleta.forEach((participacion) => {
+      const pedidoId = String(participacion.order_id || participacion.pedido_id || "");
+      if (!pedidoId || mapa.has(pedidoId)) return;
+
+      mapa.set(pedidoId, {
+        pedido_id: pedidoId,
+        created_at: participacion.created_at,
+        codigos: [participacion],
+      });
+    });
+
+    return Array.from(mapa.values()).sort(
+      (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
+    );
+  }, [movimientos, participacionesRuleta, codigosRuletaPorPedido]);
 
   const departamentos = useMemo(() => {
     const mapa = new Map();
@@ -337,14 +397,68 @@ export default function Estadisticas() {
         <>
           <section style={statsGrid}>
             <StatCard label="Pedidos" value={formatearNumero(resumen.totalPedidos)} />
+            <StatCard label="Códigos ruleta" value={formatearNumero(resumen.codigosRuleta)} />
+            <StatCard label="Tiradas ruleta" value={formatearNumero(resumen.tiradasRuleta)} />
+            <StatCard label="Pendientes ruleta" value={formatearNumero(resumen.codigosPendientes)} />
             <StatCard label="Cajas" value={formatearNumero(resumen.totalCajas)} />
             <StatCard label="Unidades" value={formatearNumero(resumen.totalUnidades)} />
             <StatCard label="Artículos distintos" value={formatearNumero(resumen.articulosDistintos)} />
+            <StatCard label="Líneas" value={formatearNumero(resumen.totalLineas)} />
           </section>
 
           <section style={noticeBox}>
             <strong>Importante:</strong> desde ahora se cuentan pedidos reales usando pedido_id. Las estadísticas anteriores a este cambio pueden aparecer como líneas si no tenían pedido_id.
           </section>
+
+          <Panel title="Códigos de ruleta por pedido" subtitle="Muestra si cada pedido del periodo generó código para jugar">
+            <div style={tableWrap}>
+              <table style={table}>
+                <thead>
+                  <tr>
+                    <th style={th}>Fecha</th>
+                    <th style={th}>Pedido</th>
+                    <th style={th}>Código ruleta</th>
+                    <th style={thRight}>Tiradas</th>
+                    <th style={thRight}>Usadas</th>
+                    <th style={th}>Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pedidosConRuleta.length === 0 ? (
+                    <FilaVacia columnas={6} />
+                  ) : (
+                    pedidosConRuleta.map((pedido) => {
+                      const codigos = pedido.codigos || [];
+
+                      if (!codigos.length) {
+                        return (
+                          <tr key={pedido.pedido_id}>
+                            <td style={td}>{new Date(pedido.created_at).toLocaleString("es-ES")}</td>
+                            <td style={td}><strong>{pedido.pedido_id}</strong></td>
+                            <td style={td}>No emitido</td>
+                            <td style={tdRight}>—</td>
+                            <td style={tdRight}>—</td>
+                            <td style={td}>—</td>
+                          </tr>
+                        );
+                      }
+
+                      return codigos.map((codigo, index) => (
+                        <tr key={`${pedido.pedido_id}-${codigo.id || codigo.code || index}`}>
+                          <td style={td}>{new Date(codigo.created_at || pedido.created_at).toLocaleString("es-ES")}</td>
+                          <td style={td}><strong>{pedido.pedido_id}</strong></td>
+                          <td style={tdRightStrong}>{codigo.code || codigo.codigo || "—"}</td>
+                          <td style={tdRight}>{formatearNumero(Math.max(1, Number(codigo.spins_total || 1)))}</td>
+                          <td style={tdRight}>{formatearNumero(Number(codigo.spins_used || 0))}</td>
+                          <td style={td}>{codigo.status || "—"}</td>
+                        </tr>
+                      ));
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
 
           <section style={gridTwo}>
             <Panel title="Actividad por día" subtitle="Cada día va de 14:30 a 14:30">
