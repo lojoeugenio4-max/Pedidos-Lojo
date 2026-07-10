@@ -177,15 +177,17 @@ function seleccionarPremioRuleta(premios = []) {
 async function actualizarSaldoTiradas(entry, usadas, total, prize = null) {
   if (!entry?.code) return null;
 
-  const spinsTotal = Math.max(1, Number(total || 1));
-  const spinsUsed = Math.min(spinsTotal, Math.max(0, Number(usadas || 0)));
-  const quedan = Math.max(0, spinsTotal - spinsUsed);
+  const esPermanente = entry?.is_permanent === true;
+  const spinsTotal = esPermanente ? 1 : Math.max(1, Number(total || 1));
+  const spinsUsed = esPermanente
+    ? 0
+    : Math.min(spinsTotal, Math.max(0, Number(usadas || 0)));
+  const quedan = esPermanente ? 1 : Math.max(0, spinsTotal - spinsUsed);
 
-  // IMPORTANTE:
-  // No llamamos a la RPC play_promotion_participation porque consume el QR en el primer giro.
-  // El QR solo pasa a played cuando ya no quedan tiradas.
+  // Los códigos permanentes conservan siempre una tirada y nunca pasan a "played".
+  // Los códigos normales mantienen el comportamiento habitual.
   const updatePayload = {
-    status: quedan > 0 ? "pending" : "played",
+    status: esPermanente ? "pending" : quedan > 0 ? "pending" : "played",
     spins_used: spinsUsed,
     spins_total: spinsTotal,
   };
@@ -194,7 +196,7 @@ async function actualizarSaldoTiradas(entry, usadas, total, prize = null) {
     updatePayload.prize_id = prize.id;
   }
 
-  if (quedan <= 0) {
+  if (!esPermanente && quedan <= 0) {
     updatePayload.played_at = new Date().toISOString();
   } else {
     updatePayload.played_at = null;
@@ -216,16 +218,19 @@ async function actualizarSaldoTiradas(entry, usadas, total, prize = null) {
 }
 
 function obtenerTiradasTotalesEntrada(entrada) {
+  if (entrada?.is_permanent === true) return 1;
   const total = Number(entrada?.spins_total ?? 1);
   return Number.isFinite(total) && total > 0 ? total : 1;
 }
 
 function obtenerTiradasUsadasEntrada(entrada) {
+  if (entrada?.is_permanent === true) return 0;
   const usadas = Number(entrada?.spins_used ?? 0);
   return Number.isFinite(usadas) && usadas > 0 ? usadas : 0;
 }
 
 function obtenerTiradasRestantesEntrada(entrada) {
+  if (entrada?.is_permanent === true) return 1;
   return Math.max(
     0,
     obtenerTiradasTotalesEntrada(entrada) - obtenerTiradasUsadasEntrada(entrada)
@@ -287,7 +292,21 @@ export default function StorePage() {
       return;
     }
 
-    if (data.status !== "pending" && obtenerTiradasRestantesEntrada(data) <= 0) {
+    const estadoCodigo = String(data.status || "").toLowerCase();
+    const estadosBloqueados = ["disabled", "cancelled", "canceled", "blocked"];
+
+    if (data.is_permanent === true && estadosBloqueados.includes(estadoCodigo)) {
+      setEntrada(data);
+      setMensaje("Este código VIP está desactivado.");
+      setEstado("used");
+      return;
+    }
+
+    if (
+      data.is_permanent !== true &&
+      data.status !== "pending" &&
+      obtenerTiradasRestantesEntrada(data) <= 0
+    ) {
       setEntrada(data);
       setMensaje(
         data.status === "played"
@@ -298,7 +317,11 @@ export default function StorePage() {
       return;
     }
 
-    if (data.expires_at && new Date(data.expires_at) < new Date()) {
+    if (
+      data.is_permanent !== true &&
+      data.expires_at &&
+      new Date(data.expires_at) < new Date()
+    ) {
       setEntrada(data);
       setMensaje("Este código está caducado.");
       setEstado("error");
@@ -383,16 +406,19 @@ export default function StorePage() {
     window.setTimeout(() => {
       stopSpinSound();
 
-      const total = tiradasTotalesAntes;
-      const usadas = Math.min(total, tiradasUsadasAntes + 1);
-      const quedan = Math.max(0, total - usadas);
+      const esPermanente = entrada?.is_permanent === true;
+      const total = esPermanente ? 1 : tiradasTotalesAntes;
+      const usadas = esPermanente
+        ? 0
+        : Math.min(total, tiradasUsadasAntes + 1);
+      const quedan = esPermanente ? 1 : Math.max(0, total - usadas);
 
       const entryActualizada = {
         ...entrada,
         spins_total: total,
         spins_used: usadas,
-        status: quedan > 0 ? "pending" : "played",
-        played_at: quedan > 0 ? null : new Date().toISOString(),
+        status: esPermanente ? "pending" : quedan > 0 ? "pending" : "played",
+        played_at: esPermanente || quedan > 0 ? null : new Date().toISOString(),
         prize_id: prize?.id ?? entrada?.prize_id ?? null,
       };
 
@@ -409,7 +435,7 @@ export default function StorePage() {
             ...entryBd,
             spins_total: total,
             spins_used: usadas,
-            status: quedan > 0 ? "pending" : "played",
+            status: esPermanente ? "pending" : quedan > 0 ? "pending" : "played",
           }));
         }
       });
