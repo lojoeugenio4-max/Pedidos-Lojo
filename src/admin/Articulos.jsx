@@ -225,7 +225,8 @@ export default function Articulos() {
           .eq("id", editando.id)
           .single();
 
-        console.log("ARTÍCULO DESPUÉS DEL UPDATE:", articuloGuardado);
+        console.log("FOTO EN BD:", articuloGuardado?.foto);
+  console.log("ARTÍCULO DESPUÉS DEL UPDATE:", JSON.stringify(articuloGuardado,null,2));
         console.log("ERROR COMPROBACIÓN:", errorComprobacion);
       }
 
