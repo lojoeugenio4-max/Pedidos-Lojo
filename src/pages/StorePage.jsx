@@ -580,8 +580,10 @@ export default function StorePage() {
               ref={inputRef}
               value={codigo}
               onChange={(event) => setCodigo(event.target.value.toUpperCase())}
-              placeholder="LJ-XXXXXX"
+              placeholder="••••••••"
               autoComplete="off"
+              type="password"
+              inputMode="text"
               style={styles.input}
             />
 
@@ -627,7 +629,7 @@ export default function StorePage() {
             <div style={styles.note}>
               <span style={styles.noteIcon}>ⓘ</span>
               <span>
-                Código <strong>{entrada.code}</strong> · Cliente{" "}
+                Código <strong>••••••••</strong> · Cliente{" "}
                 <strong>{entrada.customer_name || "sin nombre"}</strong>
                 {tiradasTotales > 1 && (
                   <>
