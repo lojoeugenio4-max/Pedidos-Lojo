@@ -208,28 +208,25 @@ export default function Articulos() {
         // Nombre único para evitar que se siga viendo la foto antigua por caché
         nombreFoto = `${codigoLimpio}_${Date.now()}.${extension}`;
 
-        const lista = await supabase.storage.from("productos").list();
-        console.log("LIST DATA:", lista.data);
-        console.log("LIST ERROR:", lista.error);
-
-        const resultado = await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from("productos")
           .upload(nombreFoto, foto, { upsert: true });
 
-        console.log("UPLOAD RESULT:", resultado);
-
-        if (resultado.error) {
-          console.error("UPLOAD ERROR:", resultado.error);
-          alert(
-            "Error subiendo la foto:\n\n" +
-            resultado.error.message + "\n\n" +
-            JSON.stringify(resultado.error, null, 2)
-          );
+        if (uploadError) {
+          console.error(uploadError);
+          alert("Error subiendo la foto");
           setGuardando(false);
           return;
         }
 
-        console.log("Foto subida correctamente:", nombreFoto);
+        const { data: articuloGuardado, error: errorComprobacion } = await supabase
+          .from("articulos")
+          .select("id, foto")
+          .eq("id", editando.id)
+          .single();
+
+        console.log("ARTÍCULO DESPUÉS DEL UPDATE:", articuloGuardado);
+        console.log("ERROR COMPROBACIÓN:", errorComprobacion);
       }
 
       const datosArticulo = {
@@ -247,10 +244,14 @@ export default function Articulos() {
       let articuloId = editando?.id;
 
       if (editando) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from("articulos")
           .update(datosArticulo)
-          .eq("id", editando.id);
+          .eq("id", editando.id)
+          .select();
+
+        console.log("UPDATE DATA:", data);
+        console.log("UPDATE ERROR:", error);
 
         if (error) {
           console.error(error);
