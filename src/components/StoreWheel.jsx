@@ -1,4 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Sparkles,
+  Star,
+  Gem,
+  Zap,
+  Heart,
+  Moon,
+  Sun,
+  Clover,
+  Rocket,
+  PartyPopper,
+} from "lucide-react";
 import logoLojo from "../assets/logo-lojo.jpg";
 
 const COLORS = [
@@ -15,6 +27,27 @@ const COLORS = [
 ];
 
 const DEFAULT_SPIN_DURATION = 9200;
+
+const ICONOS_SORPRESA = [
+  Sparkles,
+  Star,
+  Gem,
+  Zap,
+  Heart,
+  Moon,
+  Sun,
+  Clover,
+  Rocket,
+  PartyPopper,
+];
+
+const ESTILOS_ICONO = [
+  { fondo: "linear-gradient(145deg, #fff7ed, #fed7aa)", color: "#c2410c", forma: "50%" },
+  { fondo: "linear-gradient(145deg, #fefce8, #fde68a)", color: "#a16207", forma: "28%" },
+  { fondo: "linear-gradient(145deg, #ecfeff, #a5f3fc)", color: "#0e7490", forma: "50% 22% 50% 22%" },
+  { fondo: "linear-gradient(145deg, #f5f3ff, #ddd6fe)", color: "#6d28d9", forma: "35%" },
+  { fondo: "linear-gradient(145deg, #fff1f2, #fecdd3)", color: "#be123c", forma: "50%" },
+];
 
 function mismoPremio(a, b) {
   if (!a || !b) return false;
@@ -57,7 +90,8 @@ export default function StoreWheel({
       color: COLORS[index % COLORS.length],
       start: index * grados,
       end: index * grados + grados,
-      icono: "?",
+      Icono: ICONOS_SORPRESA[index % ICONOS_SORPRESA.length],
+      estiloIcono: ESTILOS_ICONO[index % ESTILOS_ICONO.length],
     }));
   }, [premios]);
 
@@ -192,6 +226,7 @@ export default function StoreWheel({
           }}
         >
           {segmentos.map((segmento, index) => {
+            const Icono = segmento.Icono;
             const anguloCentro = segmento.start + (segmento.end - segmento.start) / 2;
             const esGanador = premioFinal && mismoPremio(segmento.premio, premioFinal);
 
@@ -211,10 +246,21 @@ export default function StoreWheel({
                   }}
                 >
                   <span
-                    style={styles.segmentPrizeFallback}
-                    aria-label="Premio sorpresa"
+                    style={{
+                      ...styles.segmentPrizeFallback,
+                      background: segmento.estiloIcono.fondo,
+                      color: segmento.estiloIcono.color,
+                      borderRadius: segmento.estiloIcono.forma,
+                      transform: `rotate(${index % 2 === 0 ? -6 : 6}deg)`,
+                    }}
+                    aria-label={`Premio sorpresa ${index + 1}`}
                   >
-                    {segmento.icono}
+                    <Icono
+                      aria-hidden="true"
+                      strokeWidth={2.5}
+                      style={styles.segmentPrizeIcon}
+                    />
+                    <small style={styles.segmentPrizeNumber}>{index + 1}</small>
                   </span>
                 </div>
               </div>
@@ -357,10 +403,38 @@ const styles = {
     boxShadow: "0 0 0 5px rgba(250,204,21,.95), 0 0 34px rgba(250,204,21,.95), 0 10px 28px rgba(0,0,0,.5)",
   },
   segmentPrizeFallback: {
-    fontSize: "clamp(22px, 4vh, 38px)",
-    fontWeight: 1000,
-    color: "#b45309",
-    textShadow: "0 2px 8px rgba(255,255,255,.8)",
+    position: "relative",
+    width: "74%",
+    height: "74%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "2px solid rgba(255,255,255,.96)",
+    boxShadow: "0 4px 12px rgba(0,0,0,.2), inset 0 0 0 1px rgba(255,255,255,.5)",
+  },
+  segmentPrizeIcon: {
+    width: "58%",
+    height: "58%",
+    filter: "drop-shadow(0 2px 2px rgba(255,255,255,.8))",
+  },
+  segmentPrizeNumber: {
+    position: "absolute",
+    right: "-5px",
+    bottom: "-5px",
+    minWidth: "clamp(18px, 2.5vh, 25px)",
+    height: "clamp(18px, 2.5vh, 25px)",
+    padding: "0 4px",
+    borderRadius: 999,
+    background: "#111827",
+    color: "#ffffff",
+    border: "2px solid #ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "clamp(9px, 1.45vh, 13px)",
+    fontWeight: 900,
+    lineHeight: 1,
+    boxShadow: "0 2px 7px rgba(0,0,0,.38)",
   },
   center: {
     position: "absolute",
