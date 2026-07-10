@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { supabaseStorage } from "../supabaseStorageClient";
 import FormArticulo from "./FormArticulo";
 import TablaArticulos from "./TablaArticulos";
 
@@ -208,7 +209,7 @@ export default function Articulos() {
         // Nombre único para evitar que se siga viendo la foto antigua por caché
         nombreFoto = `${codigoLimpio}_${Date.now()}.${extension}`;
 
-        const { error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabaseStorage.storage
           .from("productos")
           .upload(nombreFoto, foto, { upsert: true });
 
@@ -219,15 +220,6 @@ export default function Articulos() {
           return;
         }
 
-        const { data: articuloGuardado, error: errorComprobacion } = await supabase
-          .from("articulos")
-          .select("id, foto")
-          .eq("id", editando.id)
-          .single();
-
-        console.log("FOTO EN BD:", articuloGuardado?.foto);
-  console.log("ARTÍCULO DESPUÉS DEL UPDATE:", JSON.stringify(articuloGuardado,null,2));
-        console.log("ERROR COMPROBACIÓN:", errorComprobacion);
       }
 
       const datosArticulo = {
@@ -245,14 +237,10 @@ export default function Articulos() {
       let articuloId = editando?.id;
 
       if (editando) {
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from("articulos")
           .update(datosArticulo)
-          .eq("id", editando.id)
-          .select();
-
-        console.log("UPDATE DATA:", data);
-        console.log("UPDATE ERROR:", error);
+          .eq("id", editando.id);
 
         if (error) {
           console.error(error);
@@ -397,7 +385,7 @@ export default function Articulos() {
     }
 
     if (articulo.foto) {
-      const { error: errorFoto } = await supabase.storage
+      const { error: errorFoto } = await supabaseStorage.storage
         .from("productos")
         .remove([articulo.foto]);
 
