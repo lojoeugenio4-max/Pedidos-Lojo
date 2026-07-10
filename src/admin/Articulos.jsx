@@ -207,18 +207,29 @@ export default function Articulos() {
 
         // Nombre único para evitar que se siga viendo la foto antigua por caché
         nombreFoto = `${codigoLimpio}_${Date.now()}.${extension}`;
+
         const lista = await supabase.storage.from("productos").list();
-  console.log("BUCKET PRODUCTOS:", lista);
-        const { error: uploadError } = await supabase.storage
+        console.log("LIST DATA:", lista.data);
+        console.log("LIST ERROR:", lista.error);
+
+        const resultado = await supabase.storage
           .from("productos")
           .upload(nombreFoto, foto, { upsert: true });
 
-        if (uploadError) {
-          console.error(uploadError);
-          alert("Error subiendo la foto");
+        console.log("UPLOAD RESULT:", resultado);
+
+        if (resultado.error) {
+          console.error("UPLOAD ERROR:", resultado.error);
+          alert(
+            "Error subiendo la foto:\n\n" +
+            resultado.error.message + "\n\n" +
+            JSON.stringify(resultado.error, null, 2)
+          );
           setGuardando(false);
           return;
         }
+
+        console.log("Foto subida correctamente:", nombreFoto);
       }
 
       const datosArticulo = {
