@@ -159,6 +159,11 @@ export default function StoreWheel({
         cancelAnimationFrame(frameRef.current);
         frameRef.current = null;
       }
+
+      // Si cambian los premios o el premio objetivo mientras seguimos en modo giro
+      // (como ocurre al recibir el evento en la pantalla grande), permitimos que
+      // el efecto siguiente vuelva a iniciar la animación en vez de dejarla parada.
+      estabaGirandoRef.current = false;
     };
   }, [girando, duracionGiro, segmentos, premioObjetivo, premioFinal]);
 
