@@ -207,7 +207,8 @@ export default function Articulos() {
 
         // Nombre único para evitar que se siga viendo la foto antigua por caché
         nombreFoto = `${codigoLimpio}_${Date.now()}.${extension}`;
-
+        const lista = await supabase.storage.from("productos").list();
+  console.log("BUCKET PRODUCTOS:", lista);
         const { error: uploadError } = await supabase.storage
           .from("productos")
           .upload(nombreFoto, foto, { upsert: true });
