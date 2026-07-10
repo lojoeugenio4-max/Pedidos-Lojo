@@ -1,52 +1,44 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Gift,
   Sparkles,
   Star,
   Gem,
-  Zap,
-  Heart,
-  Moon,
-  Sun,
+  Crown,
+  Package,
+  WandSparkles,
+  Badge,
   Clover,
-  Rocket,
   PartyPopper,
 } from "lucide-react";
 import logoLojo from "../assets/logo-lojo.jpg";
 
 const COLORS = [
-  "#ef4444",
-  "#f97316",
-  "#facc15",
-  "#65a30d",
-  "#059669",
-  "#0ea5e9",
-  "#2563eb",
-  "#7c3aed",
-  "#c026d3",
-  "#db2777",
+  "#7f1d1d",
+  "#b45309",
+  "#a16207",
+  "#3f6212",
+  "#065f46",
+  "#155e75",
+  "#1e3a8a",
+  "#4c1d95",
+  "#701a75",
+  "#831843",
 ];
 
 const DEFAULT_SPIN_DURATION = 9200;
 
 const ICONOS_SORPRESA = [
+  Gift,
   Sparkles,
   Star,
   Gem,
-  Zap,
-  Heart,
-  Moon,
-  Sun,
+  Crown,
+  Package,
+  WandSparkles,
+  Badge,
   Clover,
-  Rocket,
   PartyPopper,
-];
-
-const ESTILOS_ICONO = [
-  { fondo: "linear-gradient(145deg, #fff7ed, #fed7aa)", color: "#c2410c", forma: "50%" },
-  { fondo: "linear-gradient(145deg, #fefce8, #fde68a)", color: "#a16207", forma: "28%" },
-  { fondo: "linear-gradient(145deg, #ecfeff, #a5f3fc)", color: "#0e7490", forma: "50% 22% 50% 22%" },
-  { fondo: "linear-gradient(145deg, #f5f3ff, #ddd6fe)", color: "#6d28d9", forma: "35%" },
-  { fondo: "linear-gradient(145deg, #fff1f2, #fecdd3)", color: "#be123c", forma: "50%" },
 ];
 
 function mismoPremio(a, b) {
@@ -91,7 +83,6 @@ export default function StoreWheel({
       start: index * grados,
       end: index * grados + grados,
       Icono: ICONOS_SORPRESA[index % ICONOS_SORPRESA.length],
-      estiloIcono: ESTILOS_ICONO[index % ESTILOS_ICONO.length],
     }));
   }, [premios]);
 
@@ -246,21 +237,15 @@ export default function StoreWheel({
                   }}
                 >
                   <span
-                    style={{
-                      ...styles.segmentPrizeFallback,
-                      background: segmento.estiloIcono.fondo,
-                      color: segmento.estiloIcono.color,
-                      borderRadius: segmento.estiloIcono.forma,
-                      transform: `rotate(${index % 2 === 0 ? -6 : 6}deg)`,
-                    }}
-                    aria-label={`Premio sorpresa ${index + 1}`}
+                    style={styles.segmentPrizeFallback}
+                    aria-label="Premio sorpresa"
                   >
+                    <span style={styles.iconHalo} aria-hidden="true" />
                     <Icono
                       aria-hidden="true"
-                      strokeWidth={2.5}
+                      strokeWidth={1.8}
                       style={styles.segmentPrizeIcon}
                     />
-                    <small style={styles.segmentPrizeNumber}>{index + 1}</small>
                   </span>
                 </div>
               </div>
@@ -391,50 +376,44 @@ const styles = {
     width: "100%",
     height: "100%",
     borderRadius: "50%",
-    background: "rgba(255,255,255,.92)",
-    border: "3px solid rgba(255,255,255,.95)",
-    boxShadow: "0 8px 22px rgba(0,0,0,.42), inset 0 0 0 2px rgba(250,204,21,.28)",
+    background: "linear-gradient(145deg, rgba(255,255,255,.98), rgba(255,248,230,.9))",
+    border: "2px solid rgba(255,255,255,.96)",
+    boxShadow: "0 9px 24px rgba(0,0,0,.34), inset 0 0 0 1px rgba(180,120,20,.18)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
   segmentPrizeWinner: {
-    boxShadow: "0 0 0 5px rgba(250,204,21,.95), 0 0 34px rgba(250,204,21,.95), 0 10px 28px rgba(0,0,0,.5)",
+    boxShadow: "0 0 0 5px rgba(253,224,71,.96), 0 0 32px rgba(250,204,21,.9), 0 10px 28px rgba(0,0,0,.45)",
   },
   segmentPrizeFallback: {
     position: "relative",
-    width: "74%",
-    height: "74%",
+    width: "72%",
+    height: "72%",
+    borderRadius: "50%",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    border: "2px solid rgba(255,255,255,.96)",
-    boxShadow: "0 4px 12px rgba(0,0,0,.2), inset 0 0 0 1px rgba(255,255,255,.5)",
+    color: "#8a5a12",
+    background: "radial-gradient(circle at 35% 28%, #fffdf7 0%, #f7e8bd 58%, #d5a94e 100%)",
+    border: "1px solid rgba(126,79,10,.2)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,.95), 0 4px 12px rgba(65,36,5,.24)",
+    overflow: "hidden",
+  },
+  iconHalo: {
+    position: "absolute",
+    inset: "13%",
+    borderRadius: "50%",
+    border: "1px solid rgba(255,255,255,.72)",
+    boxShadow: "0 0 14px rgba(255,255,255,.48)",
   },
   segmentPrizeIcon: {
-    width: "58%",
-    height: "58%",
-    filter: "drop-shadow(0 2px 2px rgba(255,255,255,.8))",
-  },
-  segmentPrizeNumber: {
-    position: "absolute",
-    right: "-5px",
-    bottom: "-5px",
-    minWidth: "clamp(18px, 2.5vh, 25px)",
-    height: "clamp(18px, 2.5vh, 25px)",
-    padding: "0 4px",
-    borderRadius: 999,
-    background: "#111827",
-    color: "#ffffff",
-    border: "2px solid #ffffff",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "clamp(9px, 1.45vh, 13px)",
-    fontWeight: 900,
-    lineHeight: 1,
-    boxShadow: "0 2px 7px rgba(0,0,0,.38)",
+    position: "relative",
+    zIndex: 1,
+    width: "53%",
+    height: "53%",
+    filter: "drop-shadow(0 1px 0 rgba(255,255,255,.9))",
   },
   center: {
     position: "absolute",
