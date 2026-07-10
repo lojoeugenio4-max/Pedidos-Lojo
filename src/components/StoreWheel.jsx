@@ -16,34 +16,6 @@ const COLORS = [
 
 const DEFAULT_SPIN_DURATION = 9200;
 
-const PRODUCTOS_PUBLIC_URL =
-  "https://bohlxagrtpjvqrgkonlo.supabase.co/storage/v1/object/public/productos";
-
-function normalizarGrados(valor) {
-  return ((valor % 360) + 360) % 360;
-}
-
-function easeCasino(t) {
-  // Mucha inercia al principio y frenada muy larga al final.
-  return 1 - Math.pow(1 - t, 4.6);
-}
-
-function getPrizeImageUrl(premio) {
-  const raw =
-    premio?.imagen_url ||
-    premio?.foto_url ||
-    premio?.image_url ||
-    premio?.foto ||
-    premio?.imagen ||
-    "";
-
-  const value = String(raw || "").trim();
-  if (!value) return "";
-  if (value.startsWith("http") || value.startsWith("data:") || value.startsWith("blob:")) return value;
-
-  return `${PRODUCTOS_PUBLIC_URL}/${value.replace(/^\/+/, "")}`;
-}
-
 function mismoPremio(a, b) {
   if (!a || !b) return false;
   if (a.id != null && b.id != null) return String(a.id) === String(b.id);
@@ -85,7 +57,7 @@ export default function StoreWheel({
       color: COLORS[index % COLORS.length],
       start: index * grados,
       end: index * grados + grados,
-      icono: ["?", "★", "🎁", "♦"][index % 4],
+      icono: "?",
     }));
   }, [premios]);
 
@@ -221,7 +193,6 @@ export default function StoreWheel({
         >
           {segmentos.map((segmento, index) => {
             const anguloCentro = segmento.start + (segmento.end - segmento.start) / 2;
-            const imagenPremio = getPrizeImageUrl(segmento.premio);
             const esGanador = premioFinal && mismoPremio(segmento.premio, premioFinal);
 
             return (
@@ -239,16 +210,12 @@ export default function StoreWheel({
                     transform: `rotate(-${anguloCentro}deg)${esGanador ? " scale(1.08)" : ""}`,
                   }}
                 >
-                  {imagenPremio ? (
-                    <img
-                      src={imagenPremio}
-                      alt="Premio"
-                      style={styles.segmentPrizeImage}
-                      draggable={false}
-                    />
-                  ) : (
-                    <span style={styles.segmentPrizeFallback}>{segmento.icono}</span>
-                  )}
+                  <span
+                    style={styles.segmentPrizeFallback}
+                    aria-label="Premio sorpresa"
+                  >
+                    {segmento.icono}
+                  </span>
                 </div>
               </div>
             );
@@ -388,11 +355,6 @@ const styles = {
   },
   segmentPrizeWinner: {
     boxShadow: "0 0 0 5px rgba(250,204,21,.95), 0 0 34px rgba(250,204,21,.95), 0 10px 28px rgba(0,0,0,.5)",
-  },
-  segmentPrizeImage: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
   },
   segmentPrizeFallback: {
     fontSize: "clamp(22px, 4vh, 38px)",
