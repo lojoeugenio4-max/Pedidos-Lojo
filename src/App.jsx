@@ -1141,10 +1141,25 @@ export default function App() {
 
 
   const activarCampoCantidad = (productId, field) => {
-    // Seleccionar una cantidad sólo cambia el estado visual.
-    // No se cambia el departamento ni se modifica la posición del scroll.
     setArticuloDestacado(productId);
     setCampoCantidadActivo(`${productId}:${field}`);
+
+    // En un departamento concreto, el primer artículo dispone de un espacio
+    // superior real. Tras abrirse el teclado, algunos móviles intentan pegarlo
+    // de nuevo a la cabecera. Restauramos únicamente el inicio del catálogo para
+    // que ese primer artículo permanezca en una zona cómoda, sin saltar a otro
+    // artículo ni cambiar de departamento.
+    if (selectedDepartment !== "TODOS" && !search.trim()) {
+      const firstProductId = filteredDepartments[0]?.products?.[0]?.id;
+      if (String(firstProductId || "") === String(productId)) {
+        const restoreFirstItemPosition = () => {
+          window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+        };
+        requestAnimationFrame(restoreFirstItemPosition);
+        setTimeout(restoreFirstItemPosition, 180);
+        setTimeout(restoreFirstItemPosition, 380);
+      }
+    }
   };
 
   const updateQuantity = (productId, field, value) => {
@@ -1157,20 +1172,31 @@ export default function App() {
 
     const numericValue = value === "" ? "" : Math.max(0, Number(value));
 
-    setQuantities((current) => ({
-      ...current,
-      [productId]: {
-        boxes: current[productId]?.boxes || "",
-        units:
-          field === "units"
-            ? current[productId]?.units || ""
-            : product?.permite_unidades
-              ? current[productId]?.units || ""
-              : "",
-        notes: current[productId]?.notes || "",
-        [field]: numericValue,
-      },
-    }));
+    setQuantities((current) => {
+      const previous = current[productId] || {};
+      const hasValue = numericValue !== "" && Number(numericValue) > 0;
+
+      return {
+        ...current,
+        [productId]: {
+          boxes:
+            field === "boxes"
+              ? numericValue
+              : hasValue
+                ? ""
+                : previous.boxes || "",
+          units:
+            field === "units"
+              ? numericValue
+              : hasValue
+                ? ""
+                : product?.permite_unidades
+                  ? previous.units || ""
+                  : "",
+          notes: previous.notes || "",
+        },
+      };
+    });
   };
 
   const updateNotes = (productId, value) => {
@@ -2567,7 +2593,7 @@ const styles = {
   catalogSingleDepartment: {
     // Deja aire sobre el primer artículo del departamento para que no quede
     // pegado a la cabecera cuando el cliente abre Cajas o Unidades.
-    paddingTop: "clamp(54px, 10vh, 92px)",
+    paddingTop: "clamp(130px, 24vh, 210px)",
   },
 
   departmentSection: {
