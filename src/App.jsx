@@ -1147,14 +1147,8 @@ export default function App() {
     setCampoCantidadActivo(`${productId}:${field}`);
   };
 
-  const prepararCampoCantidad = (event, productId, field) => {
-    const input = event.currentTarget;
-
-    // El ajuste se hace durante el gesto real del usuario y NO se cancela el
-    // evento. Así el navegador conserva su acción nativa: enfocar el input y
-    // abrir el teclado. La versión anterior usaba preventDefault + focus
-    // diferido, lo que bloqueaba el teclado en algunos móviles.
-    activarCampoCantidad(productId, field);
+  const alinearArticuloActivo = (input) => {
+    if (!input || document.activeElement !== input) return;
 
     const article = input.closest("article");
     const departmentSection = article?.closest("section");
@@ -1164,22 +1158,52 @@ export default function App() {
     if (!article) return;
 
     const articleRect = article.getBoundingClientRect();
-    const topAreaBottom = topArea
-      ? Math.max(0, topArea.getBoundingClientRect().bottom)
-      : 0;
-    const titleHeight = departmentTitle
-      ? departmentTitle.getBoundingClientRect().height
-      : 0;
+    const topAreaRect = topArea?.getBoundingClientRect();
+    const titleHeight = departmentTitle?.getBoundingClientRect().height || 0;
 
-    // Misma altura visual que el primer artículo del departamento. Se mueve
-    // una sola vez antes de que el foco nativo abra el teclado.
-    const desiredArticleTop = topAreaBottom + titleHeight + 10;
-    const nextScrollY = Math.max(
-      0,
-      window.scrollY + articleRect.top - desiredArticleTop
+    // La tarjeta queda en la misma zona visual que el primer artículo de un
+    // departamento: justo debajo de la cabecera y del título, nunca oculta.
+    const desiredArticleTop = Math.max(
+      12,
+      Math.min(window.innerHeight * 0.28, (topAreaRect?.bottom || 0) + titleHeight + 10)
     );
 
-    window.scrollTo({ top: nextScrollY, behavior: "auto" });
+    const delta = articleRect.top - desiredArticleTop;
+    if (Math.abs(delta) > 2) {
+      window.scrollBy({ top: delta, left: 0, behavior: "auto" });
+    }
+  };
+
+  const prepararCampoCantidad = (event, productId, field) => {
+    const input = event.currentTarget;
+
+    activarCampoCantidad(productId, field);
+
+    // El foco se obtiene SINCRÓNICAMENTE durante el primer toque. Así el
+    // teclado se abre en ese mismo toque. Cancelamos únicamente la acción
+    // nativa posterior para impedir que el navegador vuelva a desplazar la
+    // página o quite el cursor al terminar el gesto.
+    event.preventDefault();
+    input.focus({ preventScroll: true });
+    input.select?.();
+
+    let adjusted = false;
+    const ajustarUnaVez = () => {
+      if (adjusted || document.activeElement !== input) return;
+      adjusted = true;
+      requestAnimationFrame(() => alinearArticuloActivo(input));
+    };
+
+    // En iOS/Android la altura visible cambia cuando aparece el teclado.
+    // Esperamos ese cambio para colocar la tarjeta una sola vez, manteniendo
+    // el foco y el teclado abiertos.
+    const viewport = window.visualViewport;
+    if (viewport) {
+      viewport.addEventListener("resize", ajustarUnaVez, { once: true });
+      setTimeout(ajustarUnaVez, 220);
+    } else {
+      setTimeout(ajustarUnaVez, 120);
+    }
   };
 
   const updateQuantity = (productId, field, value) => {
