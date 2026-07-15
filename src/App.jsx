@@ -1141,24 +1141,26 @@ export default function App() {
 
 
   const activarCampoCantidad = (productId, field) => {
+    // Solo marca el artículo y el campo activo. No cambia el departamento,
+    // no busca el artículo y no modifica el scroll.
     setArticuloDestacado(productId);
     setCampoCantidadActivo(`${productId}:${field}`);
+  };
 
-    // En un departamento concreto, el primer artículo dispone de un espacio
-    // superior real. Tras abrirse el teclado, algunos móviles intentan pegarlo
-    // de nuevo a la cabecera. Restauramos únicamente el inicio del catálogo para
-    // que ese primer artículo permanezca en una zona cómoda, sin saltar a otro
-    // artículo ni cambiar de departamento.
-    if (selectedDepartment !== "TODOS" && !search.trim()) {
-      const firstProductId = filteredDepartments[0]?.products?.[0]?.id;
-      if (String(firstProductId || "") === String(productId)) {
-        const restoreFirstItemPosition = () => {
-          window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-        };
-        requestAnimationFrame(restoreFirstItemPosition);
-        setTimeout(restoreFirstItemPosition, 180);
-        setTimeout(restoreFirstItemPosition, 380);
-      }
+  const enfocarCantidadSinMover = (event, productId, field) => {
+    const input = event.currentTarget;
+
+    // Evita el enfoque automático del navegador, que en algunos móviles
+    // desplaza la página. El enfoque programático mantiene el scroll actual.
+    event.preventDefault();
+    activarCampoCantidad(productId, field);
+    input.focus({ preventScroll: true });
+
+    const length = String(input.value || "").length;
+    try {
+      input.setSelectionRange(length, length);
+    } catch {
+      // Algunos navegadores no permiten seleccionar el rango en este instante.
     }
   };
 
@@ -1940,10 +1942,10 @@ export default function App() {
                               enterKeyHint="done"
                               autoComplete="off"
                               value={quantity.boxes || ""}
-                              onPointerDown={() => activarCampoCantidad(product.id, "boxes")}
-                              onFocus={() =>
-                                activarCampoCantidad(product.id, "boxes")
+                              onPointerDown={(event) =>
+                                enfocarCantidadSinMover(event, product.id, "boxes")
                               }
+                              onFocus={() => activarCampoCantidad(product.id, "boxes")}
                               onKeyDown={(event) => manejarEnterCantidad(event, product.id)}
                               onChange={(event) =>
                                 updateQuantity(
@@ -1972,8 +1974,8 @@ export default function App() {
                               readOnly={!product.permite_unidades}
                               value={product.permite_unidades ? quantity.units || "" : ""}
                               placeholder={product.permite_unidades ? "" : "—"}
-                              onPointerDown={() =>
-                                activarCampoCantidad(product.id, "units")
+                              onPointerDown={(event) =>
+                                enfocarCantidadSinMover(event, product.id, "units")
                               }
                               onFocus={() => {
                                 activarCampoCantidad(product.id, "units");
@@ -2591,9 +2593,9 @@ const styles = {
   },
 
   catalogSingleDepartment: {
-    // Deja aire sobre el primer artículo del departamento para que no quede
-    // pegado a la cabecera cuando el cliente abre Cajas o Unidades.
-    paddingTop: "clamp(130px, 24vh, 210px)",
+    // No añadimos espacio artificial ni recolocamos el catálogo.
+    // La posición permanece exactamente donde la dejó el cliente.
+    paddingTop: "6px",
   },
 
   departmentSection: {
