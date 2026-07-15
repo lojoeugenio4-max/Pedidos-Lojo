@@ -1154,18 +1154,57 @@ export default function App() {
     setArticuloDestacado(productId);
     setCampoCantidadActivo(`${productId}:${field}`);
 
-    // El navegador móvil puede intentar recolocar el campo al abrir el teclado.
-    // Restauramos la posición previa para que la lista no salte de departamento.
-    const restaurarScroll = () => {
-      window.scrollTo({ top: scrollOriginal, left: 0, behavior: "auto" });
+    const colocarArticuloSobreTeclado = () => {
+      const card = rowRefs.current[productId] || input;
+      const rect = card.getBoundingClientRect();
+      const viewport = window.visualViewport;
+
+      // visualViewport refleja únicamente la zona que queda visible cuando
+      // aparece el teclado virtual. Movemos lo mínimo imprescindible para que
+      // la tarjeta completa quede encima del teclado, sin saltar de sección.
+      const visibleTop = (viewport?.offsetTop || 0) + 10;
+      const visibleBottom =
+        (viewport?.offsetTop || 0) +
+        (viewport?.height || window.innerHeight) -
+        14;
+
+      if (rect.bottom > visibleBottom) {
+        window.scrollBy({
+          top: rect.bottom - visibleBottom,
+          left: 0,
+          behavior: "auto",
+        });
+      } else if (rect.top < visibleTop) {
+        window.scrollBy({
+          top: rect.top - visibleTop,
+          left: 0,
+          behavior: "auto",
+        });
+      }
     };
 
+    // Evita el salto inicial que algunos navegadores hacen antes de abrir el
+    // teclado. Después permitimos únicamente el desplazamiento mínimo necesario
+    // para mantener visible el artículo seleccionado.
     requestAnimationFrame(() => {
-      restaurarScroll();
+      window.scrollTo({ top: scrollOriginal, left: 0, behavior: "auto" });
       input.select();
+      colocarArticuloSobreTeclado();
     });
-    setTimeout(restaurarScroll, 80);
-    setTimeout(restaurarScroll, 220);
+
+    const viewport = window.visualViewport;
+    const alCambiarViewport = () => colocarArticuloSobreTeclado();
+    viewport?.addEventListener("resize", alCambiarViewport);
+    viewport?.addEventListener("scroll", alCambiarViewport);
+
+    [100, 250, 450, 700].forEach((delay) => {
+      setTimeout(colocarArticuloSobreTeclado, delay);
+    });
+
+    setTimeout(() => {
+      viewport?.removeEventListener("resize", alCambiarViewport);
+      viewport?.removeEventListener("scroll", alCambiarViewport);
+    }, 900);
   };
 
   const updateQuantity = (productId, field, value) => {
