@@ -95,6 +95,51 @@ function nombreMes(mesISO) {
   });
 }
 
+
+function construirTextoPedido(pedido) {
+  const fecha = pedido.created_at
+    ? new Date(pedido.created_at).toLocaleString("es-ES")
+    : "Fecha no disponible";
+  const cliente = pedido.customer_name ? `Cliente: ${pedido.customer_name}\n` : "";
+  const telefono = pedido.customer_phone ? `Teléfono: ${pedido.customer_phone}\n` : "";
+  const lineas = pedido.lineas.map((linea) => {
+    const cantidades = [];
+    if (Number(linea.cajas || 0) > 0) cantidades.push(`${formatearNumero(linea.cajas)} cajas`);
+    if (Number(linea.unidades || 0) > 0) cantidades.push(`${formatearNumero(linea.unidades)} unidades`);
+    return `• ${linea.nombre_articulo || "Artículo sin nombre"} (${linea.codigo_articulo || "sin código"}): ${cantidades.join(" · ") || "sin cantidad"}`;
+  });
+
+  return [
+    `PEDIDO ${pedido.pedido_id}`,
+    `Fecha: ${fecha}`,
+    cliente.trimEnd(),
+    telefono.trimEnd(),
+    "",
+    ...lineas,
+    "",
+    `Artículos distintos: ${formatearNumero(pedido.articulosDistintos)}`,
+    `Líneas: ${formatearNumero(pedido.totalLineas)}`,
+    `Total cajas: ${formatearNumero(pedido.totalCajas)}`,
+    `Total unidades: ${formatearNumero(pedido.totalUnidades)}`,
+  ].filter((linea, indice, lista) => linea !== "" || lista[indice - 1] !== "").join("\n");
+}
+
+function escaparHtml(valor) {
+  return String(valor ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function telefonoWhatsApp(telefono) {
+  const digitos = String(telefono || "").replace(/\D/g, "");
+  if (!digitos) return "";
+  if (digitos.length === 9 && /^[6789]/.test(digitos)) return `34${digitos}`;
+  return digitos;
+}
+
 export default function Estadisticas() {
   const hoyEstadistico = diaEstadisticoActualISO();
 
@@ -111,23 +156,6 @@ export default function Estadisticas() {
     cargarEstadisticas(hoyEstadistico, hoyEstadistico);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (!pedidoSeleccionado) return undefined;
-
-    function cerrarConEscape(event) {
-      if (event.key === "Escape") setPedidoSeleccionado(null);
-    }
-
-    document.addEventListener("keydown", cerrarConEscape);
-    const overflowAnterior = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.removeEventListener("keydown", cerrarConEscape);
-      document.body.style.overflow = overflowAnterior;
-    };
-  }, [pedidoSeleccionado]);
 
   async function cargarEstadisticas(desdeFiltro = desde, hastaFiltro = hasta, periodo = periodoActivo) {
     setCargando(true);
@@ -322,21 +350,43 @@ export default function Estadisticas() {
     );
   }, [movimientos, participacionesRuleta, codigosRuletaPorPedido]);
 
-  const lineasPedidoSeleccionado = useMemo(() => {
-    if (!pedidoSeleccionado?.pedido_id) return [];
-    return movimientos.filter(
-      (fila) => String(fila.pedido_id || fila.id || "") === pedidoSeleccionado.pedido_id
-    );
-  }, [movimientos, pedidoSeleccionado]);
 
-  const resumenPedidoSeleccionado = useMemo(() => ({
-    cajas: lineasPedidoSeleccionado.reduce((total, fila) => total + Number(fila.cajas || 0), 0),
-    unidades: lineasPedidoSeleccionado.reduce((total, fila) => total + Number(fila.unidades || 0), 0),
-    articulos: new Set(
-      lineasPedidoSeleccionado.map((fila) => String(fila.codigo_articulo || fila.nombre_articulo || ""))
-    ).size,
-    lineas: lineasPedidoSeleccionado.length,
-  }), [lineasPedidoSeleccionado]);
+  const detallePedidoSeleccionado = useMemo(() => {
+    if (!pedidoSeleccionado) return null;
+
+    const lineas = movimientos
+      .filter((fila) => String(fila.pedido_id || fila.id || "") === pedidoSeleccionado.pedido_id)
+      .sort((a, b) => {
+        const porDepartamento = String(a.departamento || "").localeCompare(
+          String(b.departamento || ""),
+          "es",
+          { sensitivity: "base" }
+        );
+        if (porDepartamento !== 0) return porDepartamento;
+        return String(a.nombre_articulo || "").localeCompare(
+          String(b.nombre_articulo || ""),
+          "es",
+          { sensitivity: "base" }
+        );
+      });
+
+    const participacion = pedidoSeleccionado.codigos?.find(
+      (codigo) => codigo?.customer_phone || codigo?.customer_name
+    ) || pedidoSeleccionado.codigos?.[0] || null;
+
+    return {
+      ...pedidoSeleccionado,
+      customer_name: participacion?.customer_name || null,
+      customer_phone: participacion?.customer_phone || null,
+      lineas,
+      totalLineas: lineas.length,
+      totalCajas: lineas.reduce((total, fila) => total + Number(fila.cajas || 0), 0),
+      totalUnidades: lineas.reduce((total, fila) => total + Number(fila.unidades || 0), 0),
+      articulosDistintos: new Set(
+        lineas.map((fila) => String(fila.codigo_articulo || fila.nombre_articulo || ""))
+      ).size,
+    };
+  }, [pedidoSeleccionado, movimientos]);
 
   const departamentos = useMemo(() => {
     const mapa = new Map();
@@ -468,16 +518,7 @@ export default function Estadisticas() {
                         return (
                           <tr key={pedido.pedido_id}>
                             <td style={td}>{new Date(pedido.created_at).toLocaleString("es-ES")}</td>
-                            <td style={td}>
-                              <button
-                                type="button"
-                                onClick={() => setPedidoSeleccionado(pedido)}
-                                style={pedidoLink}
-                                title="Ver contenido del pedido"
-                              >
-                                {pedido.pedido_id}
-                              </button>
-                            </td>
+                            <td style={td}><button type="button" style={orderButton} onClick={() => setPedidoSeleccionado(pedido)} title="Ver contenido del pedido">{pedido.pedido_id}</button></td>
                             <td style={td}>No emitido</td>
                             <td style={tdRight}>—</td>
                             <td style={tdRight}>—</td>
@@ -489,16 +530,7 @@ export default function Estadisticas() {
                       return codigos.map((codigo, index) => (
                         <tr key={`${pedido.pedido_id}-${codigo.id || codigo.code || index}`}>
                           <td style={td}>{new Date(codigo.created_at || pedido.created_at).toLocaleString("es-ES")}</td>
-                          <td style={td}>
-                            <button
-                              type="button"
-                              onClick={() => setPedidoSeleccionado(pedido)}
-                              style={pedidoLink}
-                              title="Ver contenido del pedido"
-                            >
-                              {pedido.pedido_id}
-                            </button>
-                          </td>
+                          <td style={td}><button type="button" style={orderButton} onClick={() => setPedidoSeleccionado(pedido)} title="Ver contenido del pedido">{pedido.pedido_id}</button></td>
                           <td style={tdRightStrong}>{codigo.code || codigo.codigo || "—"}</td>
                           <td style={tdRight}>{formatearNumero(Math.max(1, Number(codigo.spins_total || 1)))}</td>
                           <td style={tdRight}>{formatearNumero(Number(codigo.spins_used || 0))}</td>
@@ -662,71 +694,166 @@ export default function Estadisticas() {
         </>
       )}
 
-      {pedidoSeleccionado && (
-        <div
-          style={modalOverlay}
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setPedidoSeleccionado(null);
-          }}
-        >
-          <section style={modalCard} role="dialog" aria-modal="true" aria-labelledby="detalle-pedido-titulo">
-            <div style={modalHeader}>
-              <div style={{ minWidth: 0 }}>
-                <div style={modalEyebrow}>Detalle del pedido</div>
-                <h2 id="detalle-pedido-titulo" style={modalTitle}>Pedido</h2>
-                <div style={modalOrderId}>{pedidoSeleccionado.pedido_id}</div>
-                <p style={modalDate}>
-                  {pedidoSeleccionado.created_at
-                    ? new Date(pedidoSeleccionado.created_at).toLocaleString("es-ES")
-                    : "Fecha no disponible"}
-                </p>
-              </div>
-              <button type="button" onClick={() => setPedidoSeleccionado(null)} style={modalClose} aria-label="Cerrar">×</button>
-            </div>
-
-            <div style={modalStats}>
-              <StatCard label="Artículos" value={formatearNumero(resumenPedidoSeleccionado.articulos)} />
-              <StatCard label="Líneas" value={formatearNumero(resumenPedidoSeleccionado.lineas)} />
-              <StatCard label="Cajas" value={formatearNumero(resumenPedidoSeleccionado.cajas)} />
-              <StatCard label="Unidades" value={formatearNumero(resumenPedidoSeleccionado.unidades)} />
-            </div>
-
-            <div style={modalTableWrap}>
-              <table style={table}>
-                <thead>
-                  <tr>
-                    <th style={th}>Artículo</th>
-                    <th style={th}>Código</th>
-                    <th style={th}>Departamento</th>
-                    <th style={thRight}>Cajas</th>
-                    <th style={thRight}>Unidades</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lineasPedidoSeleccionado.length === 0 ? (
-                    <FilaVacia columnas={5} />
-                  ) : (
-                    lineasPedidoSeleccionado.map((fila) => (
-                      <tr key={fila.id || `${fila.codigo_articulo}-${fila.nombre_articulo}`}>
-                        <td style={td}><strong>{fila.nombre_articulo || "Sin nombre"}</strong></td>
-                        <td style={td}>{fila.codigo_articulo || "—"}</td>
-                        <td style={td}>{fila.departamento || "—"}</td>
-                        <td style={tdRightStrong}>{formatearNumero(fila.cajas)}</td>
-                        <td style={tdRightStrong}>{formatearNumero(fila.unidades)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div style={modalFooter}>
-              <button type="button" onClick={() => setPedidoSeleccionado(null)} style={modalDoneButton}>Cerrar</button>
-            </div>
-          </section>
-        </div>
+      {detallePedidoSeleccionado && (
+        <DetallePedidoModal
+          pedido={detallePedidoSeleccionado}
+          onClose={() => setPedidoSeleccionado(null)}
+        />
       )}
+    </div>
+  );
+}
+
+function DetallePedidoModal({ pedido, onClose }) {
+  const [mensajeAccion, setMensajeAccion] = useState("");
+  const telefonoWa = telefonoWhatsApp(pedido.customer_phone);
+
+  useEffect(() => {
+    function cerrarConEscape(event) {
+      if (event.key === "Escape") onClose();
+    }
+
+    window.addEventListener("keydown", cerrarConEscape);
+    return () => window.removeEventListener("keydown", cerrarConEscape);
+  }, [onClose]);
+
+  async function copiarPedido() {
+    const texto = construirTextoPedido(pedido);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(texto);
+      } else {
+        const area = document.createElement("textarea");
+        area.value = texto;
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        area.remove();
+      }
+      setMensajeAccion("Pedido copiado al portapapeles.");
+    } catch (error) {
+      console.error("No se pudo copiar el pedido:", error);
+      setMensajeAccion("No se pudo copiar el pedido.");
+    }
+  }
+
+  function imprimirPedido() {
+    const ventana = window.open("", "_blank", "width=900,height=720");
+    if (!ventana) {
+      setMensajeAccion("El navegador ha bloqueado la ventana de impresión.");
+      return;
+    }
+
+    const filas = pedido.lineas.map((linea) => `
+      <tr>
+        <td><strong>${escaparHtml(linea.nombre_articulo || "Artículo sin nombre")}</strong><br><small>${escaparHtml(linea.codigo_articulo || "—")}</small></td>
+        <td>${escaparHtml(linea.departamento || "Sin departamento")}</td>
+        <td class="numero">${escaparHtml(formatearNumero(linea.cajas))}</td>
+        <td class="numero">${escaparHtml(formatearNumero(linea.unidades))}</td>
+      </tr>`).join("");
+
+    ventana.document.write(`<!doctype html>
+      <html lang="es"><head><meta charset="utf-8"><title>Pedido ${escaparHtml(pedido.pedido_id)}</title>
+      <style>
+        body{font-family:Arial,sans-serif;color:#111827;margin:32px} h1{font-size:22px;margin:0 0 8px} p{margin:4px 0;color:#475569}
+        table{width:100%;border-collapse:collapse;margin-top:22px} th,td{border:1px solid #d1d5db;padding:10px;text-align:left} th{background:#f3f4f6}.numero{text-align:right}
+        .resumen{display:flex;gap:24px;flex-wrap:wrap;margin-top:20px;font-weight:700}.cliente{margin-top:14px} small{color:#64748b}
+        @media print{body{margin:12mm}}
+      </style></head><body>
+      <h1>Pedido ${escaparHtml(pedido.pedido_id)}</h1>
+      <p>${escaparHtml(pedido.created_at ? new Date(pedido.created_at).toLocaleString("es-ES") : "Fecha no disponible")}</p>
+      ${pedido.customer_name ? `<p class="cliente"><strong>Cliente:</strong> ${escaparHtml(pedido.customer_name)}</p>` : ""}
+      ${pedido.customer_phone ? `<p><strong>Teléfono:</strong> ${escaparHtml(pedido.customer_phone)}</p>` : ""}
+      <table><thead><tr><th>Artículo</th><th>Departamento</th><th>Cajas</th><th>Unidades</th></tr></thead><tbody>${filas}</tbody></table>
+      <div class="resumen"><span>Artículos: ${escaparHtml(formatearNumero(pedido.articulosDistintos))}</span><span>Líneas: ${escaparHtml(formatearNumero(pedido.totalLineas))}</span><span>Cajas: ${escaparHtml(formatearNumero(pedido.totalCajas))}</span><span>Unidades: ${escaparHtml(formatearNumero(pedido.totalUnidades))}</span></div>
+      <script>window.addEventListener('load',()=>{window.print();});<\/script></body></html>`);
+    ventana.document.close();
+  }
+
+  function abrirWhatsApp() {
+    if (!telefonoWa) return;
+    const mensaje = encodeURIComponent(`Hola${pedido.customer_name ? ` ${pedido.customer_name}` : ""}, te contactamos en relación con tu pedido ${pedido.pedido_id}.`);
+    window.open(`https://wa.me/${telefonoWa}?text=${mensaje}`, "_blank", "noopener,noreferrer");
+  }
+
+  return (
+    <div style={modalOverlay} role="presentation" onMouseDown={onClose}>
+      <section
+        style={modalCard}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="detalle-pedido-titulo"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div style={modalHeader}>
+          <div>
+            <div style={modalEyebrow}>Detalle del pedido</div>
+            <h2 id="detalle-pedido-titulo" style={modalTitle}>{pedido.pedido_id}</h2>
+            <p style={modalDate}>
+              {pedido.created_at ? new Date(pedido.created_at).toLocaleString("es-ES") : "Fecha no disponible"}
+            </p>
+            {(pedido.customer_name || pedido.customer_phone) && (
+              <p style={modalCustomer}>
+                {pedido.customer_name || "Cliente sin nombre"}
+                {pedido.customer_phone ? ` · ${pedido.customer_phone}` : ""}
+              </p>
+            )}
+          </div>
+          <button type="button" onClick={onClose} style={closeButton} aria-label="Cerrar detalle">×</button>
+        </div>
+
+        <div style={modalStats}>
+          <StatCard label="Artículos distintos" value={formatearNumero(pedido.articulosDistintos)} />
+          <StatCard label="Líneas" value={formatearNumero(pedido.totalLineas)} />
+          <StatCard label="Cajas" value={formatearNumero(pedido.totalCajas)} />
+          <StatCard label="Unidades" value={formatearNumero(pedido.totalUnidades)} />
+        </div>
+
+        <div style={modalTableWrap}>
+          <table style={table}>
+            <thead>
+              <tr>
+                <th style={th}>Artículo</th>
+                <th style={th}>Departamento</th>
+                <th style={thRight}>Cajas</th>
+                <th style={thRight}>Unidades</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pedido.lineas.length === 0 ? (
+                <FilaVacia columnas={4} />
+              ) : (
+                pedido.lineas.map((linea) => (
+                  <tr key={linea.id || `${linea.codigo_articulo}-${linea.nombre_articulo}`}>
+                    <td style={td}>
+                      <strong>{linea.nombre_articulo || "Artículo sin nombre"}</strong>
+                      <div style={smallText}>Código: {linea.codigo_articulo || "—"}</div>
+                    </td>
+                    <td style={td}>{linea.departamento || "Sin departamento"}</td>
+                    <td style={tdRightStrong}>{formatearNumero(linea.cajas)}</td>
+                    <td style={tdRightStrong}>{formatearNumero(linea.unidades)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={modalFooter}>
+          <div>
+            <span style={modalHint}>{mensajeAccion || "También puedes cerrar pulsando Esc o haciendo clic fuera."}</span>
+            {!telefonoWa && <div style={whatsappHint}>WhatsApp no está disponible porque este pedido no tiene teléfono guardado.</div>}
+          </div>
+          <div style={modalActions}>
+            <button type="button" onClick={imprimirPedido} style={secondaryAction}>📄 Imprimir pedido</button>
+            <button type="button" onClick={abrirWhatsApp} style={telefonoWa ? whatsappAction : disabledAction} disabled={!telefonoWa} title={telefonoWa ? "Abrir conversación de WhatsApp" : "No hay teléfono guardado"}>📲 Abrir WhatsApp</button>
+            <button type="button" onClick={copiarPedido} style={secondaryAction}>📋 Copiar pedido</button>
+            <button type="button" onClick={onClose} style={modalCloseAction}>❌ Cerrar</button>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
@@ -909,16 +1036,23 @@ const chartEmpty = { border: "1px dashed #cbd5e1", borderRadius: "16px", padding
 const loadingBox = { padding: "30px", textAlign: "center", color: "#64748b", fontWeight: "900", background: "#ffffff", borderRadius: "16px" };
 const errorBox = { background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca", padding: "16px", borderRadius: "18px", marginBottom: "18px" };
 
-const pedidoLink = { background: "transparent", border: "none", padding: 0, color: "#1d4ed8", font: "inherit", fontWeight: "900", cursor: "pointer", textDecoration: "underline", textDecorationThickness: "1px", textUnderlineOffset: "3px", textAlign: "left" };
-const modalOverlay = { position: "fixed", inset: 0, zIndex: 9999, background: "rgba(15,23,42,0.68)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", boxSizing: "border-box" };
-const modalCard = { width: "min(1080px, 100%)", maxHeight: "calc(100vh - 48px)", overflow: "hidden", display: "flex", flexDirection: "column", background: "#ffffff", borderRadius: "24px", boxShadow: "0 30px 80px rgba(15,23,42,0.35)", border: "1px solid rgba(255,255,255,0.5)" };
-const modalHeader = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px", padding: "22px 24px 18px", borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg, #eff6ff 0%, #ffffff 65%)" };
-const modalEyebrow = { color: "#2563eb", fontSize: "12px", fontWeight: "950", textTransform: "uppercase", letterSpacing: "0.08em" };
-const modalTitle = { margin: "5px 0 4px", fontSize: "25px", color: "#111827", fontWeight: "950" };
-const modalOrderId = { color: "#1d4ed8", fontSize: "14px", fontWeight: "900", overflowWrap: "anywhere" };
-const modalDate = { margin: "7px 0 0", color: "#64748b", fontSize: "13px" };
-const modalClose = { width: "42px", height: "42px", flex: "0 0 auto", border: "none", borderRadius: "13px", background: "#e2e8f0", color: "#0f172a", fontSize: "28px", lineHeight: 1, cursor: "pointer" };
-const modalStats = { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "10px", padding: "16px 24px 0" };
-const modalTableWrap = { overflow: "auto", margin: "16px 24px", border: "1px solid #e5e7eb", borderRadius: "16px" };
-const modalFooter = { display: "flex", justifyContent: "flex-end", padding: "0 24px 22px" };
-const modalDoneButton = { background: "#111827", color: "#ffffff", border: "none", borderRadius: "13px", padding: "12px 20px", fontWeight: "950", cursor: "pointer" };
+const orderButton = { border: "none", background: "transparent", color: "#1d4ed8", padding: 0, font: "inherit", fontWeight: "950", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: "3px", textAlign: "left" };
+const modalOverlay = { position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", background: "rgba(15,23,42,0.72)", backdropFilter: "blur(5px)" };
+const modalCard = { width: "min(980px, 100%)", maxHeight: "90vh", overflow: "hidden", display: "flex", flexDirection: "column", background: "#ffffff", borderRadius: "24px", boxShadow: "0 35px 90px rgba(15,23,42,0.38)", border: "1px solid rgba(255,255,255,0.55)" };
+const modalHeader = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px", padding: "22px 24px", color: "#ffffff", background: "linear-gradient(135deg, #111827 0%, #1d4ed8 100%)" };
+const modalEyebrow = { fontSize: "12px", fontWeight: "900", textTransform: "uppercase", letterSpacing: "0.08em", color: "#bfdbfe", marginBottom: "7px" };
+const modalTitle = { margin: 0, fontSize: "20px", lineHeight: 1.25, overflowWrap: "anywhere" };
+const modalDate = { margin: "8px 0 0", color: "#dbeafe", fontSize: "14px" };
+const modalCustomer = { margin: "8px 0 0", color: "#ffffff", fontSize: "14px", fontWeight: "800" };
+const closeButton = { width: "42px", height: "42px", flex: "0 0 auto", borderRadius: "50%", border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.12)", color: "#ffffff", fontSize: "28px", lineHeight: 1, cursor: "pointer" };
+const modalStats = { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "10px", padding: "16px 20px", background: "#f8fafc", borderBottom: "1px solid #e5e7eb" };
+const modalTableWrap = { overflow: "auto", margin: "18px 20px 0", border: "1px solid #e5e7eb", borderRadius: "16px" };
+const modalFooter = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", padding: "16px 20px 20px", flexWrap: "wrap" };
+const modalHint = { color: "#64748b", fontSize: "12px" };
+const whatsappHint = { color: "#b45309", fontSize: "11px", marginTop: "4px", fontWeight: "750" };
+const modalActions = { display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" };
+const actionBase = { border: "none", borderRadius: "12px", padding: "11px 14px", fontWeight: "900", cursor: "pointer", whiteSpace: "nowrap" };
+const secondaryAction = { ...actionBase, background: "#e2e8f0", color: "#0f172a" };
+const whatsappAction = { ...actionBase, background: "#16a34a", color: "#ffffff" };
+const disabledAction = { ...actionBase, background: "#e5e7eb", color: "#94a3b8", cursor: "not-allowed" };
+const modalCloseAction = { ...actionBase, background: "#111827", color: "#ffffff" };
