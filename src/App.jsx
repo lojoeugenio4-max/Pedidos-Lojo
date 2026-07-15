@@ -253,6 +253,7 @@ export default function App() {
   const rowRefs = useRef({});
   const departmentDropdownRef = useRef(null);
   const stickyCardRef = useRef(null);
+  const scrollAntesDeCantidadRef = useRef(0);
 
   const getSavedOrder = () => {
     try {
@@ -284,6 +285,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("TODOS");
   const [articuloDestacado, setArticuloDestacado] = useState(null);
+  const [campoCantidadActivo, setCampoCantidadActivo] = useState(null);
   const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
   const [showOrderSummary, setShowOrderSummary] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
@@ -1139,6 +1141,33 @@ export default function App() {
   );
 
 
+  const prepararFocoCantidad = (productId, field) => {
+    scrollAntesDeCantidadRef.current = window.scrollY;
+    setArticuloDestacado(productId);
+    setCampoCantidadActivo(`${productId}:${field}`);
+  };
+
+  const mantenerScrollAlEnfocarCantidad = (event, productId, field) => {
+    const input = event.currentTarget;
+    const scrollOriginal = scrollAntesDeCantidadRef.current;
+
+    setArticuloDestacado(productId);
+    setCampoCantidadActivo(`${productId}:${field}`);
+
+    // El navegador móvil puede intentar recolocar el campo al abrir el teclado.
+    // Restauramos la posición previa para que la lista no salte de departamento.
+    const restaurarScroll = () => {
+      window.scrollTo({ top: scrollOriginal, left: 0, behavior: "auto" });
+    };
+
+    requestAnimationFrame(() => {
+      restaurarScroll();
+      input.select();
+    });
+    setTimeout(restaurarScroll, 80);
+    setTimeout(restaurarScroll, 220);
+  };
+
   const updateQuantity = (productId, field, value) => {
     const product = productos.find((item) => item.id === productId);
 
@@ -1906,7 +1935,10 @@ export default function App() {
                               enterKeyHint="done"
                               autoComplete="off"
                               value={quantity.boxes || ""}
-                              onFocus={() => asegurarArticuloVisible(product.id)}
+                              onPointerDown={() => prepararFocoCantidad(product.id, "boxes")}
+                              onFocus={(event) =>
+                                mantenerScrollAlEnfocarCantidad(event, product.id, "boxes")
+                              }
                               onKeyDown={(event) => manejarEnterCantidad(event, product.id)}
                               onChange={(event) =>
                                 updateQuantity(
@@ -1915,7 +1947,12 @@ export default function App() {
                                   event.target.value.replace(/[^0-9]/g, "")
                                 )
                               }
-                              style={styles.quantityInput}
+                              style={{
+                                ...styles.quantityInput,
+                                ...(campoCantidadActivo === `${product.id}:boxes`
+                                  ? styles.quantityInputActive
+                                  : {}),
+                              }}
                             />
                           </label>
 
@@ -1930,8 +1967,15 @@ export default function App() {
                               readOnly={!product.permite_unidades}
                               value={product.permite_unidades ? quantity.units || "" : ""}
                               placeholder={product.permite_unidades ? "" : "—"}
-                              onFocus={() => {
-                                asegurarArticuloVisible(product.id);
+                              onPointerDown={() =>
+                                prepararFocoCantidad(product.id, "units")
+                              }
+                              onFocus={(event) => {
+                                mantenerScrollAlEnfocarCantidad(
+                                  event,
+                                  product.id,
+                                  "units"
+                                );
                                 if (!product.permite_unidades) {
                                   avisarSoloCajas(product.id);
                                 }
@@ -1949,11 +1993,15 @@ export default function App() {
                                   event.target.value.replace(/[^0-9]/g, "")
                                 )
                               }
-                              style={
-                                product.permite_unidades
+                              style={{
+                                ...(product.permite_unidades
                                   ? styles.quantityInput
-                                  : styles.quantityInputBlocked
-                              }
+                                  : styles.quantityInputBlocked),
+                                ...(product.permite_unidades &&
+                                campoCantidadActivo === `${product.id}:units`
+                                  ? styles.quantityInputActive
+                                  : {}),
+                              }}
                             />
                           </label>
 
@@ -2741,6 +2789,13 @@ const styles = {
     outline: "none",
     appearance: "textfield",
     WebkitAppearance: "none",
+  },
+
+  quantityInputActive: {
+    background: "#fef08a",
+    border: "2px solid #f59e0b",
+    boxShadow: "0 0 0 3px rgba(245,158,11,0.22)",
+    fontWeight: "900",
   },
 
   quantityInputBlocked: {
