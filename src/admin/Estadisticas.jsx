@@ -106,7 +106,12 @@ function construirTextoPedido(pedido) {
     const cantidades = [];
     if (Number(linea.cajas || 0) > 0) cantidades.push(`${formatearNumero(linea.cajas)} cajas`);
     if (Number(linea.unidades || 0) > 0) cantidades.push(`${formatearNumero(linea.unidades)} unidades`);
-    return `• ${linea.nombre_articulo || "Artículo sin nombre"} (${linea.codigo_articulo || "sin código"}): ${cantidades.join(" · ") || "sin cantidad"}`;
+    const ruleta = linea.ruleta?.incluido
+      ? linea.ruleta.cumple
+        ? " · 🎡 válido para ruleta"
+        : ` · 🎡 promoción (mínimo ${formatearNumero(linea.ruleta.cantidadMinima)} ${linea.ruleta.permiteUnidades ? "uds." : "cajas"})`
+      : "";
+    return `• ${linea.nombre_articulo || "Artículo sin nombre"} (${linea.codigo_articulo || "sin código"}): ${cantidades.join(" · ") || "sin cantidad"}${ruleta}`;
   });
 
   return [
@@ -140,11 +145,39 @@ function telefonoWhatsApp(telefono) {
   return digitos;
 }
 
+function normalizarValorRuleta(valor) {
+  return String(valor || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function cantidadMinimaReglaRuleta(regla) {
+  const valor = Number(String(regla?.cantidad_minima ?? 1).replace(",", "."));
+  return Number.isFinite(valor) && valor > 0 ? valor : 1;
+}
+
+function cumpleMinimoRuleta(linea, regla) {
+  const minimo = cantidadMinimaReglaRuleta(regla);
+  const cajas = Number(linea?.cajas || 0);
+  const unidades = Number(linea?.unidades || 0);
+
+  // Reproduce la misma regla usada al generar la participación en la tienda.
+  if (regla?.permite_unidades) return cajas > 0 || unidades >= minimo;
+  return cajas >= minimo;
+}
+
 export default function Estadisticas() {
   const hoyEstadistico = diaEstadisticoActualISO();
 
   const [movimientos, setMovimientos] = useState([]);
   const [participacionesRuleta, setParticipacionesRuleta] = useState([]);
+  const [configuracionArticulosRuleta, setConfiguracionArticulosRuleta] = useState({
+    promocion: null,
+    articulosPorCodigo: new Map(),
+    departamentos: new Set(),
+  });
   const [desde, setDesde] = useState(hoyEstadistico);
   const [hasta, setHasta] = useState(hoyEstadistico);
   const [periodoActivo, setPeriodoActivo] = useState("hoy");
@@ -187,6 +220,84 @@ export default function Estadisticas() {
       if (participacionesError) throw participacionesError;
 
       setParticipacionesRuleta(participacionesData || []);
+
+      // Cargamos la configuración vigente para identificar dentro de cada pedido
+      // qué artículos pertenecen a la promoción de la ruleta.
+      const hoy = fechaLocalISO(new Date());
+      const { data: promocionesData, error: promocionesError } = await supabase
+        .from("promociones_ruleta")
+        .select("*")
+        .eq("activa", true)
+        .order("created_at", { ascending: true });
+
+      if (promocionesError) throw promocionesError;
+
+      const promocion = (promocionesData || []).find((item) => {
+        const inicioOk = !item.fecha_inicio || item.fecha_inicio <= hoy;
+        const finOk = !item.fecha_fin || item.fecha_fin >= hoy;
+        return inicioOk && finOk;
+      }) || promocionesData?.[0] || null;
+
+      if (!promocion?.id) {
+        setConfiguracionArticulosRuleta({
+          promocion: null,
+          articulosPorCodigo: new Map(),
+          departamentos: new Set(),
+        });
+      } else {
+        const [reglasResultado, departamentosResultado, articulosResultado] = await Promise.all([
+          supabase
+            .from("promociones_ruleta_articulos")
+            .select("*")
+            .eq("promocion_id", promocion.id),
+          supabase
+            .from("promociones_ruleta_departamentos")
+            .select("departamento_id")
+            .eq("promocion_id", promocion.id),
+          supabase
+            .from("articulos")
+            .select("codigo, permite_unidades, departamento_id, departamentos(nombre)"),
+        ]);
+
+        if (reglasResultado.error) throw reglasResultado.error;
+        if (departamentosResultado.error) throw departamentosResultado.error;
+        if (articulosResultado.error) throw articulosResultado.error;
+
+        const metadatosPorCodigo = new Map(
+          (articulosResultado.data || []).map((articulo) => [
+            normalizarValorRuleta(articulo.codigo),
+            articulo,
+          ])
+        );
+
+        const articulosPorCodigo = new Map();
+        (reglasResultado.data || []).forEach((regla) => {
+          const codigo = normalizarValorRuleta(regla.codigo_articulo);
+          if (!codigo) return;
+          const articulo = metadatosPorCodigo.get(codigo);
+          articulosPorCodigo.set(codigo, {
+            ...regla,
+            permite_unidades: Boolean(articulo?.permite_unidades),
+            origen_promocion: "articulo",
+          });
+        });
+
+        const idsDepartamentos = new Set(
+          (departamentosResultado.data || []).map((item) => String(item.departamento_id))
+        );
+        const nombresDepartamentos = new Set(
+          (articulosResultado.data || [])
+            .filter((articulo) => idsDepartamentos.has(String(articulo.departamento_id)))
+            .map((articulo) => normalizarValorRuleta(articulo.departamentos?.nombre))
+            .filter(Boolean)
+        );
+
+        setConfiguracionArticulosRuleta({
+          promocion,
+          articulosPorCodigo,
+          departamentos: nombresDepartamentos,
+        });
+      }
     } catch (err) {
       console.error("Error cargando estadísticas:", err);
       setError(err?.message || JSON.stringify(err));
@@ -356,6 +467,28 @@ export default function Estadisticas() {
 
     const lineas = movimientos
       .filter((fila) => String(fila.pedido_id || fila.id || "") === pedidoSeleccionado.pedido_id)
+      .map((fila) => {
+        const codigo = normalizarValorRuleta(fila.codigo_articulo);
+        const departamento = normalizarValorRuleta(fila.departamento);
+        const reglaArticulo = configuracionArticulosRuleta.articulosPorCodigo.get(codigo);
+        const incluidoPorDepartamento = configuracionArticulosRuleta.departamentos.has(departamento);
+        const regla = reglaArticulo || (incluidoPorDepartamento
+          ? { cantidad_minima: 1, permite_unidades: Number(fila.unidades || 0) > 0, origen_promocion: "departamento" }
+          : null);
+
+        return {
+          ...fila,
+          ruleta: regla
+            ? {
+                incluido: true,
+                cumple: cumpleMinimoRuleta(fila, regla),
+                cantidadMinima: cantidadMinimaReglaRuleta(regla),
+                permiteUnidades: Boolean(regla.permite_unidades),
+                origen: regla.origen_promocion || "articulo",
+              }
+            : { incluido: false, cumple: false },
+        };
+      })
       .sort((a, b) => {
         const porDepartamento = String(a.departamento || "").localeCompare(
           String(b.departamento || ""),
@@ -385,8 +518,11 @@ export default function Estadisticas() {
       articulosDistintos: new Set(
         lineas.map((fila) => String(fila.codigo_articulo || fila.nombre_articulo || ""))
       ).size,
+      articulosRuleta: lineas.filter((fila) => fila.ruleta?.incluido),
+      articulosRuletaValidos: lineas.filter((fila) => fila.ruleta?.incluido && fila.ruleta?.cumple),
+      promocionRuleta: configuracionArticulosRuleta.promocion,
     };
-  }, [pedidoSeleccionado, movimientos]);
+  }, [pedidoSeleccionado, movimientos, configuracionArticulosRuleta]);
 
   const departamentos = useMemo(() => {
     const mapa = new Map();
@@ -640,7 +776,7 @@ export default function Estadisticas() {
                 </thead>
                 <tbody>
                   {departamentos.length === 0 ? (
-                    <FilaVacia columnas={4} />
+                    <FilaVacia columnas={5} />
                   ) : (
                     departamentos.slice(0, 20).map((fila) => (
                       <tr key={fila.departamento}>
@@ -752,6 +888,7 @@ function DetallePedidoModal({ pedido, onClose }) {
         <td>${escaparHtml(linea.departamento || "Sin departamento")}</td>
         <td class="numero">${escaparHtml(formatearNumero(linea.cajas))}</td>
         <td class="numero">${escaparHtml(formatearNumero(linea.unidades))}</td>
+        <td>${linea.ruleta?.incluido ? (linea.ruleta.cumple ? "Válido para ruleta" : `Incluido; mínimo ${escaparHtml(formatearNumero(linea.ruleta.cantidadMinima))} ${linea.ruleta.permiteUnidades ? "uds." : "cajas"}`) : "—"}</td>
       </tr>`).join("");
 
     ventana.document.write(`<!doctype html>
@@ -766,7 +903,7 @@ function DetallePedidoModal({ pedido, onClose }) {
       <p>${escaparHtml(pedido.created_at ? new Date(pedido.created_at).toLocaleString("es-ES") : "Fecha no disponible")}</p>
       ${pedido.customer_name ? `<p class="cliente"><strong>Cliente:</strong> ${escaparHtml(pedido.customer_name)}</p>` : ""}
       ${pedido.customer_phone ? `<p><strong>Teléfono:</strong> ${escaparHtml(pedido.customer_phone)}</p>` : ""}
-      <table><thead><tr><th>Artículo</th><th>Departamento</th><th>Cajas</th><th>Unidades</th></tr></thead><tbody>${filas}</tbody></table>
+      <table><thead><tr><th>Artículo</th><th>Departamento</th><th>Cajas</th><th>Unidades</th><th>Promoción ruleta</th></tr></thead><tbody>${filas}</tbody></table>
       <div class="resumen"><span>Artículos: ${escaparHtml(formatearNumero(pedido.articulosDistintos))}</span><span>Líneas: ${escaparHtml(formatearNumero(pedido.totalLineas))}</span><span>Cajas: ${escaparHtml(formatearNumero(pedido.totalCajas))}</span><span>Unidades: ${escaparHtml(formatearNumero(pedido.totalUnidades))}</span></div>
       <script>window.addEventListener('load',()=>{window.print();});<\/script></body></html>`);
     ventana.document.close();
@@ -809,6 +946,19 @@ function DetallePedidoModal({ pedido, onClose }) {
           <StatCard label="Líneas" value={formatearNumero(pedido.totalLineas)} />
           <StatCard label="Cajas" value={formatearNumero(pedido.totalCajas)} />
           <StatCard label="Unidades" value={formatearNumero(pedido.totalUnidades)} />
+          <StatCard label="En promoción ruleta" value={formatearNumero(pedido.articulosRuleta.length)} />
+          <StatCard label="Válidos para ruleta" value={formatearNumero(pedido.articulosRuletaValidos.length)} />
+        </div>
+
+        <div style={ruletaSummary}>
+          <div>
+            <strong>🎡 Artículos de la promoción de ruleta</strong>
+            <div style={smallText}>
+              {pedido.promocionRuleta?.nombre || "Configuración actual de la ruleta"}.
+              Los artículos marcados en verde cumplen la cantidad mínima; los amarillos pertenecen a la promoción pero no alcanzan el mínimo.
+            </div>
+          </div>
+          <strong>{pedido.articulosRuletaValidos.length} válidos de {pedido.articulosRuleta.length} incluidos</strong>
         </div>
 
         <div style={modalTableWrap}>
@@ -819,6 +969,7 @@ function DetallePedidoModal({ pedido, onClose }) {
                 <th style={th}>Departamento</th>
                 <th style={thRight}>Cajas</th>
                 <th style={thRight}>Unidades</th>
+                <th style={th}>Promoción ruleta</th>
               </tr>
             </thead>
             <tbody>
@@ -834,6 +985,18 @@ function DetallePedidoModal({ pedido, onClose }) {
                     <td style={td}>{linea.departamento || "Sin departamento"}</td>
                     <td style={tdRightStrong}>{formatearNumero(linea.cajas)}</td>
                     <td style={tdRightStrong}>{formatearNumero(linea.unidades)}</td>
+                    <td style={td}>
+                      {!linea.ruleta?.incluido ? (
+                        <span style={ruletaNoIncluido}>No incluido</span>
+                      ) : linea.ruleta.cumple ? (
+                        <span style={ruletaValido}>🎡 Válido</span>
+                      ) : (
+                        <span style={ruletaPendiente}>Mínimo: {formatearNumero(linea.ruleta.cantidadMinima)} {linea.ruleta.permiteUnidades ? "uds." : "cajas"}</span>
+                      )}
+                      {linea.ruleta?.incluido && (
+                        <div style={ruletaOrigen}>Por {linea.ruleta.origen === "departamento" ? "departamento" : "artículo"}</div>
+                      )}
+                    </td>
                   </tr>
                 ))
               )}
@@ -1045,7 +1208,12 @@ const modalTitle = { margin: 0, fontSize: "20px", lineHeight: 1.25, overflowWrap
 const modalDate = { margin: "8px 0 0", color: "#dbeafe", fontSize: "14px" };
 const modalCustomer = { margin: "8px 0 0", color: "#ffffff", fontSize: "14px", fontWeight: "800" };
 const closeButton = { width: "42px", height: "42px", flex: "0 0 auto", borderRadius: "50%", border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.12)", color: "#ffffff", fontSize: "28px", lineHeight: 1, cursor: "pointer" };
-const modalStats = { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "10px", padding: "16px 20px", background: "#f8fafc", borderBottom: "1px solid #e5e7eb" };
+const modalStats = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: "10px", padding: "16px 20px", background: "#f8fafc", borderBottom: "1px solid #e5e7eb" };
+const ruletaSummary = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "18px", margin: "16px 20px 0", padding: "14px 16px", borderRadius: "16px", border: "1px solid #c4b5fd", background: "#f5f3ff", color: "#4c1d95", flexWrap: "wrap" };
+const ruletaValido = { display: "inline-flex", alignItems: "center", padding: "5px 9px", borderRadius: "999px", background: "#dcfce7", color: "#166534", fontSize: "12px", fontWeight: "900", whiteSpace: "nowrap" };
+const ruletaPendiente = { display: "inline-flex", alignItems: "center", padding: "5px 9px", borderRadius: "999px", background: "#fef3c7", color: "#92400e", fontSize: "12px", fontWeight: "900", whiteSpace: "nowrap" };
+const ruletaNoIncluido = { color: "#94a3b8", fontSize: "12px", fontWeight: "750" };
+const ruletaOrigen = { marginTop: "4px", color: "#64748b", fontSize: "10px", fontWeight: "750" };
 const modalTableWrap = { overflow: "auto", margin: "18px 20px 0", border: "1px solid #e5e7eb", borderRadius: "16px" };
 const modalFooter = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", padding: "16px 20px 20px", flexWrap: "wrap" };
 const modalHint = { color: "#64748b", fontSize: "12px" };
