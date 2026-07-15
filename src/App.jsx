@@ -1140,76 +1140,11 @@ export default function App() {
   );
 
 
-  const prepararFocoCantidad = (productId, field) => {
+  const activarCampoCantidad = (productId, field) => {
+    // Seleccionar una cantidad sólo cambia el estado visual.
+    // No se cambia el departamento ni se modifica la posición del scroll.
     setArticuloDestacado(productId);
     setCampoCantidadActivo(`${productId}:${field}`);
-  };
-
-  const mantenerScrollAlEnfocarCantidad = (event, productId, field) => {
-    const input = event.currentTarget;
-
-    setArticuloDestacado(productId);
-    setCampoCantidadActivo(`${productId}:${field}`);
-
-    let terminado = false;
-    const timers = [];
-    const viewport = window.visualViewport;
-
-    const colocarCampoEnZonaVisible = () => {
-      if (terminado || document.activeElement !== input) return;
-
-      const card = rowRefs.current[productId] || input;
-      const cardRect = card.getBoundingClientRect();
-      const inputRect = input.getBoundingClientRect();
-      const viewportTop = viewport?.offsetTop || 0;
-      const viewportHeight = viewport?.height || window.innerHeight;
-      const barraInferior = stickyCardRef.current?.getBoundingClientRect().height || 0;
-
-      // Dejamos margen para la cabecera y para la barra fija del pedido. La zona
-      // visible se calcula después de que el teclado haya reducido visualViewport.
-      const limiteSuperior = viewportTop + 14;
-      const limiteInferior = viewportTop + viewportHeight - barraInferior - 14;
-
-      let desplazamiento = 0;
-
-      // La tarjeta es pequeña: intentamos mostrarla completa. Si el navegador aún
-      // está animando el teclado, usamos el propio input como referencia adicional.
-      if (cardRect.bottom > limiteInferior) {
-        desplazamiento = cardRect.bottom - limiteInferior;
-      } else if (cardRect.top < limiteSuperior) {
-        desplazamiento = cardRect.top - limiteSuperior;
-      } else if (inputRect.bottom > limiteInferior) {
-        desplazamiento = inputRect.bottom - limiteInferior;
-      } else if (inputRect.top < limiteSuperior) {
-        desplazamiento = inputRect.top - limiteSuperior;
-      }
-
-      if (Math.abs(desplazamiento) > 1) {
-        window.scrollBy({
-          top: desplazamiento,
-          left: 0,
-          behavior: "auto",
-        });
-      }
-    };
-
-    // No restauramos el scroll anterior: hacerlo expulsaba el campo enfocado de
-    // la pantalla justo después de que iOS/Android colocasen el cursor.
-    requestAnimationFrame(colocarCampoEnZonaVisible);
-    [60, 140, 260, 420, 650].forEach((delay) => {
-      timers.push(setTimeout(colocarCampoEnZonaVisible, delay));
-    });
-
-    viewport?.addEventListener("resize", colocarCampoEnZonaVisible);
-    viewport?.addEventListener("scroll", colocarCampoEnZonaVisible);
-
-    timers.push(
-      setTimeout(() => {
-        terminado = true;
-        viewport?.removeEventListener("resize", colocarCampoEnZonaVisible);
-        viewport?.removeEventListener("scroll", colocarCampoEnZonaVisible);
-      }, 900)
-    );
   };
 
   const updateQuantity = (productId, field, value) => {
@@ -1317,22 +1252,15 @@ export default function App() {
   };
 
   const aceptarCantidad = (productId) => {
-    if (document.activeElement) {
+    // “Aceptar” únicamente cierra el teclado. Antes se desplazaba al artículo
+    // siguiente y podía saltar incluso al departamento siguiente.
+    // Ese desplazamiento automático queda eliminado por completo.
+    if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
 
-    const productIds = filteredDepartments.flatMap((department) =>
-      department.products.map((product) => product.id)
-    );
-
-    const currentIndex = productIds.indexOf(productId);
-    const nextProductId = productIds[currentIndex + 1];
-
-    if (nextProductId) {
-      setTimeout(() => {
-        asegurarArticuloVisible(nextProductId);
-      }, 120);
-    }
+    setArticuloDestacado(productId);
+    setCampoCantidadActivo(null);
   };
 
   const manejarEnterCantidad = (event, productId) => {
@@ -1979,9 +1907,9 @@ export default function App() {
                               enterKeyHint="done"
                               autoComplete="off"
                               value={quantity.boxes || ""}
-                              onPointerDown={() => prepararFocoCantidad(product.id, "boxes")}
-                              onFocus={(event) =>
-                                mantenerScrollAlEnfocarCantidad(event, product.id, "boxes")
+                              onPointerDown={() => activarCampoCantidad(product.id, "boxes")}
+                              onFocus={() =>
+                                activarCampoCantidad(product.id, "boxes")
                               }
                               onKeyDown={(event) => manejarEnterCantidad(event, product.id)}
                               onChange={(event) =>
@@ -2012,14 +1940,10 @@ export default function App() {
                               value={product.permite_unidades ? quantity.units || "" : ""}
                               placeholder={product.permite_unidades ? "" : "—"}
                               onPointerDown={() =>
-                                prepararFocoCantidad(product.id, "units")
+                                activarCampoCantidad(product.id, "units")
                               }
-                              onFocus={(event) => {
-                                mantenerScrollAlEnfocarCantidad(
-                                  event,
-                                  product.id,
-                                  "units"
-                                );
+                              onFocus={() => {
+                                activarCampoCantidad(product.id, "units");
                                 if (!product.permite_unidades) {
                                   avisarSoloCajas(product.id);
                                 }
