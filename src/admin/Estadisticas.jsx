@@ -175,8 +175,7 @@ export default function Estadisticas() {
   const [participacionesRuleta, setParticipacionesRuleta] = useState([]);
   const [configuracionArticulosRuleta, setConfiguracionArticulosRuleta] = useState({
     promocion: null,
-    articulosPorCodigo: new Map(),
-    departamentos: new Set(),
+    reglasPorClave: new Map(),
   });
   const [desde, setDesde] = useState(hoyEstadistico);
   const [hasta, setHasta] = useState(hoyEstadistico);
@@ -241,61 +240,62 @@ export default function Estadisticas() {
       if (!promocion?.id) {
         setConfiguracionArticulosRuleta({
           promocion: null,
-          articulosPorCodigo: new Map(),
-          departamentos: new Set(),
+          reglasPorClave: new Map(),
         });
       } else {
-        const [reglasResultado, departamentosResultado, articulosResultado] = await Promise.all([
+        const [reglasResultado, articulosResultado] = await Promise.all([
           supabase
             .from("promociones_ruleta_articulos")
             .select("*")
             .eq("promocion_id", promocion.id),
           supabase
-            .from("promociones_ruleta_departamentos")
-            .select("departamento_id")
-            .eq("promocion_id", promocion.id),
-          supabase
             .from("articulos")
-            .select("codigo, permite_unidades, departamento_id, departamentos(nombre)"),
+            .select("id, codigo, nombre, permite_unidades"),
         ]);
 
         if (reglasResultado.error) throw reglasResultado.error;
-        if (departamentosResultado.error) throw departamentosResultado.error;
         if (articulosResultado.error) throw articulosResultado.error;
 
-        const metadatosPorCodigo = new Map(
-          (articulosResultado.data || []).map((articulo) => [
-            normalizarValorRuleta(articulo.codigo),
-            articulo,
-          ])
-        );
+        const metadatosPorClave = new Map();
+        (articulosResultado.data || []).forEach((articulo) => {
+          [articulo.id, articulo.codigo, articulo.nombre]
+            .map(normalizarValorRuleta)
+            .filter(Boolean)
+            .forEach((clave) => metadatosPorClave.set(clave, articulo));
+        });
 
-        const articulosPorCodigo = new Map();
+        // Debe reproducir exactamente la regla usada por la tienda: solamente
+        // participan las referencias registradas en promociones_ruleta_articulos.
+        // Los departamentos y las ofertas no convierten un artículo en válido.
+        const reglasPorClave = new Map();
         (reglasResultado.data || []).forEach((regla) => {
-          const codigo = normalizarValorRuleta(regla.codigo_articulo);
-          if (!codigo) return;
-          const articulo = metadatosPorCodigo.get(codigo);
-          articulosPorCodigo.set(codigo, {
+          const claves = [
+            regla.articulo_id,
+            regla.codigo_articulo,
+            regla.nombre_articulo,
+          ]
+            .map(normalizarValorRuleta)
+            .filter(Boolean);
+
+          const articulo = claves.map((clave) => metadatosPorClave.get(clave)).find(Boolean);
+          const reglaNormalizada = {
             ...regla,
             permite_unidades: Boolean(articulo?.permite_unidades),
             origen_promocion: "articulo",
-          });
-        });
+          };
 
-        const idsDepartamentos = new Set(
-          (departamentosResultado.data || []).map((item) => String(item.departamento_id))
-        );
-        const nombresDepartamentos = new Set(
-          (articulosResultado.data || [])
-            .filter((articulo) => idsDepartamentos.has(String(articulo.departamento_id)))
-            .map((articulo) => normalizarValorRuleta(articulo.departamentos?.nombre))
-            .filter(Boolean)
-        );
+          claves.forEach((clave) => reglasPorClave.set(clave, reglaNormalizada));
+          if (articulo) {
+            [articulo.id, articulo.codigo, articulo.nombre]
+              .map(normalizarValorRuleta)
+              .filter(Boolean)
+              .forEach((clave) => reglasPorClave.set(clave, reglaNormalizada));
+          }
+        });
 
         setConfiguracionArticulosRuleta({
           promocion,
-          articulosPorCodigo,
-          departamentos: nombresDepartamentos,
+          reglasPorClave,
         });
       }
     } catch (err) {
@@ -469,12 +469,11 @@ export default function Estadisticas() {
       .filter((fila) => String(fila.pedido_id || fila.id || "") === pedidoSeleccionado.pedido_id)
       .map((fila) => {
         const codigo = normalizarValorRuleta(fila.codigo_articulo);
-        const departamento = normalizarValorRuleta(fila.departamento);
-        const reglaArticulo = configuracionArticulosRuleta.articulosPorCodigo.get(codigo);
-        const incluidoPorDepartamento = configuracionArticulosRuleta.departamentos.has(departamento);
-        const regla = reglaArticulo || (incluidoPorDepartamento
-          ? { cantidad_minima: 1, permite_unidades: Number(fila.unidades || 0) > 0, origen_promocion: "departamento" }
-          : null);
+        const nombre = normalizarValorRuleta(fila.nombre_articulo);
+        const regla =
+          configuracionArticulosRuleta.reglasPorClave.get(codigo) ||
+          configuracionArticulosRuleta.reglasPorClave.get(nombre) ||
+          null;
 
         return {
           ...fila,
