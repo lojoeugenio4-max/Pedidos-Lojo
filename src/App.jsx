@@ -1147,13 +1147,13 @@ export default function App() {
     setCampoCantidadActivo(`${productId}:${field}`);
   };
 
-  const enfocarCantidadEnPosicionDepartamento = (event, productId, field) => {
+  const prepararCampoCantidad = (event, productId, field) => {
     const input = event.currentTarget;
 
-    // Impedimos que el navegador abra primero el teclado y decida por su cuenta
-    // dónde colocar el campo. Primero situamos la tarjeta en la posición visual
-    // que ocupa el primer artículo de un departamento y después damos el foco.
-    event.preventDefault();
+    // El ajuste se hace durante el gesto real del usuario y NO se cancela el
+    // evento. Así el navegador conserva su acción nativa: enfocar el input y
+    // abrir el teclado. La versión anterior usaba preventDefault + focus
+    // diferido, lo que bloqueaba el teclado en algunos móviles.
     activarCampoCantidad(productId, field);
 
     const article = input.closest("article");
@@ -1161,40 +1161,25 @@ export default function App() {
     const departmentTitle = departmentSection?.querySelector("h2");
     const topArea = document.querySelector("[data-top-area='true']");
 
-    if (article) {
-      const articleRect = article.getBoundingClientRect();
-      const topAreaBottom = topArea
-        ? Math.max(0, topArea.getBoundingClientRect().bottom)
-        : 0;
-      const titleHeight = departmentTitle
-        ? departmentTitle.getBoundingClientRect().height
-        : 0;
+    if (!article) return;
 
-      // La cabecera del departamento queda visible y la tarjeta empieza justo
-      // debajo, igual que el primer artículo cuando se abre un departamento.
-      const desiredArticleTop = topAreaBottom + titleHeight + 10;
-      const nextScrollY = Math.max(
-        0,
-        window.scrollY + articleRect.top - desiredArticleTop
-      );
+    const articleRect = article.getBoundingClientRect();
+    const topAreaBottom = topArea
+      ? Math.max(0, topArea.getBoundingClientRect().bottom)
+      : 0;
+    const titleHeight = departmentTitle
+      ? departmentTitle.getBoundingClientRect().height
+      : 0;
 
-      window.scrollTo({ top: nextScrollY, behavior: "auto" });
-    }
+    // Misma altura visual que el primer artículo del departamento. Se mueve
+    // una sola vez antes de que el foco nativo abra el teclado.
+    const desiredArticleTop = topAreaBottom + titleHeight + 10;
+    const nextScrollY = Math.max(
+      0,
+      window.scrollY + articleRect.top - desiredArticleTop
+    );
 
-    // Esperamos a que termine el único ajuste de posición antes de abrir el
-    // teclado. preventScroll evita un segundo desplazamiento al recibir foco.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        input.focus({ preventScroll: true });
-
-        const length = String(input.value || "").length;
-        try {
-          input.setSelectionRange(length, length);
-        } catch {
-          // Algunos navegadores no permiten seleccionar el rango en este instante.
-        }
-      });
-    });
+    window.scrollTo({ top: nextScrollY, behavior: "auto" });
   };
 
   const updateQuantity = (productId, field, value) => {
@@ -1976,7 +1961,7 @@ export default function App() {
                               autoComplete="off"
                               value={quantity.boxes || ""}
                               onPointerDown={(event) =>
-                                enfocarCantidadEnPosicionDepartamento(event, product.id, "boxes")
+                                prepararCampoCantidad(event, product.id, "boxes")
                               }
                               onFocus={() => activarCampoCantidad(product.id, "boxes")}
                               onKeyDown={(event) => manejarEnterCantidad(event, product.id)}
@@ -2007,9 +1992,11 @@ export default function App() {
                               readOnly={!product.permite_unidades}
                               value={product.permite_unidades ? quantity.units || "" : ""}
                               placeholder={product.permite_unidades ? "" : "—"}
-                              onPointerDown={(event) =>
-                                enfocarCantidadEnPosicionDepartamento(event, product.id, "units")
-                              }
+                              onPointerDown={(event) => {
+                                if (product.permite_unidades) {
+                                  prepararCampoCantidad(event, product.id, "units");
+                                }
+                              }}
                               onFocus={() => {
                                 activarCampoCantidad(product.id, "units");
                                 if (!product.permite_unidades) {
