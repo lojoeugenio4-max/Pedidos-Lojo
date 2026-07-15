@@ -105,11 +105,29 @@ export default function Estadisticas() {
   const [periodoActivo, setPeriodoActivo] = useState("hoy");
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
+  const [pedidoSeleccionado, setPedidoSeleccionado] = useState(null);
 
   useEffect(() => {
     cargarEstadisticas(hoyEstadistico, hoyEstadistico);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!pedidoSeleccionado) return undefined;
+
+    function cerrarConEscape(event) {
+      if (event.key === "Escape") setPedidoSeleccionado(null);
+    }
+
+    document.addEventListener("keydown", cerrarConEscape);
+    const overflowAnterior = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", cerrarConEscape);
+      document.body.style.overflow = overflowAnterior;
+    };
+  }, [pedidoSeleccionado]);
 
   async function cargarEstadisticas(desdeFiltro = desde, hastaFiltro = hasta, periodo = periodoActivo) {
     setCargando(true);
@@ -304,6 +322,22 @@ export default function Estadisticas() {
     );
   }, [movimientos, participacionesRuleta, codigosRuletaPorPedido]);
 
+  const lineasPedidoSeleccionado = useMemo(() => {
+    if (!pedidoSeleccionado?.pedido_id) return [];
+    return movimientos.filter(
+      (fila) => String(fila.pedido_id || fila.id || "") === pedidoSeleccionado.pedido_id
+    );
+  }, [movimientos, pedidoSeleccionado]);
+
+  const resumenPedidoSeleccionado = useMemo(() => ({
+    cajas: lineasPedidoSeleccionado.reduce((total, fila) => total + Number(fila.cajas || 0), 0),
+    unidades: lineasPedidoSeleccionado.reduce((total, fila) => total + Number(fila.unidades || 0), 0),
+    articulos: new Set(
+      lineasPedidoSeleccionado.map((fila) => String(fila.codigo_articulo || fila.nombre_articulo || ""))
+    ).size,
+    lineas: lineasPedidoSeleccionado.length,
+  }), [lineasPedidoSeleccionado]);
+
   const departamentos = useMemo(() => {
     const mapa = new Map();
 
@@ -434,7 +468,16 @@ export default function Estadisticas() {
                         return (
                           <tr key={pedido.pedido_id}>
                             <td style={td}>{new Date(pedido.created_at).toLocaleString("es-ES")}</td>
-                            <td style={td}><strong>{pedido.pedido_id}</strong></td>
+                            <td style={td}>
+                              <button
+                                type="button"
+                                onClick={() => setPedidoSeleccionado(pedido)}
+                                style={pedidoLink}
+                                title="Ver contenido del pedido"
+                              >
+                                {pedido.pedido_id}
+                              </button>
+                            </td>
                             <td style={td}>No emitido</td>
                             <td style={tdRight}>—</td>
                             <td style={tdRight}>—</td>
@@ -446,7 +489,16 @@ export default function Estadisticas() {
                       return codigos.map((codigo, index) => (
                         <tr key={`${pedido.pedido_id}-${codigo.id || codigo.code || index}`}>
                           <td style={td}>{new Date(codigo.created_at || pedido.created_at).toLocaleString("es-ES")}</td>
-                          <td style={td}><strong>{pedido.pedido_id}</strong></td>
+                          <td style={td}>
+                            <button
+                              type="button"
+                              onClick={() => setPedidoSeleccionado(pedido)}
+                              style={pedidoLink}
+                              title="Ver contenido del pedido"
+                            >
+                              {pedido.pedido_id}
+                            </button>
+                          </td>
                           <td style={tdRightStrong}>{codigo.code || codigo.codigo || "—"}</td>
                           <td style={tdRight}>{formatearNumero(Math.max(1, Number(codigo.spins_total || 1)))}</td>
                           <td style={tdRight}>{formatearNumero(Number(codigo.spins_used || 0))}</td>
@@ -474,7 +526,6 @@ export default function Estadisticas() {
                 <thead>
                   <tr>
                     <th style={th}>Día estadístico</th>
-                    <th style={thRight}>Pedidos</th>
                     <th style={thRight}>Pedidos</th>
                     <th style={thRight}>Líneas</th>
                     <th style={thRight}>Cajas</th>
@@ -609,6 +660,72 @@ export default function Estadisticas() {
             <TablaArticulos filas={topUnidades} campo="unidades" etiqueta="Unidades" />
           </Panel>
         </>
+      )}
+
+      {pedidoSeleccionado && (
+        <div
+          style={modalOverlay}
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setPedidoSeleccionado(null);
+          }}
+        >
+          <section style={modalCard} role="dialog" aria-modal="true" aria-labelledby="detalle-pedido-titulo">
+            <div style={modalHeader}>
+              <div style={{ minWidth: 0 }}>
+                <div style={modalEyebrow}>Detalle del pedido</div>
+                <h2 id="detalle-pedido-titulo" style={modalTitle}>Pedido</h2>
+                <div style={modalOrderId}>{pedidoSeleccionado.pedido_id}</div>
+                <p style={modalDate}>
+                  {pedidoSeleccionado.created_at
+                    ? new Date(pedidoSeleccionado.created_at).toLocaleString("es-ES")
+                    : "Fecha no disponible"}
+                </p>
+              </div>
+              <button type="button" onClick={() => setPedidoSeleccionado(null)} style={modalClose} aria-label="Cerrar">×</button>
+            </div>
+
+            <div style={modalStats}>
+              <StatCard label="Artículos" value={formatearNumero(resumenPedidoSeleccionado.articulos)} />
+              <StatCard label="Líneas" value={formatearNumero(resumenPedidoSeleccionado.lineas)} />
+              <StatCard label="Cajas" value={formatearNumero(resumenPedidoSeleccionado.cajas)} />
+              <StatCard label="Unidades" value={formatearNumero(resumenPedidoSeleccionado.unidades)} />
+            </div>
+
+            <div style={modalTableWrap}>
+              <table style={table}>
+                <thead>
+                  <tr>
+                    <th style={th}>Artículo</th>
+                    <th style={th}>Código</th>
+                    <th style={th}>Departamento</th>
+                    <th style={thRight}>Cajas</th>
+                    <th style={thRight}>Unidades</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lineasPedidoSeleccionado.length === 0 ? (
+                    <FilaVacia columnas={5} />
+                  ) : (
+                    lineasPedidoSeleccionado.map((fila) => (
+                      <tr key={fila.id || `${fila.codigo_articulo}-${fila.nombre_articulo}`}>
+                        <td style={td}><strong>{fila.nombre_articulo || "Sin nombre"}</strong></td>
+                        <td style={td}>{fila.codigo_articulo || "—"}</td>
+                        <td style={td}>{fila.departamento || "—"}</td>
+                        <td style={tdRightStrong}>{formatearNumero(fila.cajas)}</td>
+                        <td style={tdRightStrong}>{formatearNumero(fila.unidades)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={modalFooter}>
+              <button type="button" onClick={() => setPedidoSeleccionado(null)} style={modalDoneButton}>Cerrar</button>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );
@@ -791,3 +908,17 @@ const chartValue = { textAlign: "right", fontSize: "11px", fontWeight: "950", co
 const chartEmpty = { border: "1px dashed #cbd5e1", borderRadius: "16px", padding: "20px", color: "#94a3b8", fontWeight: "850", textAlign: "center", marginBottom: "14px" };
 const loadingBox = { padding: "30px", textAlign: "center", color: "#64748b", fontWeight: "900", background: "#ffffff", borderRadius: "16px" };
 const errorBox = { background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca", padding: "16px", borderRadius: "18px", marginBottom: "18px" };
+
+const pedidoLink = { background: "transparent", border: "none", padding: 0, color: "#1d4ed8", font: "inherit", fontWeight: "900", cursor: "pointer", textDecoration: "underline", textDecorationThickness: "1px", textUnderlineOffset: "3px", textAlign: "left" };
+const modalOverlay = { position: "fixed", inset: 0, zIndex: 9999, background: "rgba(15,23,42,0.68)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", boxSizing: "border-box" };
+const modalCard = { width: "min(1080px, 100%)", maxHeight: "calc(100vh - 48px)", overflow: "hidden", display: "flex", flexDirection: "column", background: "#ffffff", borderRadius: "24px", boxShadow: "0 30px 80px rgba(15,23,42,0.35)", border: "1px solid rgba(255,255,255,0.5)" };
+const modalHeader = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px", padding: "22px 24px 18px", borderBottom: "1px solid #e5e7eb", background: "linear-gradient(135deg, #eff6ff 0%, #ffffff 65%)" };
+const modalEyebrow = { color: "#2563eb", fontSize: "12px", fontWeight: "950", textTransform: "uppercase", letterSpacing: "0.08em" };
+const modalTitle = { margin: "5px 0 4px", fontSize: "25px", color: "#111827", fontWeight: "950" };
+const modalOrderId = { color: "#1d4ed8", fontSize: "14px", fontWeight: "900", overflowWrap: "anywhere" };
+const modalDate = { margin: "7px 0 0", color: "#64748b", fontSize: "13px" };
+const modalClose = { width: "42px", height: "42px", flex: "0 0 auto", border: "none", borderRadius: "13px", background: "#e2e8f0", color: "#0f172a", fontSize: "28px", lineHeight: 1, cursor: "pointer" };
+const modalStats = { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "10px", padding: "16px 24px 0" };
+const modalTableWrap = { overflow: "auto", margin: "16px 24px", border: "1px solid #e5e7eb", borderRadius: "16px" };
+const modalFooter = { display: "flex", justifyContent: "flex-end", padding: "0 24px 22px" };
+const modalDoneButton = { background: "#111827", color: "#ffffff", border: "none", borderRadius: "13px", padding: "12px 20px", fontWeight: "950", cursor: "pointer" };
