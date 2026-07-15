@@ -145,12 +145,10 @@ function telefonoWhatsApp(telefono) {
   return digitos;
 }
 
-function normalizarValorRuleta(valor) {
-  return String(valor || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim();
+function normalizarCodigoRuleta(valor) {
+  // La tienda concede la ruleta usando exclusivamente codigo_articulo.
+  // No se cruzan nombres, departamentos ni ofertas.
+  return String(valor ?? "").trim();
 }
 
 function cantidadMinimaReglaRuleta(regla) {
@@ -173,10 +171,7 @@ export default function Estadisticas() {
 
   const [movimientos, setMovimientos] = useState([]);
   const [participacionesRuleta, setParticipacionesRuleta] = useState([]);
-  const [configuracionArticulosRuleta, setConfiguracionArticulosRuleta] = useState({
-    promocion: null,
-    reglasPorClave: new Map(),
-  });
+  const [promocionesRuletaPorId, setPromocionesRuletaPorId] = useState(new Map());
   const [desde, setDesde] = useState(hoyEstadistico);
   const [hasta, setHasta] = useState(hoyEstadistico);
   const [periodoActivo, setPeriodoActivo] = useState("hoy");
@@ -220,83 +215,72 @@ export default function Estadisticas() {
 
       setParticipacionesRuleta(participacionesData || []);
 
-      // Cargamos la configuración vigente para identificar dentro de cada pedido
-      // qué artículos pertenecen a la promoción de la ruleta.
-      const hoy = fechaLocalISO(new Date());
-      const { data: promocionesData, error: promocionesError } = await supabase
-        .from("promociones_ruleta")
-        .select("*")
-        .eq("activa", true)
-        .order("created_at", { ascending: true });
+      // El informe debe utilizar la promoción asociada a cada participación,
+      // no la promoción activa hoy. Además, la tienda identifica los artículos
+      // de ruleta exclusivamente por codigo_articulo.
+      const idsPromocion = Array.from(
+        new Set(
+          (participacionesData || [])
+            .map((participacion) => String(participacion?.promotion_id || "").trim())
+            .filter(Boolean)
+        )
+      );
 
-      if (promocionesError) throw promocionesError;
-
-      const promocion = (promocionesData || []).find((item) => {
-        const inicioOk = !item.fecha_inicio || item.fecha_inicio <= hoy;
-        const finOk = !item.fecha_fin || item.fecha_fin >= hoy;
-        return inicioOk && finOk;
-      }) || promocionesData?.[0] || null;
-
-      if (!promocion?.id) {
-        setConfiguracionArticulosRuleta({
-          promocion: null,
-          reglasPorClave: new Map(),
-        });
+      if (idsPromocion.length === 0) {
+        setPromocionesRuletaPorId(new Map());
       } else {
-        const [reglasResultado, articulosResultado] = await Promise.all([
+        const [promocionesResultado, reglasResultado, articulosResultado] = await Promise.all([
+          supabase
+            .from("promociones_ruleta")
+            .select("*")
+            .in("id", idsPromocion),
           supabase
             .from("promociones_ruleta_articulos")
             .select("*")
-            .eq("promocion_id", promocion.id),
+            .in("promocion_id", idsPromocion),
           supabase
             .from("articulos")
-            .select("id, codigo, nombre, permite_unidades"),
+            .select("codigo, permite_unidades"),
         ]);
 
+        if (promocionesResultado.error) throw promocionesResultado.error;
         if (reglasResultado.error) throw reglasResultado.error;
         if (articulosResultado.error) throw articulosResultado.error;
 
-        const metadatosPorClave = new Map();
-        (articulosResultado.data || []).forEach((articulo) => {
-          [articulo.id, articulo.codigo, articulo.nombre]
-            .map(normalizarValorRuleta)
-            .filter(Boolean)
-            .forEach((clave) => metadatosPorClave.set(clave, articulo));
+        const permiteUnidadesPorCodigo = new Map(
+          (articulosResultado.data || [])
+            .map((articulo) => [
+              normalizarCodigoRuleta(articulo.codigo),
+              Boolean(articulo.permite_unidades),
+            ])
+            .filter(([codigo]) => Boolean(codigo))
+        );
+
+        const mapaPromociones = new Map();
+        (promocionesResultado.data || []).forEach((promocion) => {
+          mapaPromociones.set(String(promocion.id), {
+            promocion,
+            reglasPorCodigo: new Map(),
+          });
         });
 
-        // Debe reproducir exactamente la regla usada por la tienda: solamente
-        // participan las referencias registradas en promociones_ruleta_articulos.
-        // Los departamentos y las ofertas no convierten un artículo en válido.
-        const reglasPorClave = new Map();
         (reglasResultado.data || []).forEach((regla) => {
-          const claves = [
-            regla.articulo_id,
-            regla.codigo_articulo,
-            regla.nombre_articulo,
-          ]
-            .map(normalizarValorRuleta)
-            .filter(Boolean);
+          const promocionId = String(regla.promocion_id || "").trim();
+          const codigo = normalizarCodigoRuleta(regla.codigo_articulo);
+          const configuracion = mapaPromociones.get(promocionId);
 
-          const articulo = claves.map((clave) => metadatosPorClave.get(clave)).find(Boolean);
-          const reglaNormalizada = {
+          // Sin código no existe coincidencia válida. No usamos nombre ni id
+          // como respaldo porque el pedido histórico guarda codigo_articulo.
+          if (!configuracion || !codigo) return;
+
+          configuracion.reglasPorCodigo.set(codigo, {
             ...regla,
-            permite_unidades: Boolean(articulo?.permite_unidades),
+            permite_unidades: permiteUnidadesPorCodigo.get(codigo) === true,
             origen_promocion: "articulo",
-          };
-
-          claves.forEach((clave) => reglasPorClave.set(clave, reglaNormalizada));
-          if (articulo) {
-            [articulo.id, articulo.codigo, articulo.nombre]
-              .map(normalizarValorRuleta)
-              .filter(Boolean)
-              .forEach((clave) => reglasPorClave.set(clave, reglaNormalizada));
-          }
+          });
         });
 
-        setConfiguracionArticulosRuleta({
-          promocion,
-          reglasPorClave,
-        });
+        setPromocionesRuletaPorId(mapaPromociones);
       }
     } catch (err) {
       console.error("Error cargando estadísticas:", err);
@@ -465,15 +449,18 @@ export default function Estadisticas() {
   const detallePedidoSeleccionado = useMemo(() => {
     if (!pedidoSeleccionado) return null;
 
+    const participacion = pedidoSeleccionado.codigos?.find(
+      (codigo) => codigo?.customer_phone || codigo?.customer_name
+    ) || pedidoSeleccionado.codigos?.[0] || null;
+
+    const promocionId = String(participacion?.promotion_id || "").trim();
+    const configuracionPedido = promocionesRuletaPorId.get(promocionId) || null;
+
     const lineas = movimientos
       .filter((fila) => String(fila.pedido_id || fila.id || "") === pedidoSeleccionado.pedido_id)
       .map((fila) => {
-        const codigo = normalizarValorRuleta(fila.codigo_articulo);
-        const nombre = normalizarValorRuleta(fila.nombre_articulo);
-        const regla =
-          configuracionArticulosRuleta.reglasPorClave.get(codigo) ||
-          configuracionArticulosRuleta.reglasPorClave.get(nombre) ||
-          null;
+        const codigo = normalizarCodigoRuleta(fila.codigo_articulo);
+        const regla = configuracionPedido?.reglasPorCodigo.get(codigo) || null;
 
         return {
           ...fila,
@@ -502,10 +489,6 @@ export default function Estadisticas() {
         );
       });
 
-    const participacion = pedidoSeleccionado.codigos?.find(
-      (codigo) => codigo?.customer_phone || codigo?.customer_name
-    ) || pedidoSeleccionado.codigos?.[0] || null;
-
     return {
       ...pedidoSeleccionado,
       customer_name: participacion?.customer_name || null,
@@ -519,9 +502,9 @@ export default function Estadisticas() {
       ).size,
       articulosRuleta: lineas.filter((fila) => fila.ruleta?.incluido),
       articulosRuletaValidos: lineas.filter((fila) => fila.ruleta?.incluido && fila.ruleta?.cumple),
-      promocionRuleta: configuracionArticulosRuleta.promocion,
+      promocionRuleta: configuracionPedido?.promocion || null,
     };
-  }, [pedidoSeleccionado, movimientos, configuracionArticulosRuleta]);
+  }, [pedidoSeleccionado, movimientos, promocionesRuletaPorId]);
 
   const departamentos = useMemo(() => {
     const mapa = new Map();
