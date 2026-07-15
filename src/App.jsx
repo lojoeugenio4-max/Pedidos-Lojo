@@ -253,7 +253,6 @@ export default function App() {
   const rowRefs = useRef({});
   const departmentDropdownRef = useRef(null);
   const stickyCardRef = useRef(null);
-  const scrollAntesDeCantidadRef = useRef(0);
 
   const getSavedOrder = () => {
     try {
@@ -1142,69 +1141,75 @@ export default function App() {
 
 
   const prepararFocoCantidad = (productId, field) => {
-    scrollAntesDeCantidadRef.current = window.scrollY;
     setArticuloDestacado(productId);
     setCampoCantidadActivo(`${productId}:${field}`);
   };
 
   const mantenerScrollAlEnfocarCantidad = (event, productId, field) => {
     const input = event.currentTarget;
-    const scrollOriginal = scrollAntesDeCantidadRef.current;
 
     setArticuloDestacado(productId);
     setCampoCantidadActivo(`${productId}:${field}`);
 
-    const colocarArticuloSobreTeclado = () => {
+    let terminado = false;
+    const timers = [];
+    const viewport = window.visualViewport;
+
+    const colocarCampoEnZonaVisible = () => {
+      if (terminado || document.activeElement !== input) return;
+
       const card = rowRefs.current[productId] || input;
-      const rect = card.getBoundingClientRect();
-      const viewport = window.visualViewport;
+      const cardRect = card.getBoundingClientRect();
+      const inputRect = input.getBoundingClientRect();
+      const viewportTop = viewport?.offsetTop || 0;
+      const viewportHeight = viewport?.height || window.innerHeight;
+      const barraInferior = stickyCardRef.current?.getBoundingClientRect().height || 0;
 
-      // visualViewport refleja únicamente la zona que queda visible cuando
-      // aparece el teclado virtual. Movemos lo mínimo imprescindible para que
-      // la tarjeta completa quede encima del teclado, sin saltar de sección.
-      const visibleTop = (viewport?.offsetTop || 0) + 10;
-      const visibleBottom =
-        (viewport?.offsetTop || 0) +
-        (viewport?.height || window.innerHeight) -
-        14;
+      // Dejamos margen para la cabecera y para la barra fija del pedido. La zona
+      // visible se calcula después de que el teclado haya reducido visualViewport.
+      const limiteSuperior = viewportTop + 14;
+      const limiteInferior = viewportTop + viewportHeight - barraInferior - 14;
 
-      if (rect.bottom > visibleBottom) {
+      let desplazamiento = 0;
+
+      // La tarjeta es pequeña: intentamos mostrarla completa. Si el navegador aún
+      // está animando el teclado, usamos el propio input como referencia adicional.
+      if (cardRect.bottom > limiteInferior) {
+        desplazamiento = cardRect.bottom - limiteInferior;
+      } else if (cardRect.top < limiteSuperior) {
+        desplazamiento = cardRect.top - limiteSuperior;
+      } else if (inputRect.bottom > limiteInferior) {
+        desplazamiento = inputRect.bottom - limiteInferior;
+      } else if (inputRect.top < limiteSuperior) {
+        desplazamiento = inputRect.top - limiteSuperior;
+      }
+
+      if (Math.abs(desplazamiento) > 1) {
         window.scrollBy({
-          top: rect.bottom - visibleBottom,
-          left: 0,
-          behavior: "auto",
-        });
-      } else if (rect.top < visibleTop) {
-        window.scrollBy({
-          top: rect.top - visibleTop,
+          top: desplazamiento,
           left: 0,
           behavior: "auto",
         });
       }
     };
 
-    // Evita el salto inicial que algunos navegadores hacen antes de abrir el
-    // teclado. Después permitimos únicamente el desplazamiento mínimo necesario
-    // para mantener visible el artículo seleccionado.
-    requestAnimationFrame(() => {
-      window.scrollTo({ top: scrollOriginal, left: 0, behavior: "auto" });
-      input.select();
-      colocarArticuloSobreTeclado();
+    // No restauramos el scroll anterior: hacerlo expulsaba el campo enfocado de
+    // la pantalla justo después de que iOS/Android colocasen el cursor.
+    requestAnimationFrame(colocarCampoEnZonaVisible);
+    [60, 140, 260, 420, 650].forEach((delay) => {
+      timers.push(setTimeout(colocarCampoEnZonaVisible, delay));
     });
 
-    const viewport = window.visualViewport;
-    const alCambiarViewport = () => colocarArticuloSobreTeclado();
-    viewport?.addEventListener("resize", alCambiarViewport);
-    viewport?.addEventListener("scroll", alCambiarViewport);
+    viewport?.addEventListener("resize", colocarCampoEnZonaVisible);
+    viewport?.addEventListener("scroll", colocarCampoEnZonaVisible);
 
-    [100, 250, 450, 700].forEach((delay) => {
-      setTimeout(colocarArticuloSobreTeclado, delay);
-    });
-
-    setTimeout(() => {
-      viewport?.removeEventListener("resize", alCambiarViewport);
-      viewport?.removeEventListener("scroll", alCambiarViewport);
-    }, 900);
+    timers.push(
+      setTimeout(() => {
+        terminado = true;
+        viewport?.removeEventListener("resize", colocarCampoEnZonaVisible);
+        viewport?.removeEventListener("scroll", colocarCampoEnZonaVisible);
+      }, 900)
+    );
   };
 
   const updateQuantity = (productId, field, value) => {
