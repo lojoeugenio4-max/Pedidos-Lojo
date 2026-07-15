@@ -174,47 +174,60 @@ function seleccionarPremioRuleta(premios = []) {
   return activos[activos.length - 1];
 }
 
-async function actualizarSaldoTiradas(entry, usadas, total, prize = null) {
-  if (!entry?.code) return null;
-
-  const esPermanente = entry?.is_permanent === true;
-  const spinsTotal = esPermanente ? 1 : Math.max(1, Number(total || 1));
-  const spinsUsed = esPermanente
-    ? 0
-    : Math.min(spinsTotal, Math.max(0, Number(usadas || 0)));
-  const quedan = esPermanente ? 1 : Math.max(0, spinsTotal - spinsUsed);
-
-  // Los códigos permanentes conservan siempre una tirada y nunca pasan a "played".
-  // Los códigos normales mantienen el comportamiento habitual.
-  const updatePayload = {
-    status: esPermanente ? "pending" : quedan > 0 ? "pending" : "played",
-    spins_used: spinsUsed,
-    spins_total: spinsTotal,
-  };
-
-  if (prize?.id) {
-    updatePayload.prize_id = prize.id;
+async function actualizarSaldoTiradas(entry, prize = null) {
+  if (!entry?.id) {
+    throw new Error("La participación no tiene un identificador válido.");
   }
 
-  if (!esPermanente && quedan <= 0) {
-    updatePayload.played_at = new Date().toISOString();
-  } else {
-    updatePayload.played_at = null;
+  // Los códigos permanentes siguen siendo reutilizables y no consumen saldo.
+  // No se registran en promotion_spins porque pueden girarse indefinidamente.
+  if (entry.is_permanent === true) {
+    return {
+      ...entry,
+      status: "pending",
+      spins_total: 1,
+      spins_used: 0,
+      played_at: null,
+    };
   }
 
-  const { data, error } = await supabase
+  const { data: spinResult, error: spinError } = await supabase.rpc(
+    "register_promotion_spin",
+    {
+      p_participation_id: entry.id,
+      p_prize_id: prize?.id ?? null,
+    }
+  );
+
+  if (spinError) {
+    console.error("No se pudo registrar la tirada:", spinError);
+    throw spinError;
+  }
+
+  // Recuperamos la fila actualizada para que la interfaz use el estado real
+  // confirmado por la base de datos, no un cálculo local aproximado.
+  const { data: participation, error: participationError } = await supabase
     .from("promotion_participations")
-    .update(updatePayload)
-    .eq("code", entry.code)
     .select("*")
-    .maybeSingle();
+    .eq("id", entry.id)
+    .single();
 
-  if (error) {
-    console.warn("No se pudo actualizar el saldo de tiradas:", error);
-    return null;
+  if (participationError) {
+    console.error(
+      "La tirada se registró, pero no se pudo recargar la participación:",
+      participationError
+    );
+
+    return {
+      ...entry,
+      spins_total: Number(spinResult?.spins_total ?? entry.spins_total ?? 1),
+      spins_used: Number(spinResult?.spins_used ?? entry.spins_used ?? 0),
+      status:
+        Number(spinResult?.spins_remaining ?? 0) > 0 ? "pending" : "played",
+    };
   }
 
-  return data;
+  return participation;
 }
 
 function obtenerTiradasTotalesEntrada(entrada) {
@@ -403,53 +416,38 @@ export default function StorePage() {
       premio: prize,
     });
 
-    window.setTimeout(() => {
+    window.setTimeout(async () => {
       stopSpinSound();
 
-      const esPermanente = entrada?.is_permanent === true;
-      const total = esPermanente ? 1 : tiradasTotalesAntes;
-      const usadas = esPermanente
-        ? 0
-        : Math.min(total, tiradasUsadasAntes + 1);
-      const quedan = esPermanente ? 1 : Math.max(0, total - usadas);
+      try {
+        const entryActualizada = await actualizarSaldoTiradas(entrada, prize);
 
-      const entryActualizada = {
-        ...entrada,
-        spins_total: total,
-        spins_used: usadas,
-        status: esPermanente ? "pending" : quedan > 0 ? "pending" : "played",
-        played_at: esPermanente || quedan > 0 ? null : new Date().toISOString(),
-        prize_id: prize?.id ?? entrada?.prize_id ?? null,
-      };
+        setEntrada(entryActualizada);
+        setPremioFinal(prize);
+        setPremioObjetivo(null);
+        setGirando(false);
+        setEstado("result");
 
-      setEntrada(entryActualizada);
-      setPremioFinal(prize);
-      setPremioObjetivo(null);
-      setGirando(false);
-      setEstado("result");
+        enviarEventoDisplay("result", {
+          entrada: entryActualizada,
+          premios,
+          premio: prize,
+        });
 
-      actualizarSaldoTiradas(entryActualizada, usadas, total, prize).then((entryBd) => {
-        if (entryBd) {
-          setEntrada((actual) => ({
-            ...actual,
-            ...entryBd,
-            spins_total: total,
-            spins_used: usadas,
-            status: esPermanente ? "pending" : quedan > 0 ? "pending" : "played",
-          }));
+        if (prize.tipo_sonido === "sirena" || prize.tipo_sonido === "jackpot") {
+          playSirena();
+        } else {
+          playCampana();
         }
-      });
-
-      enviarEventoDisplay("result", {
-        entrada: entryActualizada,
-        premios,
-        premio: prize,
-      });
-
-      if (prize.tipo_sonido === "sirena" || prize.tipo_sonido === "jackpot") {
-        playSirena();
-      } else {
-        playCampana();
+      } catch (error) {
+        console.error(error);
+        setPremioObjetivo(null);
+        setGirando(false);
+        setMensaje(
+          "No se pudo registrar la tirada. No vuelvas a girar hasta comprobar la conexión."
+        );
+        setEstado("error");
+        enviarEventoDisplay("waiting");
       }
     }, SPIN_DURATION_MS);
   }
