@@ -1818,7 +1818,14 @@ export default function App() {
         </section>
       </div>
 
-      <main style={styles.catalog}>
+      <main
+        style={{
+          ...styles.catalog,
+          ...(selectedDepartment !== "TODOS" && !search.trim()
+            ? styles.catalogSingleDepartment
+            : {}),
+        }}
+      >
         {cargando && <p style={styles.loading}>{t.loading}</p>}
         {errorCatalogo && <p style={styles.error}>{errorCatalogo}</p>}
 
@@ -2555,6 +2562,12 @@ const styles = {
     position: "relative",
     zIndex: 1,
     WebkitOverflowScrolling: "touch",
+  },
+
+  catalogSingleDepartment: {
+    // Deja aire sobre el primer artículo del departamento para que no quede
+    // pegado a la cabecera cuando el cliente abre Cajas o Unidades.
+    paddingTop: "clamp(54px, 10vh, 92px)",
   },
 
   departmentSection: {
