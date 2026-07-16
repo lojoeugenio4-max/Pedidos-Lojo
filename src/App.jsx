@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   ShoppingCart,
   Trash2,
@@ -296,6 +297,8 @@ export default function App() {
   );
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [pedidoEnviadoFinalizado, setPedidoEnviadoFinalizado] = useState(false);
+  const sentSwipeStartYRef = useRef(null);
+  const sentSwipeActiveRef = useRef(false);
 
   const [premiosRuleta, setPremiosRuleta] = useState([]);
   const [configuracionRuleta, setConfiguracionRuleta] = useState(null);
@@ -1650,13 +1653,19 @@ export default function App() {
     // Guardamos estadísticas en segundo plano, sin bloquear WhatsApp.
     guardarEstadisticasPedido(itemsPedido, pedidoId);
 
-    // Al volver desde WhatsApp mostraremos una pantalla de confirmación y cierre.
+    // La confirmación debe quedar renderizada ANTES de entregar el control a WhatsApp.
+    // flushSync evita que React posponga el cambio de pantalla hasta el regreso a la app.
     sessionStorage.setItem(ORDER_SENT_PENDING_CLEAR_KEY, "true");
+    flushSync(() => {
+      setPedidoEnviadoFinalizado(true);
+    });
 
-    // Abrir en la misma pestaña es lo más fiable en móviles.
-    abrirPedidoEnWhatsApp({
-      whatsappNumber: WHATSAPP_NUMBER,
-      texto,
+    // Damos un fotograma al navegador para pintar la confirmación y lanzamos WhatsApp.
+    window.requestAnimationFrame(() => {
+      abrirPedidoEnWhatsApp({
+        whatsappNumber: WHATSAPP_NUMBER,
+        texto,
+      });
     });
   }
 
@@ -1723,9 +1732,54 @@ export default function App() {
   const pushTieneVariosComprables =
     pushItems.filter((item) => item.comprable && item.id).length > 1;
 
+  const iniciarGestoCierre = (event) => {
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    sentSwipeStartYRef.current = touch.clientY;
+    sentSwipeActiveRef.current = true;
+  };
+
+  const finalizarGestoCierre = (event) => {
+    if (!sentSwipeActiveRef.current || sentSwipeStartYRef.current == null) return;
+
+    const touch = event.changedTouches?.[0];
+    const desplazamiento = touch
+      ? sentSwipeStartYRef.current - touch.clientY
+      : 0;
+
+    sentSwipeActiveRef.current = false;
+    sentSwipeStartYRef.current = null;
+
+    if (desplazamiento < 70) return;
+
+    sessionStorage.removeItem(ORDER_SENT_PENDING_CLEAR_KEY);
+
+    // En una PWA instalada window.close puede cerrar la ventana. En navegadores
+    // que lo bloquean, dejamos la sesión en blanco para que no vuelva al pedido.
+    try {
+      window.close();
+    } catch (error) {
+      console.debug("El navegador no permite cerrar la ventana directamente", error);
+    }
+
+    window.setTimeout(() => {
+      if (!document.hidden) {
+        window.location.replace("about:blank");
+      }
+    }, 180);
+  };
+
   if (pedidoEnviadoFinalizado) {
     return (
-      <main style={styles.sentScreen}>
+      <main
+        style={styles.sentScreen}
+        onTouchStart={iniciarGestoCierre}
+        onTouchEnd={finalizarGestoCierre}
+        onTouchCancel={() => {
+          sentSwipeActiveRef.current = false;
+          sentSwipeStartYRef.current = null;
+        }}
+      >
         <style>{`
           @keyframes lojo-hand-swipe-up {
             0%, 18% { transform: translateY(22px); opacity: 0.72; }
