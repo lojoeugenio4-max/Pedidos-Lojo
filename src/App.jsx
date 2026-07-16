@@ -6,6 +6,8 @@ import {
   Search,
   ChevronDown,
   Check,
+  CheckCircle,
+  ArrowUp,
   X,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
@@ -908,6 +910,14 @@ export default function App() {
     [productosVisibles]
   );
 
+  const productosRuleta = useMemo(
+    () =>
+      ordenarProductos(
+        productosVisibles.filter((product) => product.participaRuleta)
+      ),
+    [productosVisibles]
+  );
+
   const departamentosCatalogo = useMemo(() => {
     const grupos = [];
 
@@ -925,6 +935,13 @@ export default function App() {
       });
     }
 
+    if (productosRuleta.length > 0) {
+      grupos.push({
+        name: "RULETA",
+        products: ordenarProductos(productosRuleta),
+      });
+    }
+
     departamentos.forEach((departamento) => {
       const nombreDepartamento = String(departamento.nombre || "").trim();
 
@@ -932,6 +949,7 @@ export default function App() {
         !nombreDepartamento ||
         nombreDepartamento === "NOVEDAD" ||
         nombreDepartamento === "OFERTAS" ||
+        nombreDepartamento === "RULETA" ||
         nombreDepartamento === "TODOS" ||
         nombreDepartamento === "ARTÍCULOS BUSCADOS"
       ) {
@@ -953,7 +971,13 @@ export default function App() {
     });
 
     return grupos;
-  }, [departamentos, productosVisibles, productosConOferta, productosNovedad]);
+  }, [
+    departamentos,
+    productosVisibles,
+    productosConOferta,
+    productosNovedad,
+    productosRuleta,
+  ]);
 
   const departmentOptions = useMemo(() => {
     const uniqueDepartments = Array.from(
@@ -991,6 +1015,8 @@ export default function App() {
         selectedProducts = productosNovedad;
       } else if (selectedDepartment === "OFERTAS") {
         selectedProducts = productosConOferta;
+      } else if (selectedDepartment === "RULETA") {
+        selectedProducts = productosRuleta;
       } else {
         selectedProducts = productosVisibles.filter(
           (product) => product.department === selectedDepartment
@@ -1040,6 +1066,7 @@ export default function App() {
     productosVisibles,
     productosNovedad,
     productosConOferta,
+    productosRuleta,
   ]);
 
   useEffect(() => {
@@ -1141,6 +1168,45 @@ export default function App() {
     [orderedItems, configuracionRuleta, articulosRuleta]
   );
 
+  const obtenerEstadoArticuloRuleta = (product, quantity = {}) => {
+    if (!product?.participaRuleta) return null;
+
+    const minimo = Math.max(1, Number(product.cantidadMinimaRuleta || 1));
+    const cajas = Number(quantity.boxes || 0);
+    const unidades = Number(quantity.units || 0);
+
+    if (product.permite_unidades) {
+      if (cajas > 0 || unidades >= minimo) {
+        return {
+          completo: true,
+          texto: "✓ Este artículo ya cuenta para la Ruleta",
+        };
+      }
+
+      return {
+        completo: false,
+        texto:
+          unidades > 0
+            ? `Te faltan ${Math.max(0, minimo - unidades)} unidades para que cuente`
+            : `Pide 1 caja o ${minimo} unidades para que cuente`,
+      };
+    }
+
+    if (cajas >= minimo) {
+      return {
+        completo: true,
+        texto: "✓ Este artículo ya cuenta para la Ruleta",
+      };
+    }
+
+    return {
+      completo: false,
+      texto:
+        cajas > 0
+          ? `Te faltan ${Math.max(0, minimo - cajas)} cajas para que cuente`
+          : `Pide ${minimo} ${minimo === 1 ? "caja" : "cajas"} para que cuente`,
+    };
+  };
 
   const activarCampoCantidad = (productId, field) => {
     // Solo marca el artículo y el campo activo. No cambia el departamento,
@@ -1584,7 +1650,7 @@ export default function App() {
     // Guardamos estadísticas en segundo plano, sin bloquear WhatsApp.
     guardarEstadisticasPedido(itemsPedido, pedidoId);
 
-    // Al volver desde WhatsApp mostraremos una pantalla final sin acceso al pedido.
+    // Al volver desde WhatsApp mostraremos una pantalla de confirmación y cierre.
     sessionStorage.setItem(ORDER_SENT_PENDING_CLEAR_KEY, "true");
 
     // Abrir en la misma pestaña es lo más fiable en móviles.
@@ -1642,90 +1708,6 @@ export default function App() {
     });
   };
 
-  if (pedidoEnviadoFinalizado) {
-    return (
-      <div style={styles.sentScreen}>
-        <style>{`
-          @keyframes lojoSwipeUp {
-            0%, 100% { transform: translateY(10px); opacity: 0.55; }
-            45% { transform: translateY(-8px); opacity: 1; }
-          }
-          @keyframes lojoSuccessPulse {
-            0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(79, 196, 72, 0.20); }
-            50% { transform: scale(1.035); box-shadow: 0 0 0 18px rgba(79, 196, 72, 0); }
-          }
-        `}</style>
-
-        <section style={styles.sentCard} aria-live="polite">
-          <header style={styles.sentBrand}>
-            <div style={styles.sentBrandSmall}>CASH LOJO</div>
-            <div style={styles.sentBrandMain}>LOJO</div>
-          </header>
-
-          <div style={styles.sentContent}>
-            <div style={styles.sentCheckCircle} aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="48" height="48" fill="none">
-                <path d="M5 12.5 9.2 17 19 7" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-
-            <div>
-              <h1 style={styles.sentTitle}>
-                Pedido enviado
-                <span style={styles.sentTitleLine}>correctamente</span>
-              </h1>
-              <div style={styles.sentDivider} />
-              <p style={styles.sentThanks}>
-                Gracias por su pedido.
-                <span style={styles.sentTitleLine}>En breve comenzaremos a prepararlo.</span>
-              </p>
-            </div>
-
-            <div style={styles.sentGestureBox}>
-              <div style={styles.sentGestureVisual}>
-                <svg
-                  viewBox="0 0 48 48"
-                  width="46"
-                  height="46"
-                  fill="none"
-                  style={styles.sentArrow}
-                  aria-hidden="true"
-                >
-                  <path d="M24 39V10M12 22 24 10l12 12" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-
-                <svg
-                  viewBox="0 0 120 140"
-                  width="96"
-                  height="112"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M57 12c-7.2 0-13 5.8-13 13v48.2l-7.3-10.1c-4.2-5.8-12.3-7.1-18.1-2.9-5.8 4.2-7.1 12.3-2.9 18.1l22.7 31.2c7.2 9.9 18.7 15.8 31 15.8h11.1c17.4 0 31.5-14.1 31.5-31.5V56.5c0-6.9-5.6-12.5-12.5-12.5-3.4 0-6.5 1.4-8.8 3.6v-5.1c0-6.9-5.6-12.5-12.5-12.5-3.8 0-7.2 1.7-9.5 4.4V25c0-7.2-5.8-13-13-13H57Z"
-                    fill="#f7b267"
-                  />
-                  <path
-                    d="M57 19.5c-3 0-5.5 2.5-5.5 5.5v53.5c0 2.1-1.3 4-3.3 4.7-2 .7-4.2 0-5.4-1.7L30.6 64.8c-1.8-2.5-5.3-3-7.8-1.2-2.5 1.8-3 5.3-1.2 7.8l22.7 31.2c5.8 8 15.1 12.7 25 12.7h11.1c13.3 0 24-10.7 24-24V56.5c0-2.8-2.2-5-5-5s-5 2.2-5 5V72c0 2.1-1.7 3.8-3.8 3.8S87 74.1 87 72V42.5c0-2.8-2.2-5-5-5s-5 2.2-5 5V70c0 2.1-1.7 3.8-3.8 3.8S69.5 72.1 69.5 70V25c0-3-2.5-5.5-5.5-5.5H57Z"
-                    fill="#fed7aa"
-                  />
-                </svg>
-              </div>
-
-              <p style={styles.sentSwipeTitle}>Desliza desde el borde inferior</p>
-              <p style={styles.sentSwipeText}>hacia arriba para salir de la aplicación</p>
-            </div>
-
-            <p style={styles.sentIphoneHint}>
-              En iPhone, inicia el gesto en la barra inferior de la pantalla.
-            </p>
-          </div>
-        </section>
-      </div>
-    );
-  }
-
   const pushItems = Array.isArray(pushOferta?.articulos)
     ? pushOferta.articulos
     : pushOferta?.articulos
@@ -1740,6 +1722,87 @@ export default function App() {
 
   const pushTieneVariosComprables =
     pushItems.filter((item) => item.comprable && item.id).length > 1;
+
+  if (pedidoEnviadoFinalizado) {
+    return (
+      <main style={styles.sentScreen}>
+        <style>{`
+          @keyframes lojo-hand-swipe-up {
+            0%, 18% { transform: translateY(22px); opacity: 0.72; }
+            55% { transform: translateY(-18px); opacity: 1; }
+            78%, 100% { transform: translateY(-30px); opacity: 0; }
+          }
+          @keyframes lojo-arrow-up {
+            0%, 100% { transform: translateY(7px); opacity: 0.6; }
+            50% { transform: translateY(-7px); opacity: 1; }
+          }
+          @keyframes lojo-success-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(105, 201, 76, 0.16); }
+            50% { box-shadow: 0 0 0 14px rgba(105, 201, 76, 0); }
+          }
+        `}</style>
+
+        <section style={styles.sentPanel}>
+          <header style={styles.sentBrand}>
+            <span style={styles.sentBrandSmall}>CASH</span>
+            <strong style={styles.sentBrandName}>LOJO</strong>
+          </header>
+
+          <div style={styles.sentContent}>
+            <div style={styles.sentCheckCircle}>
+              <CheckCircle size={52} strokeWidth={2.7} aria-hidden="true" />
+            </div>
+
+            <div>
+              <h1 style={styles.sentTitle}>
+                Pedido enviado
+                <span style={{ display: "block" }}>correctamente</span>
+              </h1>
+              <div style={styles.sentTitleLine} />
+              <p style={styles.sentThanks}>
+                Gracias por su pedido.
+                <span style={{ display: "block" }}>En breve comenzaremos a prepararlo.</span>
+              </p>
+            </div>
+
+            <div style={styles.sentGestureBox}>
+              <div style={styles.sentGestureVisual}>
+                <ArrowUp
+                  size={48}
+                  strokeWidth={3}
+                  aria-hidden="true"
+                  style={styles.sentArrow}
+                />
+                <svg
+                  viewBox="0 0 120 140"
+                  style={styles.sentHand}
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M57 12c-7.2 0-13 5.8-13 13v48.2l-7.3-10.1c-4.2-5.8-12.3-7.1-18.1-2.9-5.8 4.2-7.1 12.3-2.9 18.1l22.7 31.2c7.2 9.9 18.7 15.8 31 15.8h11.1c17.4 0 31.5-14.1 31.5-31.5V56.5c0-6.9-5.6-12.5-12.5-12.5-3.4 0-6.5 1.4-8.8 3.6v-5.1c0-6.9-5.6-12.5-12.5-12.5-3.8 0-7.2 1.7-9.5 4.4V25c0-7.2-5.8-13-13-13H57Z"
+                    fill="currentColor"
+                  />
+                  <path
+                    d="M57 19.5c-3 0-5.5 2.5-5.5 5.5v53.5c0 2.1-1.3 4-3.3 4.7-2 .7-4.2 0-5.4-1.7L30.6 64.8c-1.8-2.5-5.3-3-7.8-1.2-2.5 1.8-3 5.3-1.2 7.8l22.7 31.2c5.8 8 15.1 12.7 25 12.7h11.1c13.3 0 24-10.7 24-24V56.5c0-2.8-2.2-5-5-5s-5 2.2-5 5V72c0 2.1-1.7 3.8-3.8 3.8S87 74.1 87 72V42.5c0-2.8-2.2-5-5-5s-5 2.2-5 5V70c0 2.1-1.7 3.8-3.8 3.8S69.5 72.1 69.5 70V25c0-3-2.5-5.5-5.5-5.5H57Z"
+                    fill="#FED7AA"
+                  />
+                </svg>
+              </div>
+
+              <p style={styles.sentSwipeTitle}>Desliza desde el borde inferior</p>
+              <p style={styles.sentSwipeText}>hacia arriba para salir de la aplicación</p>
+            </div>
+
+            <p style={styles.sentIphoneHelp}>
+              En iPhone, inicia el gesto en la barra inferior de la pantalla.
+            </p>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <div style={styles.page}>
@@ -1974,6 +2037,41 @@ export default function App() {
               </div>
             )}
           </div>
+
+          {resumenRuletaPedido && (
+            <div style={styles.ruletaProgressPanel}>
+              <div style={styles.ruletaProgressHeader}>
+                <span style={styles.ruletaProgressTitle}>🎡 Progreso Ruleta</span>
+                <strong>
+                  {resumenRuletaPedido.variedadActual}/{resumenRuletaPedido.variedadMinima}
+                </strong>
+              </div>
+              <div style={styles.ruletaProgressTrack}>
+                <div
+                  style={{
+                    ...styles.ruletaProgressFill,
+                    width: `${Math.min(
+                      100,
+                      (resumenRuletaPedido.variedadParaSiguienteTirada /
+                        resumenRuletaPedido.variedadMinima) *
+                        100
+                    )}%`,
+                  }}
+                />
+              </div>
+              <div style={styles.ruletaProgressMessage}>
+                {resumenRuletaPedido.tiradasConseguidas > 0
+                  ? `Tienes ${resumenRuletaPedido.tiradasConseguidas} ${
+                      resumenRuletaPedido.tiradasConseguidas === 1
+                        ? "tirada"
+                        : "tiradas"
+                    }. Te faltan ${
+                      resumenRuletaPedido.variedadRestanteSiguienteTirada
+                    } artículos diferentes para la siguiente.`
+                  : `Te faltan ${resumenRuletaPedido.variedadRestante} artículos diferentes de Ruleta para conseguir una tirada.`}
+              </div>
+            </div>
+          )}
         </section>
       </div>
 
@@ -2151,6 +2249,25 @@ export default function App() {
                           </button>
                         </div>
 
+                        {product.participaRuleta && (() => {
+                          const estadoRuleta = obtenerEstadoArticuloRuleta(
+                            product,
+                            quantity
+                          );
+
+                          return (
+                            <div
+                              style={
+                                estadoRuleta?.completo
+                                  ? styles.ruletaProductStatusOk
+                                  : styles.ruletaProductStatusPending
+                              }
+                            >
+                              {estadoRuleta?.texto}
+                            </div>
+                          );
+                        })()}
+
                         {!product.permite_unidades && soloCajasAviso === product.id && (
                           <div style={styles.onlyBoxesMessage}>
                             {t.onlyBoxes}
@@ -2293,6 +2410,73 @@ export default function App() {
 }
 
 const styles = {
+  ruletaProgressPanel: {
+    marginTop: "8px",
+    padding: "10px 12px",
+    borderRadius: "12px",
+    border: "2px solid #f59e0b",
+    background: "#fff7d6",
+    color: "#78350f",
+  },
+
+  ruletaProgressHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
+    fontSize: "14px",
+  },
+
+  ruletaProgressTitle: {
+    fontWeight: "900",
+  },
+
+  ruletaProgressTrack: {
+    height: "10px",
+    marginTop: "7px",
+    overflow: "hidden",
+    borderRadius: "999px",
+    background: "#fde68a",
+  },
+
+  ruletaProgressFill: {
+    height: "100%",
+    borderRadius: "999px",
+    background: "#f59e0b",
+    transition: "width 160ms ease",
+  },
+
+  ruletaProgressMessage: {
+    marginTop: "6px",
+    fontSize: "13px",
+    lineHeight: "1.25",
+    fontWeight: "800",
+  },
+
+  ruletaProductStatusPending: {
+    marginTop: "8px",
+    padding: "7px 9px",
+    borderRadius: "9px",
+    background: "#fff7d6",
+    border: "1px solid #f59e0b",
+    color: "#92400e",
+    fontSize: "12px",
+    lineHeight: "1.25",
+    fontWeight: "900",
+  },
+
+  ruletaProductStatusOk: {
+    marginTop: "8px",
+    padding: "7px 9px",
+    borderRadius: "9px",
+    background: "#dcfce7",
+    border: "1px solid #22c55e",
+    color: "#166534",
+    fontSize: "12px",
+    lineHeight: "1.25",
+    fontWeight: "900",
+  },
+
   page: {
     minHeight: "100dvh",
     width: "100%",
@@ -2304,147 +2488,6 @@ const styles = {
       '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     paddingBottom: "calc(78px + env(safe-area-inset-bottom))",
     boxSizing: "border-box",
-  },
-
-  sentScreen: {
-    position: "fixed",
-    inset: 0,
-    zIndex: 99999,
-    width: "100%",
-    height: "100dvh",
-    overflow: "hidden",
-    overscrollBehavior: "none",
-    background: "#090d13",
-    color: "#ffffff",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "12px",
-    paddingTop: "calc(12px + env(safe-area-inset-top))",
-    paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
-    boxSizing: "border-box",
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    userSelect: "none",
-  },
-  sentCard: {
-    width: "100%",
-    maxWidth: "520px",
-    maxHeight: "calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
-    overflow: "hidden",
-    borderRadius: "28px",
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "linear-gradient(180deg, #171d25 0%, #10151c 100%)",
-    boxShadow: "0 24px 70px rgba(0,0,0,0.48)",
-    display: "flex",
-    flexDirection: "column",
-  },
-  sentBrand: {
-    flexShrink: 0,
-    padding: "14px 24px 12px",
-    textAlign: "center",
-    borderBottom: "1px solid rgba(255,255,255,0.10)",
-  },
-  sentBrandSmall: {
-    fontSize: "11px",
-    fontWeight: 800,
-    letterSpacing: "0.32em",
-    color: "rgba(255,255,255,0.68)",
-  },
-  sentBrandMain: {
-    marginTop: "2px",
-    fontSize: "32px",
-    lineHeight: 1,
-    fontWeight: 950,
-    letterSpacing: "-0.04em",
-    color: "#58c94f",
-  },
-  sentContent: {
-    minHeight: 0,
-    overflow: "hidden",
-    flex: 1,
-    padding: "18px 20px 16px",
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: "16px",
-    textAlign: "center",
-  },
-  sentCheckCircle: {
-    width: "74px",
-    height: "74px",
-    flexShrink: 0,
-    borderRadius: "50%",
-    border: "4px solid #58c94f",
-    color: "#58c94f",
-    background: "rgba(88,201,79,0.10)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    animation: "lojoSuccessPulse 2s ease-in-out infinite",
-  },
-  sentTitle: {
-    margin: 0,
-    fontSize: "clamp(27px, 8vw, 42px)",
-    lineHeight: 1.03,
-    fontWeight: 950,
-    letterSpacing: "-0.035em",
-    color: "#ffffff",
-  },
-  sentTitleLine: { display: "block" },
-  sentDivider: {
-    width: "112px",
-    height: "4px",
-    margin: "15px auto 0",
-    borderRadius: "999px",
-    background: "#58c94f",
-  },
-  sentThanks: {
-    margin: "12px 0 0",
-    fontSize: "clamp(15px, 4.5vw, 19px)",
-    lineHeight: 1.45,
-    color: "rgba(255,255,255,0.84)",
-  },
-  sentGestureBox: {
-    width: "100%",
-    flexShrink: 0,
-    boxSizing: "border-box",
-    borderRadius: "24px",
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.20)",
-    padding: "12px 16px 14px",
-  },
-  sentGestureVisual: {
-    height: "132px",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sentArrow: {
-    color: "#58c94f",
-    marginBottom: "-16px",
-    animation: "lojoSwipeUp 1.25s ease-in-out infinite",
-  },
-  sentSwipeTitle: {
-    margin: "2px 0 0",
-    fontSize: "clamp(17px, 5vw, 21px)",
-    lineHeight: 1.2,
-    fontWeight: 900,
-    color: "#69d45f",
-  },
-  sentSwipeText: {
-    margin: "4px 0 0",
-    fontSize: "clamp(13px, 4vw, 16px)",
-    lineHeight: 1.35,
-    color: "rgba(255,255,255,0.84)",
-  },
-  sentIphoneHint: {
-    margin: 0,
-    flexShrink: 0,
-    fontSize: "11px",
-    lineHeight: 1.4,
-    color: "rgba(255,255,255,0.45)",
   },
 
   topArea: {
@@ -3562,5 +3605,170 @@ const styles = {
     fontSize: "16px",
     fontWeight: "1000",
     boxShadow: "0 14px 28px rgba(14,165,233,0.35)",
+  },
+
+  sentScreen: {
+    position: "fixed",
+    inset: 0,
+    width: "100%",
+    height: "100dvh",
+    overflow: "hidden",
+    overscrollBehavior: "none",
+    background: "#090d13",
+    color: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "12px",
+    paddingTop: "max(12px, env(safe-area-inset-top))",
+    paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+    boxSizing: "border-box",
+    zIndex: 20000,
+    userSelect: "none",
+  },
+
+  sentPanel: {
+    width: "min(520px, 100%)",
+    maxHeight: "calc(100dvh - 24px)",
+    overflow: "hidden",
+    borderRadius: "28px",
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "linear-gradient(180deg, #171d25 0%, #10151c 100%)",
+    boxShadow: "0 24px 70px rgba(0,0,0,0.55)",
+    display: "flex",
+    flexDirection: "column",
+  },
+
+  sentBrand: {
+    flexShrink: 0,
+    borderBottom: "1px solid rgba(255,255,255,0.10)",
+    padding: "13px 24px",
+    textAlign: "center",
+  },
+
+  sentBrandSmall: {
+    display: "block",
+    fontSize: "12px",
+    fontWeight: 800,
+    letterSpacing: "0.34em",
+    color: "rgba(255,255,255,0.68)",
+  },
+
+  sentBrandName: {
+    display: "block",
+    marginTop: "2px",
+    fontSize: "31px",
+    lineHeight: 1,
+    fontWeight: 1000,
+    color: "#6bc94c",
+  },
+
+  sentContent: {
+    minHeight: 0,
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "15px",
+    padding: "18px 20px 16px",
+    textAlign: "center",
+    boxSizing: "border-box",
+  },
+
+  sentCheckCircle: {
+    width: "76px",
+    height: "76px",
+    borderRadius: "999px",
+    border: "4px solid #69c94c",
+    background: "rgba(105,201,76,0.10)",
+    color: "#69c94c",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    animation: "lojo-success-pulse 2s ease-in-out infinite",
+  },
+
+  sentTitle: {
+    margin: 0,
+    fontSize: "clamp(28px, 7vw, 40px)",
+    lineHeight: 1.03,
+    fontWeight: 1000,
+    letterSpacing: "-0.025em",
+  },
+
+  sentTitleLine: {
+    width: "112px",
+    height: "4px",
+    borderRadius: "999px",
+    background: "#69c94c",
+    margin: "16px auto 0",
+  },
+
+  sentThanks: {
+    margin: "12px 0 0",
+    fontSize: "clamp(16px, 4.2vw, 19px)",
+    lineHeight: 1.45,
+    color: "rgba(255,255,255,0.86)",
+  },
+
+  sentGestureBox: {
+    width: "100%",
+    borderRadius: "24px",
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(0,0,0,0.20)",
+    padding: "10px 14px 14px",
+    boxSizing: "border-box",
+    flexShrink: 0,
+  },
+
+  sentGestureVisual: {
+    position: "relative",
+    width: "144px",
+    height: "126px",
+    margin: "0 auto",
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+
+  sentArrow: {
+    position: "absolute",
+    top: "0",
+    color: "#69c94c",
+    animation: "lojo-arrow-up 1.15s ease-in-out infinite",
+  },
+
+  sentHand: {
+    width: "91px",
+    height: "106px",
+    color: "#fdba74",
+    filter: "drop-shadow(0 0 18px rgba(251,191,142,0.25))",
+    animation: "lojo-hand-swipe-up 1.7s ease-in-out infinite",
+    transformOrigin: "center bottom",
+  },
+
+  sentSwipeTitle: {
+    margin: "0",
+    fontSize: "clamp(18px, 4.7vw, 22px)",
+    lineHeight: 1.2,
+    fontWeight: 1000,
+    color: "#78d45a",
+  },
+
+  sentSwipeText: {
+    margin: "4px 0 0",
+    fontSize: "clamp(14px, 3.8vw, 17px)",
+    lineHeight: 1.3,
+    color: "rgba(255,255,255,0.86)",
+  },
+
+  sentIphoneHelp: {
+    margin: 0,
+    fontSize: "12px",
+    lineHeight: 1.35,
+    color: "rgba(255,255,255,0.48)",
+    flexShrink: 0,
   },
 };
