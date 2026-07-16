@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { flushSync } from "react-dom";
 import {
   ShoppingCart,
   Trash2,
@@ -7,8 +6,6 @@ import {
   Search,
   ChevronDown,
   Check,
-  CheckCircle,
-  ArrowUp,
   X,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
@@ -296,9 +293,6 @@ export default function App() {
     () => localStorage.getItem(LANGUAGE_STORAGE_KEY) || "es"
   );
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
-  const [pedidoEnviadoFinalizado, setPedidoEnviadoFinalizado] = useState(false);
-  const sentSwipeStartYRef = useRef(null);
-  const sentSwipeActiveRef = useRef(false);
 
   const [premiosRuleta, setPremiosRuleta] = useState([]);
   const [configuracionRuleta, setConfiguracionRuleta] = useState(null);
@@ -444,7 +438,6 @@ export default function App() {
       setShowOrderSummary(false);
       setSelectedImage(null);
       setHeaderCollapsed(false);
-      setPedidoEnviadoFinalizado(true);
     };
 
     const comprobarVisibilidad = () => {
@@ -1653,19 +1646,10 @@ export default function App() {
     // Guardamos estadísticas en segundo plano, sin bloquear WhatsApp.
     guardarEstadisticasPedido(itemsPedido, pedidoId);
 
-    // La confirmación debe quedar renderizada ANTES de entregar el control a WhatsApp.
-    // flushSync evita que React posponga el cambio de pantalla hasta el regreso a la app.
-    sessionStorage.setItem(ORDER_SENT_PENDING_CLEAR_KEY, "true");
-    flushSync(() => {
-      setPedidoEnviadoFinalizado(true);
-    });
-
-    // Damos un fotograma al navegador para pintar la confirmación y lanzamos WhatsApp.
-    window.requestAnimationFrame(() => {
-      abrirPedidoEnWhatsApp({
-        whatsappNumber: WHATSAPP_NUMBER,
-        texto,
-      });
+    // Abrir en la misma pestaña es lo más fiable en móviles.
+    abrirPedidoEnWhatsApp({
+      whatsappNumber: WHATSAPP_NUMBER,
+      texto,
     });
   }
 
@@ -1731,132 +1715,6 @@ export default function App() {
 
   const pushTieneVariosComprables =
     pushItems.filter((item) => item.comprable && item.id).length > 1;
-
-  const iniciarGestoCierre = (event) => {
-    const touch = event.touches?.[0];
-    if (!touch) return;
-    sentSwipeStartYRef.current = touch.clientY;
-    sentSwipeActiveRef.current = true;
-  };
-
-  const finalizarGestoCierre = (event) => {
-    if (!sentSwipeActiveRef.current || sentSwipeStartYRef.current == null) return;
-
-    const touch = event.changedTouches?.[0];
-    const desplazamiento = touch
-      ? sentSwipeStartYRef.current - touch.clientY
-      : 0;
-
-    sentSwipeActiveRef.current = false;
-    sentSwipeStartYRef.current = null;
-
-    if (desplazamiento < 70) return;
-
-    sessionStorage.removeItem(ORDER_SENT_PENDING_CLEAR_KEY);
-
-    // En una PWA instalada window.close puede cerrar la ventana. En navegadores
-    // que lo bloquean, dejamos la sesión en blanco para que no vuelva al pedido.
-    try {
-      window.close();
-    } catch (error) {
-      console.debug("El navegador no permite cerrar la ventana directamente", error);
-    }
-
-    window.setTimeout(() => {
-      if (!document.hidden) {
-        window.location.replace("about:blank");
-      }
-    }, 180);
-  };
-
-  if (pedidoEnviadoFinalizado) {
-    return (
-      <main
-        style={styles.sentScreen}
-        onTouchStart={iniciarGestoCierre}
-        onTouchEnd={finalizarGestoCierre}
-        onTouchCancel={() => {
-          sentSwipeActiveRef.current = false;
-          sentSwipeStartYRef.current = null;
-        }}
-      >
-        <style>{`
-          @keyframes lojo-hand-swipe-up {
-            0%, 18% { transform: translateY(22px); opacity: 0.72; }
-            55% { transform: translateY(-18px); opacity: 1; }
-            78%, 100% { transform: translateY(-30px); opacity: 0; }
-          }
-          @keyframes lojo-arrow-up {
-            0%, 100% { transform: translateY(7px); opacity: 0.6; }
-            50% { transform: translateY(-7px); opacity: 1; }
-          }
-          @keyframes lojo-success-pulse {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(105, 201, 76, 0.16); }
-            50% { box-shadow: 0 0 0 14px rgba(105, 201, 76, 0); }
-          }
-        `}</style>
-
-        <section style={styles.sentPanel}>
-          <header style={styles.sentBrand}>
-            <span style={styles.sentBrandSmall}>CASH</span>
-            <strong style={styles.sentBrandName}>LOJO</strong>
-          </header>
-
-          <div style={styles.sentContent}>
-            <div style={styles.sentCheckCircle}>
-              <CheckCircle size={52} strokeWidth={2.7} aria-hidden="true" />
-            </div>
-
-            <div>
-              <h1 style={styles.sentTitle}>
-                Pedido enviado
-                <span style={{ display: "block" }}>correctamente</span>
-              </h1>
-              <div style={styles.sentTitleLine} />
-              <p style={styles.sentThanks}>
-                Gracias por su pedido.
-                <span style={{ display: "block" }}>En breve comenzaremos a prepararlo.</span>
-              </p>
-            </div>
-
-            <div style={styles.sentGestureBox}>
-              <div style={styles.sentGestureVisual}>
-                <ArrowUp
-                  size={48}
-                  strokeWidth={3}
-                  aria-hidden="true"
-                  style={styles.sentArrow}
-                />
-                <svg
-                  viewBox="0 0 120 140"
-                  style={styles.sentHand}
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M57 12c-7.2 0-13 5.8-13 13v48.2l-7.3-10.1c-4.2-5.8-12.3-7.1-18.1-2.9-5.8 4.2-7.1 12.3-2.9 18.1l22.7 31.2c7.2 9.9 18.7 15.8 31 15.8h11.1c17.4 0 31.5-14.1 31.5-31.5V56.5c0-6.9-5.6-12.5-12.5-12.5-3.4 0-6.5 1.4-8.8 3.6v-5.1c0-6.9-5.6-12.5-12.5-12.5-3.8 0-7.2 1.7-9.5 4.4V25c0-7.2-5.8-13-13-13H57Z"
-                    fill="currentColor"
-                  />
-                  <path
-                    d="M57 19.5c-3 0-5.5 2.5-5.5 5.5v53.5c0 2.1-1.3 4-3.3 4.7-2 .7-4.2 0-5.4-1.7L30.6 64.8c-1.8-2.5-5.3-3-7.8-1.2-2.5 1.8-3 5.3-1.2 7.8l22.7 31.2c5.8 8 15.1 12.7 25 12.7h11.1c13.3 0 24-10.7 24-24V56.5c0-2.8-2.2-5-5-5s-5 2.2-5 5V72c0 2.1-1.7 3.8-3.8 3.8S87 74.1 87 72V42.5c0-2.8-2.2-5-5-5s-5 2.2-5 5V70c0 2.1-1.7 3.8-3.8 3.8S69.5 72.1 69.5 70V25c0-3-2.5-5.5-5.5-5.5H57Z"
-                    fill="#FED7AA"
-                  />
-                </svg>
-              </div>
-
-              <p style={styles.sentSwipeTitle}>Desliza desde el borde inferior</p>
-              <p style={styles.sentSwipeText}>hacia arriba para salir de la aplicación</p>
-            </div>
-
-            <p style={styles.sentIphoneHelp}>
-              En iPhone, inicia el gesto en la barra inferior de la pantalla.
-            </p>
-          </div>
-        </section>
-      </main>
-    );
-  }
 
   return (
     <div style={styles.page}>
@@ -3659,170 +3517,5 @@ const styles = {
     fontSize: "16px",
     fontWeight: "1000",
     boxShadow: "0 14px 28px rgba(14,165,233,0.35)",
-  },
-
-  sentScreen: {
-    position: "fixed",
-    inset: 0,
-    width: "100%",
-    height: "100dvh",
-    overflow: "hidden",
-    overscrollBehavior: "none",
-    background: "#090d13",
-    color: "#ffffff",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "12px",
-    paddingTop: "max(12px, env(safe-area-inset-top))",
-    paddingBottom: "max(12px, env(safe-area-inset-bottom))",
-    boxSizing: "border-box",
-    zIndex: 20000,
-    userSelect: "none",
-  },
-
-  sentPanel: {
-    width: "min(520px, 100%)",
-    maxHeight: "calc(100dvh - 24px)",
-    overflow: "hidden",
-    borderRadius: "28px",
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "linear-gradient(180deg, #171d25 0%, #10151c 100%)",
-    boxShadow: "0 24px 70px rgba(0,0,0,0.55)",
-    display: "flex",
-    flexDirection: "column",
-  },
-
-  sentBrand: {
-    flexShrink: 0,
-    borderBottom: "1px solid rgba(255,255,255,0.10)",
-    padding: "13px 24px",
-    textAlign: "center",
-  },
-
-  sentBrandSmall: {
-    display: "block",
-    fontSize: "12px",
-    fontWeight: 800,
-    letterSpacing: "0.34em",
-    color: "rgba(255,255,255,0.68)",
-  },
-
-  sentBrandName: {
-    display: "block",
-    marginTop: "2px",
-    fontSize: "31px",
-    lineHeight: 1,
-    fontWeight: 1000,
-    color: "#6bc94c",
-  },
-
-  sentContent: {
-    minHeight: 0,
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "15px",
-    padding: "18px 20px 16px",
-    textAlign: "center",
-    boxSizing: "border-box",
-  },
-
-  sentCheckCircle: {
-    width: "76px",
-    height: "76px",
-    borderRadius: "999px",
-    border: "4px solid #69c94c",
-    background: "rgba(105,201,76,0.10)",
-    color: "#69c94c",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    animation: "lojo-success-pulse 2s ease-in-out infinite",
-  },
-
-  sentTitle: {
-    margin: 0,
-    fontSize: "clamp(28px, 7vw, 40px)",
-    lineHeight: 1.03,
-    fontWeight: 1000,
-    letterSpacing: "-0.025em",
-  },
-
-  sentTitleLine: {
-    width: "112px",
-    height: "4px",
-    borderRadius: "999px",
-    background: "#69c94c",
-    margin: "16px auto 0",
-  },
-
-  sentThanks: {
-    margin: "12px 0 0",
-    fontSize: "clamp(16px, 4.2vw, 19px)",
-    lineHeight: 1.45,
-    color: "rgba(255,255,255,0.86)",
-  },
-
-  sentGestureBox: {
-    width: "100%",
-    borderRadius: "24px",
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.20)",
-    padding: "10px 14px 14px",
-    boxSizing: "border-box",
-    flexShrink: 0,
-  },
-
-  sentGestureVisual: {
-    position: "relative",
-    width: "144px",
-    height: "126px",
-    margin: "0 auto",
-    display: "flex",
-    alignItems: "flex-end",
-    justifyContent: "center",
-  },
-
-  sentArrow: {
-    position: "absolute",
-    top: "0",
-    color: "#69c94c",
-    animation: "lojo-arrow-up 1.15s ease-in-out infinite",
-  },
-
-  sentHand: {
-    width: "91px",
-    height: "106px",
-    color: "#fdba74",
-    filter: "drop-shadow(0 0 18px rgba(251,191,142,0.25))",
-    animation: "lojo-hand-swipe-up 1.7s ease-in-out infinite",
-    transformOrigin: "center bottom",
-  },
-
-  sentSwipeTitle: {
-    margin: "0",
-    fontSize: "clamp(18px, 4.7vw, 22px)",
-    lineHeight: 1.2,
-    fontWeight: 1000,
-    color: "#78d45a",
-  },
-
-  sentSwipeText: {
-    margin: "4px 0 0",
-    fontSize: "clamp(14px, 3.8vw, 17px)",
-    lineHeight: 1.3,
-    color: "rgba(255,255,255,0.86)",
-  },
-
-  sentIphoneHelp: {
-    margin: 0,
-    fontSize: "12px",
-    lineHeight: 1.35,
-    color: "rgba(255,255,255,0.48)",
-    flexShrink: 0,
   },
 };
