@@ -906,6 +906,14 @@ export default function App() {
     [productosVisibles]
   );
 
+  const productosRuleta = useMemo(
+    () =>
+      ordenarProductos(
+        productosVisibles.filter((product) => product.participaRuleta)
+      ),
+    [productosVisibles]
+  );
+
   const departamentosCatalogo = useMemo(() => {
     const grupos = [];
 
@@ -923,6 +931,13 @@ export default function App() {
       });
     }
 
+    if (productosRuleta.length > 0) {
+      grupos.push({
+        name: "RULETA",
+        products: ordenarProductos(productosRuleta),
+      });
+    }
+
     departamentos.forEach((departamento) => {
       const nombreDepartamento = String(departamento.nombre || "").trim();
 
@@ -930,6 +945,7 @@ export default function App() {
         !nombreDepartamento ||
         nombreDepartamento === "NOVEDAD" ||
         nombreDepartamento === "OFERTAS" ||
+        nombreDepartamento === "RULETA" ||
         nombreDepartamento === "TODOS" ||
         nombreDepartamento === "ARTÍCULOS BUSCADOS"
       ) {
@@ -951,7 +967,13 @@ export default function App() {
     });
 
     return grupos;
-  }, [departamentos, productosVisibles, productosConOferta, productosNovedad]);
+  }, [
+    departamentos,
+    productosVisibles,
+    productosConOferta,
+    productosNovedad,
+    productosRuleta,
+  ]);
 
   const departmentOptions = useMemo(() => {
     const uniqueDepartments = Array.from(
@@ -989,6 +1011,8 @@ export default function App() {
         selectedProducts = productosNovedad;
       } else if (selectedDepartment === "OFERTAS") {
         selectedProducts = productosConOferta;
+      } else if (selectedDepartment === "RULETA") {
+        selectedProducts = productosRuleta;
       } else {
         selectedProducts = productosVisibles.filter(
           (product) => product.department === selectedDepartment
@@ -1038,6 +1062,7 @@ export default function App() {
     productosVisibles,
     productosNovedad,
     productosConOferta,
+    productosRuleta,
   ]);
 
   useEffect(() => {
@@ -1139,6 +1164,45 @@ export default function App() {
     [orderedItems, configuracionRuleta, articulosRuleta]
   );
 
+  const obtenerEstadoArticuloRuleta = (product, quantity = {}) => {
+    if (!product?.participaRuleta) return null;
+
+    const minimo = Math.max(1, Number(product.cantidadMinimaRuleta || 1));
+    const cajas = Number(quantity.boxes || 0);
+    const unidades = Number(quantity.units || 0);
+
+    if (product.permite_unidades) {
+      if (cajas > 0 || unidades >= minimo) {
+        return {
+          completo: true,
+          texto: "✓ Este artículo ya cuenta para la Ruleta",
+        };
+      }
+
+      return {
+        completo: false,
+        texto:
+          unidades > 0
+            ? `Te faltan ${Math.max(0, minimo - unidades)} unidades para que cuente`
+            : `Pide 1 caja o ${minimo} unidades para que cuente`,
+      };
+    }
+
+    if (cajas >= minimo) {
+      return {
+        completo: true,
+        texto: "✓ Este artículo ya cuenta para la Ruleta",
+      };
+    }
+
+    return {
+      completo: false,
+      texto:
+        cajas > 0
+          ? `Te faltan ${Math.max(0, minimo - cajas)} cajas para que cuente`
+          : `Pide ${minimo} ${minimo === 1 ? "caja" : "cajas"} para que cuente`,
+    };
+  };
 
   const activarCampoCantidad = (productId, field) => {
     // Solo marca el artículo y el campo activo. No cambia el departamento,
@@ -1885,6 +1949,41 @@ export default function App() {
               </div>
             )}
           </div>
+
+          {resumenRuletaPedido && (
+            <div style={styles.ruletaProgressPanel}>
+              <div style={styles.ruletaProgressHeader}>
+                <span style={styles.ruletaProgressTitle}>🎡 Progreso Ruleta</span>
+                <strong>
+                  {resumenRuletaPedido.variedadActual}/{resumenRuletaPedido.variedadMinima}
+                </strong>
+              </div>
+              <div style={styles.ruletaProgressTrack}>
+                <div
+                  style={{
+                    ...styles.ruletaProgressFill,
+                    width: `${Math.min(
+                      100,
+                      (resumenRuletaPedido.variedadParaSiguienteTirada /
+                        resumenRuletaPedido.variedadMinima) *
+                        100
+                    )}%`,
+                  }}
+                />
+              </div>
+              <div style={styles.ruletaProgressMessage}>
+                {resumenRuletaPedido.tiradasConseguidas > 0
+                  ? `Tienes ${resumenRuletaPedido.tiradasConseguidas} ${
+                      resumenRuletaPedido.tiradasConseguidas === 1
+                        ? "tirada"
+                        : "tiradas"
+                    }. Te faltan ${
+                      resumenRuletaPedido.variedadRestanteSiguienteTirada
+                    } artículos diferentes para la siguiente.`
+                  : `Te faltan ${resumenRuletaPedido.variedadRestante} artículos diferentes de Ruleta para conseguir una tirada.`}
+              </div>
+            </div>
+          )}
         </section>
       </div>
 
@@ -2062,6 +2161,25 @@ export default function App() {
                           </button>
                         </div>
 
+                        {product.participaRuleta && (() => {
+                          const estadoRuleta = obtenerEstadoArticuloRuleta(
+                            product,
+                            quantity
+                          );
+
+                          return (
+                            <div
+                              style={
+                                estadoRuleta?.completo
+                                  ? styles.ruletaProductStatusOk
+                                  : styles.ruletaProductStatusPending
+                              }
+                            >
+                              {estadoRuleta?.texto}
+                            </div>
+                          );
+                        })()}
+
                         {!product.permite_unidades && soloCajasAviso === product.id && (
                           <div style={styles.onlyBoxesMessage}>
                             {t.onlyBoxes}
@@ -2204,6 +2322,73 @@ export default function App() {
 }
 
 const styles = {
+  ruletaProgressPanel: {
+    marginTop: "8px",
+    padding: "10px 12px",
+    borderRadius: "12px",
+    border: "2px solid #f59e0b",
+    background: "#fff7d6",
+    color: "#78350f",
+  },
+
+  ruletaProgressHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
+    fontSize: "14px",
+  },
+
+  ruletaProgressTitle: {
+    fontWeight: "900",
+  },
+
+  ruletaProgressTrack: {
+    height: "10px",
+    marginTop: "7px",
+    overflow: "hidden",
+    borderRadius: "999px",
+    background: "#fde68a",
+  },
+
+  ruletaProgressFill: {
+    height: "100%",
+    borderRadius: "999px",
+    background: "#f59e0b",
+    transition: "width 160ms ease",
+  },
+
+  ruletaProgressMessage: {
+    marginTop: "6px",
+    fontSize: "13px",
+    lineHeight: "1.25",
+    fontWeight: "800",
+  },
+
+  ruletaProductStatusPending: {
+    marginTop: "8px",
+    padding: "7px 9px",
+    borderRadius: "9px",
+    background: "#fff7d6",
+    border: "1px solid #f59e0b",
+    color: "#92400e",
+    fontSize: "12px",
+    lineHeight: "1.25",
+    fontWeight: "900",
+  },
+
+  ruletaProductStatusOk: {
+    marginTop: "8px",
+    padding: "7px 9px",
+    borderRadius: "9px",
+    background: "#dcfce7",
+    border: "1px solid #22c55e",
+    color: "#166534",
+    fontSize: "12px",
+    lineHeight: "1.25",
+    fontWeight: "900",
+  },
+
   page: {
     minHeight: "100dvh",
     width: "100%",
