@@ -1,10 +1,15 @@
-function construirUrlQr(codigoRuleta) {
-  if (!codigoRuleta) return "";
+function construirUrlQr(codigoParticipacion) {
+  if (!codigoParticipacion) return "";
+
+  const baseUrl = String(import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin);
+  const urlParticipacion = new URL(baseUrl);
+  urlParticipacion.searchParams.set("store", "1");
+  urlParticipacion.searchParams.set("code", codigoParticipacion);
 
   const params = new URLSearchParams({
     size: "360",
     margin: "2",
-    text: codigoRuleta,
+    text: urlParticipacion.toString(),
   });
 
   return `https://quickchart.io/qr?${params.toString()}`;
@@ -19,6 +24,8 @@ export function construirTextoPedidoWhatsApp({
   participacionRuleta = null,
   codigoParticipacion = null,
   tiradasRuleta = 0,
+  participacionBingo = null,
+  participacionJuegos = null,
 }) {
   const lines = [];
 
@@ -79,21 +86,39 @@ export function construirTextoPedidoWhatsApp({
     lines.push("");
   }
 
-  const codigoRuleta =
+  const codigoJuegos =
+    participacionJuegos?.code ||
+    participacionJuegos?.codigo ||
     codigoParticipacion ||
     participacionRuleta?.code ||
     participacionRuleta?.codigo ||
     null;
 
-  if (codigoRuleta) {
-    const urlQr = construirUrlQr(codigoRuleta);
+  const bingoConseguido = Boolean(
+    participacionBingo?.qualified ?? participacionBingo?.clasificado ?? participacionBingo?.eligible
+  );
 
-    const numeroTiradas = Math.max(1, Number(tiradasRuleta || participacionRuleta?.tiradas_ruleta || participacionRuleta?.tiradas_totales || participacionRuleta?.spins_total || 1));
+  if (codigoJuegos) {
+    const urlQr = construirUrlQr(codigoJuegos);
+
+    const numeroTiradas = participacionRuleta
+      ? Math.max(
+          1,
+          Number(
+            tiradasRuleta ||
+              participacionRuleta?.tiradas_ruleta ||
+              participacionRuleta?.tiradas_totales ||
+              participacionRuleta?.spins_total ||
+              1
+          )
+        )
+      : Math.max(0, Number(tiradasRuleta || 0));
 
     lines.push("🎁 *PARTICIPACIÓN CONSEGUIDA*");
     lines.push("");
-    lines.push(`Tiradas de ruleta: *${numeroTiradas}*`);
-    lines.push(`Código manual: *${codigoRuleta}*`);
+    if (numeroTiradas > 0) lines.push(`🎡 Ruleta: *${numeroTiradas} tirada${numeroTiradas === 1 ? "" : "s"}*`);
+    if (bingoConseguido) lines.push("🎱 Bingo: *1 bola disponible* (máximo una al día)");
+    lines.push(`Código manual: *${codigoJuegos}*`);
     lines.push("");
 
     if (urlQr) {
@@ -103,7 +128,13 @@ export function construirTextoPedidoWhatsApp({
     }
 
     lines.push("Presenta este QR o el código manual en caja.");
-    lines.push("La ruleta solo se juega en tienda.");
+    lines.push("En caja aparecerán los juegos disponibles para este pedido.");
+    lines.push("");
+  } else if (bingoConseguido) {
+    lines.push("🎱 *PARTICIPACIÓN DE BINGO CONSEGUIDA*");
+    lines.push("");
+    lines.push("Tu pedido cumple las condiciones del Bingo, pero no se pudo generar el código común.");
+    lines.push("Contacta con Cash Lojo antes de presentar el pedido en caja.");
     lines.push("");
   } else if (premio) {
     lines.push("🎁 *PREMIO RULETA:*");

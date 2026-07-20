@@ -1,4 +1,4 @@
-const SUPABASE_URL = "https://bohlxagrtpjvqrgkonlo.supabase.co";
+import { supabaseStorage } from "../supabaseStorageClient";
 
 export default function TablaArticulos({
   articulos,
@@ -9,7 +9,12 @@ export default function TablaArticulos({
 }) {
   function obtenerFoto(articulo) {
     if (!articulo.foto) return null;
-    return `${SUPABASE_URL}/storage/v1/object/public/productos/${articulo.foto}`;
+
+    const { data } = supabaseStorage.storage
+      .from("productos")
+      .getPublicUrl(articulo.foto);
+
+    return data.publicUrl;
   }
 
   function estiloFila(articulo) {

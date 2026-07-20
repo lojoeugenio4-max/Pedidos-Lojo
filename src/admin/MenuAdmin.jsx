@@ -6,7 +6,13 @@ export default function MenuAdmin({
   esBajo = false,
 }) {
   const opciones = [
-    {
+        {
+      id: "clientes",
+      icono: "👥",
+      titulo: "Clientes",
+      descripcion: "Gestión de clientes",
+    },
+{
       id: "articulos",
       icono: "📦",
       titulo: "Artículos",

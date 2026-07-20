@@ -7,22 +7,65 @@ import {
   ChevronDown,
   Check,
   X,
+  Star,
+  Grid3X3,
+  Download,
+  Share,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { supabaseStorage } from "./supabaseStorageClient";
 import StorePage from "./pages/StorePage";
 import DisplayPage from "./pages/DisplayPage";
 import BingoDemo from "./pages/bingo/BingoDemo";
+import BingoShow from "./pages/bingo/BingoShow";
+import BingoCard from "./components/bingo/BingoCard";
+import BingoDrum from "./components/bingo/BingoDrum";
 import logoLojo from "./assets/logo-lojo.jpg";
 import {
   construirTextoPedidoWhatsApp,
   abrirPedidoEnWhatsApp,
 } from "./utils/whatsappPedido";
 
-const WHATSAPP_NUMBER = "34670716744";
+const WHATSAPP_NUMBER = "34670619113";
 const ORDER_STORAGE_KEY = "cash-lojo-pedido";
 const ORDER_SENT_PENDING_CLEAR_KEY = "cash-lojo-pedido-enviado-pendiente-borrar";
 const LANGUAGE_STORAGE_KEY = "cash-lojo-language";
-const SUPABASE_URL = "https://bohlxagrtpjvqrgkonlo.supabase.co";
+const APP_INSTALLED_STORAGE_KEY = "cash-lojo-app-instalada";
+const ORDER_STORAGE_VERSION = 1;
+
+function readSavedOrder() {
+  try {
+    const saved = localStorage.getItem(ORDER_STORAGE_KEY);
+    if (!saved) return {};
+
+    const parsed = JSON.parse(saved);
+    return {
+      quantities: parsed?.quantities && typeof parsed.quantities === "object" ? parsed.quantities : {},
+      customerName: typeof parsed?.customerName === "string" ? parsed.customerName : "",
+      notes: typeof parsed?.notes === "string" ? parsed.notes : "",
+    };
+  } catch (error) {
+    console.warn("No se pudo recuperar el pedido guardado:", error);
+    return {};
+  }
+}
+
+function savePendingOrder({ quantities, customerName, notes }) {
+  try {
+    localStorage.setItem(
+      ORDER_STORAGE_KEY,
+      JSON.stringify({
+        version: ORDER_STORAGE_VERSION,
+        updatedAt: new Date().toISOString(),
+        quantities,
+        customerName,
+        notes,
+      })
+    );
+  } catch (error) {
+    console.warn("No se pudo guardar el pedido pendiente:", error);
+  }
+}
 
 const translations = {
   es: {
@@ -167,7 +210,12 @@ function productMatchesSearch(product, searchText) {
 
 function getPublicPhotoUrl(fileName) {
   if (!fileName) return "";
-  return `${SUPABASE_URL}/storage/v1/object/public/productos/${fileName}`;
+
+  const { data } = supabaseStorage.storage
+    .from("productos")
+    .getPublicUrl(fileName);
+
+  return data.publicUrl;
 }
 
 function getOfferStatus(offer) {
@@ -234,6 +282,75 @@ function MiniRuletaPromocion({ cantidadMinima = 1, permiteUnidades = true }) {
   );
 }
 
+
+function crearCartonBingo90() {
+  // Cartón clásico: 3 filas, 9 columnas y 15 números (5 por fila).
+  // Cada columna conserva su decena y sus números quedan ordenados.
+  for (let intento = 0; intento < 200; intento += 1) {
+    const posiciones = Array.from({ length: 3 }, () => Array(9).fill(false));
+    const filasUsadas = [0, 0, 0];
+    const columnasUsadas = Array(9).fill(0);
+
+    // Garantiza al menos un número en cada columna.
+    const columnasBarajadas = Array.from({ length: 9 }, (_, i) => i).sort(
+      () => Math.random() - 0.5
+    );
+
+    columnasBarajadas.forEach((columna) => {
+      const filasDisponibles = [0, 1, 2]
+        .filter((fila) => filasUsadas[fila] < 5)
+        .sort(() => Math.random() - 0.5);
+      const fila = filasDisponibles[0];
+      posiciones[fila][columna] = true;
+      filasUsadas[fila] += 1;
+      columnasUsadas[columna] += 1;
+    });
+
+    let seguridad = 0;
+    while (filasUsadas.some((cantidad) => cantidad < 5) && seguridad < 300) {
+      seguridad += 1;
+      const filasPendientes = [0, 1, 2].filter((fila) => filasUsadas[fila] < 5);
+      const fila = filasPendientes[Math.floor(Math.random() * filasPendientes.length)];
+      const columnasDisponibles = Array.from({ length: 9 }, (_, i) => i).filter(
+        (columna) => !posiciones[fila][columna] && columnasUsadas[columna] < 3
+      );
+
+      if (columnasDisponibles.length === 0) break;
+      const columna =
+        columnasDisponibles[Math.floor(Math.random() * columnasDisponibles.length)];
+      posiciones[fila][columna] = true;
+      filasUsadas[fila] += 1;
+      columnasUsadas[columna] += 1;
+    }
+
+    if (!filasUsadas.every((cantidad) => cantidad === 5)) continue;
+
+    const carton = Array.from({ length: 3 }, () => Array(9).fill(null));
+
+    for (let columna = 0; columna < 9; columna += 1) {
+      const minimo = columna === 0 ? 1 : columna * 10;
+      const maximo = columna === 8 ? 90 : columna * 10 + 9;
+      const cantidad = columnasUsadas[columna];
+      const numeros = [];
+
+      while (numeros.length < cantidad) {
+        const numero = minimo + Math.floor(Math.random() * (maximo - minimo + 1));
+        if (!numeros.includes(numero)) numeros.push(numero);
+      }
+
+      numeros.sort((a, b) => a - b);
+      const filasColumna = [0, 1, 2].filter((fila) => posiciones[fila][columna]);
+      filasColumna.forEach((fila, indice) => {
+        carton[fila][columna] = numeros[indice];
+      });
+    }
+
+    return carton;
+  }
+
+  throw new Error("No se pudo generar el cartón de Bingo.");
+}
+
 export default function App() {
   const searchParams =
     typeof window !== "undefined"
@@ -242,9 +359,24 @@ export default function App() {
 
   const isStoreMode = searchParams?.get("store") === "1";
   const isDisplayMode = searchParams?.get("display") === "1";
+  const isBingoMode = searchParams?.get("bingo") === "1";
+  const isBingoDisplayMode = searchParams?.get("bingoDisplay") === "1";
+
+  const clienteToken =
+    typeof window !== "undefined" && window.location.pathname.startsWith("/cliente/")
+      ? decodeURIComponent(window.location.pathname.slice("/cliente/".length)).trim()
+      : "";
 
   if (isDisplayMode) {
     return <DisplayPage />;
+  }
+
+  if (isBingoDisplayMode) {
+    return <BingoShow />;
+  }
+
+  if (isBingoMode) {
+    return <BingoDemo />;
   }
 
   if (isStoreMode) {
@@ -255,14 +387,7 @@ export default function App() {
   const departmentDropdownRef = useRef(null);
   const stickyCardRef = useRef(null);
 
-  const getSavedOrder = () => {
-    try {
-      const saved = localStorage.getItem(ORDER_STORAGE_KEY);
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  };
+  const [savedOrder] = useState(() => readSavedOrder());
 
   const [articulos, setArticulos] = useState([]);
   const [departamentos, setDepartamentos] = useState([]);
@@ -272,15 +397,11 @@ export default function App() {
   const [cargando, setCargando] = useState(true);
   const [errorCatalogo, setErrorCatalogo] = useState("");
 
-  const [quantities, setQuantities] = useState(
-    () => getSavedOrder().quantities || {}
-  );
-  const [customerName, setCustomerName] = useState(
-    () => getSavedOrder().customerName || ""
-  );
+  const [quantities, setQuantities] = useState(() => savedOrder.quantities || {});
+  const [customerName, setCustomerName] = useState(() => savedOrder.customerName || "");
   const [customerNameFocused, setCustomerNameFocused] = useState(false);
   const [soloCajasAviso, setSoloCajasAviso] = useState(null);
-  const [notes, setNotes] = useState(() => getSavedOrder().notes || "");
+  const [notes, setNotes] = useState(() => savedOrder.notes || "");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("TODOS");
@@ -294,6 +415,34 @@ export default function App() {
     () => localStorage.getItem(LANGUAGE_STORAGE_KEY) || "es"
   );
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [mostrarAyudaInstalacion, setMostrarAyudaInstalacion] = useState(false);
+  const [appInstalada, setAppInstalada] = useState(() => {
+    if (typeof window === "undefined") return false;
+
+    const abiertaComoApp =
+      window.matchMedia?.("(display-mode: standalone)").matches ||
+      window.navigator.standalone === true;
+    const instalacionGuardada =
+      localStorage.getItem(APP_INSTALLED_STORAGE_KEY) === "true";
+
+    return Boolean(abiertaComoApp || instalacionGuardada);
+  });
+
+  // El acceso identificado es opcional. Sin token, la aplicación sigue
+  // funcionando exactamente igual para clientes anónimos.
+  const [clienteIdentificado, setClienteIdentificado] = useState(null);
+  const [cargandoCliente, setCargandoCliente] = useState(Boolean(clienteToken));
+  const [favoritos, setFavoritos] = useState(() => new Set());
+  const [cargandoFavoritos, setCargandoFavoritos] = useState(false);
+  const [errorFavoritos, setErrorFavoritos] = useState("");
+  const [soloFavoritos, setSoloFavoritos] = useState(false);
+  const [mostrarBingo, setMostrarBingo] = useState(false);
+  const [cartonBingo, setCartonBingo] = useState(null);
+  const [cargandoBingo, setCargandoBingo] = useState(false);
+  const [errorBingo, setErrorBingo] = useState("");
+  const [premiosBingo, setPremiosBingo] = useState({ line: null, bingo: null, special: null });
+  const [configuracionBingoCliente, setConfiguracionBingoCliente] = useState(null);
 
   const [premiosRuleta, setPremiosRuleta] = useState([]);
   const [configuracionRuleta, setConfiguracionRuleta] = useState(null);
@@ -305,6 +454,314 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
   }, [language]);
+
+  useEffect(() => {
+    const estaAbiertaComoApp = () =>
+      window.matchMedia?.("(display-mode: standalone)").matches ||
+      window.navigator.standalone === true;
+
+    const marcarInstalada = () => {
+      localStorage.setItem(APP_INSTALLED_STORAGE_KEY, "true");
+      setAppInstalada(true);
+      setInstallPrompt(null);
+      setMostrarAyudaInstalacion(false);
+    };
+
+    const comprobarModoAplicacion = () => {
+      if (estaAbiertaComoApp()) marcarInstalada();
+    };
+
+    const guardarPrompt = (event) => {
+      event.preventDefault();
+
+      // Si ya se confirmó o detectó la instalación, nunca volvemos a mostrarla.
+      if (localStorage.getItem(APP_INSTALLED_STORAGE_KEY) === "true") return;
+      setInstallPrompt(event);
+    };
+
+    comprobarModoAplicacion();
+    window.addEventListener("beforeinstallprompt", guardarPrompt);
+    window.addEventListener("appinstalled", marcarInstalada);
+    window.addEventListener("pageshow", comprobarModoAplicacion);
+    document.addEventListener("visibilitychange", comprobarModoAplicacion);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", guardarPrompt);
+      window.removeEventListener("appinstalled", marcarInstalada);
+      window.removeEventListener("pageshow", comprobarModoAplicacion);
+      document.removeEventListener("visibilitychange", comprobarModoAplicacion);
+    };
+  }, []);
+
+  function confirmarAplicacionInstalada() {
+    localStorage.setItem(APP_INSTALLED_STORAGE_KEY, "true");
+    setAppInstalada(true);
+    setInstallPrompt(null);
+    setMostrarAyudaInstalacion(false);
+  }
+
+  async function instalarAplicacion() {
+    if (installPrompt) {
+      await installPrompt.prompt();
+      const resultado = await installPrompt.userChoice;
+      if (resultado.outcome === "accepted") confirmarAplicacionInstalada();
+      setInstallPrompt(null);
+      return;
+    }
+
+    setMostrarAyudaInstalacion(true);
+  }
+
+  useEffect(() => {
+    let cancelado = false;
+
+    async function identificarCliente() {
+      if (!clienteToken) {
+        setClienteIdentificado(null);
+        setCargandoCliente(false);
+        return;
+      }
+
+      setCargandoCliente(true);
+
+      try {
+        const { data, error } = await supabase
+          .from("clientes")
+          .select("id, nombre, telefono, estado, token")
+          .eq("token", clienteToken)
+          .maybeSingle();
+
+        if (error) throw error;
+        if (cancelado) return;
+
+        if (data?.estado === "activo") {
+          setClienteIdentificado(data);
+          setCustomerName(data.nombre || "");
+        } else {
+          // Token inexistente o cliente inactivo: compra anónima, sin bloquear.
+          setClienteIdentificado(null);
+        }
+      } catch (error) {
+        console.error("No se pudo identificar al cliente:", error);
+        if (!cancelado) setClienteIdentificado(null);
+      } finally {
+        if (!cancelado) setCargandoCliente(false);
+      }
+    }
+
+    identificarCliente();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [clienteToken]);
+
+  useEffect(() => {
+    let cancelado = false;
+
+    async function cargarFavoritos() {
+      if (!clienteIdentificado?.id) {
+        setFavoritos(new Set());
+        setSoloFavoritos(false);
+        setErrorFavoritos("");
+        return;
+      }
+
+      setCargandoFavoritos(true);
+      setErrorFavoritos("");
+
+      try {
+        const { data, error } = await supabase
+          .from("clientes_favoritos")
+          .select("articulo_id")
+          .eq("cliente_id", clienteIdentificado.id);
+
+        if (error) throw error;
+        if (!cancelado) {
+          setFavoritos(new Set((data || []).map((item) => String(item.articulo_id))));
+        }
+      } catch (error) {
+        console.error("No se pudieron cargar los favoritos:", error);
+        if (!cancelado) {
+          setErrorFavoritos("No se pudieron cargar tus favoritos.");
+          setFavoritos(new Set());
+        }
+      } finally {
+        if (!cancelado) setCargandoFavoritos(false);
+      }
+    }
+
+    cargarFavoritos();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [clienteIdentificado?.id]);
+
+  async function alternarFavorito(articuloId) {
+    if (!clienteIdentificado?.id) return;
+
+    const idArticulo = String(articuloId);
+    const yaEsFavorito = favoritos.has(idArticulo);
+
+    setErrorFavoritos("");
+    setFavoritos((actuales) => {
+      const siguientes = new Set(actuales);
+      if (yaEsFavorito) siguientes.delete(idArticulo);
+      else siguientes.add(idArticulo);
+      return siguientes;
+    });
+
+    try {
+      if (yaEsFavorito) {
+        const { error } = await supabase
+          .from("clientes_favoritos")
+          .delete()
+          .eq("cliente_id", clienteIdentificado.id)
+          .eq("articulo_id", idArticulo);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("clientes_favoritos").insert({
+          cliente_id: clienteIdentificado.id,
+          articulo_id: idArticulo,
+        });
+        if (error) throw error;
+      }
+    } catch (error) {
+      console.error("No se pudo actualizar el favorito:", error);
+      setFavoritos((actuales) => {
+        const siguientes = new Set(actuales);
+        if (yaEsFavorito) siguientes.add(idArticulo);
+        else siguientes.delete(idArticulo);
+        return siguientes;
+      });
+      setErrorFavoritos("No se pudo guardar el favorito. Inténtalo de nuevo.");
+    }
+  }
+
+
+  useEffect(() => {
+    setCartonBingo(null);
+    setMostrarBingo(false);
+    setErrorBingo("");
+    setPremiosBingo({ line: null, bingo: null, special: null });
+  }, [clienteIdentificado?.id]);
+
+  useEffect(() => {
+    let activo = true;
+    async function cargarDisponibilidadBingo() {
+      const { data, error } = await supabase
+        .from("promociones_bingo")
+        .select("*")
+        .order("updated_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false });
+      if (!activo) return;
+      if (error) {
+        console.error("No se pudo comprobar la disponibilidad del Bingo:", error);
+        setConfiguracionBingoCliente(null);
+        return;
+      }
+      const hoy = getTodayISO();
+      const promociones = data || [];
+      const vigente = promociones.find((item) => item.activa && (!item.fecha_inicio || item.fecha_inicio <= hoy) && (!item.fecha_fin || item.fecha_fin >= hoy));
+      setConfiguracionBingoCliente(vigente || null);
+      if (!vigente) setMostrarBingo(false);
+    }
+    cargarDisponibilidadBingo();
+    return () => { activo = false; };
+  }, []);
+
+  async function abrirMiBingo() {
+    if (!clienteIdentificado?.id || !clienteToken || !configuracionBingoCliente) return;
+
+    setMostrarBingo(true);
+    if (cartonBingo) return;
+
+    setCargandoBingo(true);
+    setErrorBingo("");
+
+    try {
+      const nuevoCarton = crearCartonBingo90();
+      const { data, error } = await supabase.rpc("ensure_customer_bingo_card", {
+        p_token: clienteToken,
+        p_carton: nuevoCarton,
+      });
+
+      if (error) throw error;
+      const respuesta = Array.isArray(data) ? data[0] : data;
+
+      if (!respuesta?.ok) {
+        throw new Error(respuesta?.message || "No se pudo asignar tu cartón de Bingo.");
+      }
+
+      const resultado = respuesta.card_result || respuesta;
+      const carton = resultado.carton || resultado.card || respuesta.card;
+      const cartonId = resultado.carton_id || resultado.id || respuesta.carton_id;
+      const editionId = resultado.edition_id || respuesta.edition_id;
+
+      if (!cartonId || !carton || !editionId) {
+        throw new Error("El cartón fue localizado, pero sus datos están incompletos.");
+      }
+
+      setCartonBingo({
+        id: cartonId,
+        card: carton,
+        drawn_numbers: resultado.numeros_marcados || resultado.drawn_numbers || [],
+        status: resultado.estado || resultado.status || "activo",
+        edition_id: editionId,
+      });
+
+      const hoy = getTodayISO();
+      const { data: promocionesBingo, error: premiosError } = await supabase
+        .from("promociones_bingo")
+        .select("*")
+        .order("updated_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false });
+
+      if (premiosError) throw premiosError;
+
+      const promocionesDisponibles = promocionesBingo || [];
+      const promo = promocionesDisponibles.find((item) => {
+        const inicioOk = !item.fecha_inicio || item.fecha_inicio <= hoy;
+        const finOk = !item.fecha_fin || item.fecha_fin >= hoy;
+        return item.activa && inicioOk && finOk;
+      }) || promocionesDisponibles.find((item) => item.activa) || promocionesDisponibles[0] || null;
+
+      if (!promo) throw new Error("El Bingo no está activo o ha finalizado.");
+      setConfiguracionBingoCliente(promo);
+      const prizeIds = [...new Set([promo?.premio_linea_articulo_id, promo?.premio_bingo_articulo_id, promo?.premio_especial_articulo_id].filter(Boolean))];
+      let prizeArticles = [];
+      if (prizeIds.length) {
+        const { data: articles } = await supabase.from("articulos").select("id,nombre,foto").in("id", prizeIds);
+        prizeArticles = articles || [];
+      }
+      const articleById = new Map(prizeArticles.map((article) => [String(article.id), article]));
+      const makePrize = (type) => {
+        const id = promo?.[`premio_${type}_articulo_id`];
+        const article = articleById.get(String(id || ""));
+        return {
+          active: Boolean(promo?.[`premio_${type}_activo`]),
+          name: promo?.[`premio_${type}_nombre`] || article?.nombre || "",
+          message: promo?.[`premio_${type}_mensaje`] || "",
+          image: getPublicPhotoUrl(article?.foto),
+        };
+      };
+      setPremiosBingo({
+        line: makePrize("linea"),
+        bingo: makePrize("bingo"),
+        special: { ...makePrize("especial"), maxBalls: Number(promo?.premio_especial_max_bolas) || 0 },
+      });
+    } catch (error) {
+      console.error("No se pudo cargar el Bingo personal:", error);
+      setErrorBingo(
+        error?.message?.includes("JSON")
+          ? "No se ha podido leer tu cartón."
+          : "Todavía no tienes cartón para este Bingo. Debes completar un pedido que cumpla sus condiciones dentro de las fechas activas."
+      );
+    } finally {
+      setCargandoBingo(false);
+    }
+  }
 
   useEffect(() => {
     cargarConfiguracionRuleta();
@@ -411,14 +868,21 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(
-      ORDER_STORAGE_KEY,
-      JSON.stringify({
-        quantities,
-        customerName,
-        notes,
-      })
-    );
+    savePendingOrder({ quantities, customerName, notes });
+  }, [quantities, customerName, notes]);
+
+  useEffect(() => {
+    const guardarAntesDeSalir = () => {
+      savePendingOrder({ quantities, customerName, notes });
+    };
+
+    window.addEventListener("pagehide", guardarAntesDeSalir);
+    document.addEventListener("visibilitychange", guardarAntesDeSalir);
+
+    return () => {
+      window.removeEventListener("pagehide", guardarAntesDeSalir);
+      document.removeEventListener("visibilitychange", guardarAntesDeSalir);
+    };
   }, [quantities, customerName, notes]);
 
   useEffect(() => {
@@ -974,6 +1438,10 @@ export default function App() {
     productosConOferta,
     productosNovedad,
     productosRuleta,
+    soloFavoritos,
+    clienteIdentificado,
+    favoritos,
+    departamentos,
   ]);
 
   const departmentOptions = useMemo(() => {
@@ -1004,6 +1472,66 @@ export default function App() {
       cleanSearch
         ? lista.filter((product) => productMatchesSearch(product, cleanSearch))
         : lista;
+
+    if (soloFavoritos && clienteIdentificado) {
+      const favoritosVisibles = filterBySearch(
+        productosVisibles.filter((product) => favoritos.has(String(product.id)))
+      );
+
+      // Mantiene juntos los artículos de cada departamento siguiendo el orden
+      // configurado en Administración. Dentro de cada departamento se ordenan
+      // alfabéticamente. Los nombres de los departamentos no se muestran.
+      const ordenDepartamentos = departamentos
+        .map((departamento) => String(departamento.nombre || "").trim())
+        .filter(
+          (nombre) =>
+            nombre &&
+            !["NOVEDAD", "OFERTAS", "RULETA", "TODOS", "ARTÍCULOS BUSCADOS"].includes(
+              nombre
+            )
+        );
+
+      const productosFavoritos = [];
+      const idsIncluidos = new Set();
+
+      ordenDepartamentos.forEach((nombreDepartamento) => {
+        ordenarProductos(
+          favoritosVisibles.filter(
+            (product) => product.department === nombreDepartamento
+          )
+        ).forEach((product) => {
+          const id = String(product.id);
+          if (!idsIncluidos.has(id)) {
+            idsIncluidos.add(id);
+            productosFavoritos.push(product);
+          }
+        });
+      });
+
+      // Por seguridad, añade al final cualquier artículo cuyo departamento ya
+      // no exista en la configuración, agrupándolo también por departamento.
+      const restantes = favoritosVisibles
+        .filter((product) => !idsIncluidos.has(String(product.id)))
+        .sort((a, b) => {
+          const porDepartamento = String(a.department || "").localeCompare(
+            String(b.department || ""),
+            "es",
+            { sensitivity: "base" }
+          );
+          return porDepartamento ||
+            String(a.name || a.nombre || "").localeCompare(
+              String(b.name || b.nombre || ""),
+              "es",
+              { sensitivity: "base" }
+            );
+        });
+
+      productosFavoritos.push(...restantes);
+
+      return productosFavoritos.length > 0
+        ? [{ name: "MIS FAVORITOS", products: productosFavoritos }]
+        : [];
+    }
 
     if (selectedDepartment !== "TODOS") {
       let selectedProducts = [];
@@ -1164,6 +1692,36 @@ export default function App() {
     () => obtenerResumenPedidoRuleta(orderedItems),
     [orderedItems, configuracionRuleta, articulosRuleta]
   );
+
+  const resumenBingoPedido = useMemo(() => {
+    if (!clienteIdentificado?.id || !configuracionBingoCliente) return null;
+
+    const variedadMinima = Math.max(
+      1,
+      Number(configuracionBingoCliente.variedad_minima || 1)
+    );
+
+    const codigosEnCajas = new Set();
+
+    orderedItems.forEach((item) => {
+      if (Number(item.boxes || 0) <= 0) return;
+
+      const codigo = String(
+        item.product.codigo || item.product.idnum || item.product.id || ""
+      ).trim();
+
+      if (codigo) codigosEnCajas.add(codigo);
+    });
+
+    const variedadActual = codigosEnCajas.size;
+
+    return {
+      cumple: variedadActual >= variedadMinima,
+      variedadActual,
+      variedadMinima,
+      variedadRestante: Math.max(0, variedadMinima - variedadActual),
+    };
+  }, [orderedItems, clienteIdentificado?.id, configuracionBingoCliente]);
 
   const obtenerEstadoArticuloRuleta = (product, quantity = {}) => {
     if (!product?.participaRuleta) return null;
@@ -1579,10 +2137,13 @@ export default function App() {
     const { data, error } = await supabase.rpc("create_promotion_participation", {
       p_promotion_id: promocionId,
       p_order_id: pedidoId,
-      p_customer_phone: null,
+      // La participación histórica de Ruleta exige un valor único en customer_phone.
+      // No usamos el teléfono real: la tabla subyacente solo permite una partida activa
+      // por teléfono y bloquearía pedidos posteriores del mismo cliente identificado.
+      p_customer_phone: `RULETA-${pedidoId}`,
       p_customer_name: customerNamePedido || null,
       p_expires_at: null,
-      p_created_by: "miweb-staging",
+      p_created_by: null,
     });
 
     if (error) {
@@ -1625,6 +2186,66 @@ export default function App() {
     };
   }
 
+  async function crearParticipacionJuegos({
+    pedidoId,
+    customerNamePedido,
+    participacionRuleta = null,
+    tiradasRuleta = 0,
+    participacionBingo = null,
+  }) {
+    const bingoConseguido = Boolean(
+      participacionBingo?.qualified ??
+        participacionBingo?.clasificado ??
+        participacionBingo?.eligible
+    );
+    const ruletaConseguida = Boolean(participacionRuleta);
+
+    if (!ruletaConseguida && !bingoConseguido) return null;
+
+    const participacionRuletaId =
+      participacionRuleta?.id || participacionRuleta?.participation_id || null;
+
+    const { data, error } = await supabase.rpc(
+      "create_or_update_game_entitlement",
+      {
+        p_order_id: pedidoId,
+        p_customer_token: clienteToken || null,
+        p_customer_name: customerNamePedido || null,
+        p_roulette_participation_id: participacionRuletaId,
+        p_roulette_eligible: ruletaConseguida,
+        p_roulette_plays_total: ruletaConseguida
+          ? Math.max(1, Number(tiradasRuleta || 1))
+          : 0,
+        p_bingo_eligible: bingoConseguido,
+        p_bingo_reference: participacionBingo || null,
+        p_expires_at: null,
+      }
+    );
+
+    if (error) throw error;
+    return Array.isArray(data) ? data[0] : data;
+  }
+
+  async function registrarPedidoParaBingo(itemsPedido, pedidoId) {
+    // Bingo solo está disponible para clientes realmente identificados.
+    // Los clientes anónimos conservan intacto el flujo histórico de pedido + Ruleta.
+    if (!clienteIdentificado?.id || !clienteToken || !configuracionBingoCliente) return null;
+    const items = itemsPedido.map((item) => ({
+      codigo: String(item.product.codigo || item.product.idnum || "").trim(),
+      cajas: Number(item.boxes || 0),
+      unidades: Number(item.units || 0),
+      permite_unidades: Boolean(item.product.permite_unidades),
+    }));
+    const { data, error } = await supabase.rpc("registrar_pedido_bingo", {
+      p_token: clienteToken, p_order_id: pedidoId, p_items: items,
+    });
+    if (error) { console.warn("No se pudo registrar el pedido para Bingo:", error); return null; }
+    const result = Array.isArray(data) ? data[0] : data;
+
+    if (result?.qualified) { setCartonBingo(null); }
+    return result;
+  }
+
   function enviarPedidoFinal({
     itemsPedido,
     customerNamePedido,
@@ -1632,6 +2253,8 @@ export default function App() {
     participacionRuleta = null,
     pedidoId = crearPedidoId(),
     resumenRuletaPedidoEnvio = null,
+    participacionBingo = null,
+    participacionJuegos = null,
   }) {
     const texto = construirTextoPedidoWhatsApp({
       t,
@@ -1640,6 +2263,8 @@ export default function App() {
       notesPedido,
       participacionRuleta,
       tiradasRuleta: resumenRuletaPedidoEnvio?.tiradasConseguidas || 0,
+      participacionBingo,
+      participacionJuegos,
     });
 
     limpiarPedidoDespuesEnvio();
@@ -1687,7 +2312,63 @@ export default function App() {
         });
       } catch (error) {
         console.error("Error creando participación de ruleta:", error);
-        alert("No se ha podido generar el código de ruleta. Inténtalo de nuevo.");
+        const detalleError = [
+          error?.code ? `Código: ${error.code}` : null,
+          error?.message ? `Mensaje: ${error.message}` : null,
+          error?.details ? `Detalle: ${error.details}` : null,
+          error?.hint ? `Sugerencia: ${error.hint}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        alert(
+          `No se ha podido generar el código de ruleta.${
+            detalleError ? `\n\n${detalleError}` : " Inténtalo de nuevo."
+          }`
+        );
+        return;
+      }
+    }
+
+    const participacionBingo = clienteIdentificado?.id
+      ? await registrarPedidoParaBingo(itemsPedido, pedidoId)
+      : null;
+
+    let participacionJuegos = null;
+    const clientePuedeUsarFlujoNuevo = Boolean(clienteIdentificado?.id && clienteToken);
+    if (
+      clientePuedeUsarFlujoNuevo &&
+      (participacionRuleta ||
+        participacionBingo?.qualified ||
+        participacionBingo?.clasificado ||
+        participacionBingo?.eligible)
+    ) {
+      try {
+        participacionJuegos = await crearParticipacionJuegos({
+          pedidoId,
+          customerNamePedido,
+          participacionRuleta,
+          tiradasRuleta: resumenRuletaPedidoEnvio?.tiradasConseguidas || 0,
+          participacionBingo,
+        });
+      } catch (error) {
+        console.error("Error creando la participación común:", error);
+        const detalleErrorComun = [
+          error?.code ? `Código: ${error.code}` : null,
+          error?.message ? `Mensaje: ${error.message}` : null,
+          error?.details ? `Detalle: ${error.details}` : null,
+          error?.hint ? `Sugerencia: ${error.hint}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        alert(
+          `El pedido no se enviará porque no se pudo generar el QR común.${
+            detalleErrorComun
+              ? `\n\n${detalleErrorComun}`
+              : " Comprueba que la migración de staging está instalada."
+          }`
+        );
         return;
       }
     }
@@ -1699,6 +2380,8 @@ export default function App() {
       participacionRuleta,
       pedidoId,
       resumenRuletaPedidoEnvio,
+      participacionBingo,
+      participacionJuegos,
     });
   };
 
@@ -1719,6 +2402,58 @@ export default function App() {
 
   return (
     <div style={styles.page}>
+      {!appInstalada && clienteToken && (
+        <div style={styles.installBanner} role="region" aria-label="Instalar aplicación">
+          <div style={styles.installBannerIcon}>
+            <Download size={26} />
+          </div>
+          <div style={styles.installBannerContent}>
+            <strong style={styles.installBannerTitle}>Ten Cash Lojo siempre a mano</strong>
+            <span style={styles.installBannerText}>Añade esta aplicación a la pantalla de inicio de tu móvil.</span>
+          </div>
+          <button
+            type="button"
+            onClick={instalarAplicacion}
+            style={styles.installButton}
+            aria-label="Instalar Cash Lojo en el móvil"
+          >
+            Cómo instalarla
+          </button>
+        </div>
+      )}
+
+      {mostrarAyudaInstalacion && (
+        <div style={styles.installOverlay} onClick={() => setMostrarAyudaInstalacion(false)}>
+          <div style={styles.installModal} onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              style={styles.installClose}
+              onClick={() => setMostrarAyudaInstalacion(false)}
+              aria-label="Cerrar"
+            >
+              ×
+            </button>
+            <Download size={34} />
+            <h3 style={styles.installTitle}>Añadir Cash Lojo al escritorio</h3>
+            <p style={styles.installText}>
+              <strong>iPhone/iPad:</strong> pulsa <Share size={16} style={{ verticalAlign: "middle" }} /> Compartir y después “Añadir a pantalla de inicio”.
+            </p>
+            <p style={styles.installText}>
+              <strong>Android:</strong> abre el menú del navegador y pulsa “Instalar aplicación” o “Añadir a pantalla de inicio”.
+            </p>
+            <p style={styles.installNote}>
+              Se guardará este enlace personal para que el cliente entre siempre con su acceso.
+            </p>
+            <button
+              type="button"
+              onClick={confirmarAplicacionInstalada}
+              style={styles.installConfirmedButton}
+            >
+              No volver a mostrar
+            </button>
+          </div>
+        </div>
+      )}
       {pushOferta && pushItems.length > 0 && !pushCerrado && (
         <div style={styles.pushOverlay}>
           <button
@@ -1807,6 +2542,62 @@ export default function App() {
         </button>
       )}
 
+
+      {mostrarBingo && clienteIdentificado && configuracionBingoCliente && (
+        <div
+          style={styles.bingoOverlay}
+          onClick={() => setMostrarBingo(false)}
+          role="presentation"
+        >
+          <div
+            style={styles.bingoModal}
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Mi Bingo personal"
+          >
+            <button
+              type="button"
+              onClick={() => setMostrarBingo(false)}
+              style={styles.bingoCloseButton}
+              aria-label="Cerrar Mi Bingo"
+            >
+              <X size={24} />
+            </button>
+
+            <div style={styles.bingoModalBody}>
+              {cargandoBingo && (
+                <div style={styles.bingoStatusBox}>Preparando tu cartón...</div>
+              )}
+
+              {!cargandoBingo && errorBingo && (
+                <div style={styles.bingoErrorBox}>{errorBingo}</div>
+              )}
+
+              {!cargandoBingo && !errorBingo && cartonBingo && (
+                <>
+                  <BingoDrum
+                    editionId={cartonBingo.edition_id}
+                    initialNumbers={cartonBingo.drawn_numbers}
+                    onNumbersChange={(numbers) => setCartonBingo((current) => current ? { ...current, drawn_numbers: numbers } : current)}
+                  />
+                  <BingoCard
+                    card={cartonBingo.card}
+                    drawnNumbers={cartonBingo.drawn_numbers}
+                    customerName={clienteIdentificado.nombre}
+                    linePrize={premiosBingo.line}
+                    bingoPrize={premiosBingo.bingo}
+                    specialPrize={premiosBingo.special}
+                    endDate={configuracionBingoCliente.fecha_fin}
+                  />
+
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedImage && (
         <div style={styles.imageOverlay} onClick={() => setSelectedImage(null)}>
           <button
@@ -1861,10 +2652,53 @@ export default function App() {
                 </select>
               </div>
 
+              {cargandoCliente && (
+                <div style={styles.clienteSesionCargando}>
+                  Comprobando enlace personal...
+                </div>
+              )}
+
+              {!cargandoCliente && clienteIdentificado && (
+                <div style={styles.clienteSesionActiva}>
+                  <strong>Hola, {clienteIdentificado.nombre}</strong>
+                  <span>Cliente identificado · ventajas personales activadas</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSoloFavoritos((valor) => !valor);
+                      setSelectedDepartment("TODOS");
+                      setSearch("");
+                      setSearchInput("");
+                    }}
+                    style={{
+                      ...styles.favoritesFilterButton,
+                      ...(soloFavoritos ? styles.favoritesFilterButtonActive : {}),
+                    }}
+                  >
+                    <Star size={16} fill={soloFavoritos ? "currentColor" : "none"} />
+                    {soloFavoritos ? "Ver todos" : `Mis favoritos (${favoritos.size})`}
+                  </button>
+                  {configuracionBingoCliente && (
+                    <button
+                      type="button"
+                      onClick={abrirMiBingo}
+                      style={styles.bingoButton}
+                      title={configuracionBingoCliente.fecha_fin ? `Disponible hasta el ${new Date(`${configuracionBingoCliente.fecha_fin}T12:00:00`).toLocaleDateString("es-ES")}` : "Bingo activo"}
+                    >
+                      <Grid3X3 size={17} />
+                      Mi Bingo{configuracionBingoCliente.fecha_fin ? ` · hasta ${new Date(`${configuracionBingoCliente.fecha_fin}T12:00:00`).toLocaleDateString("es-ES")}` : ""}
+                    </button>
+                  )}
+                  {cargandoFavoritos && <small>Cargando favoritos...</small>}
+                  {errorFavoritos && <small style={styles.favoritesError}>{errorFavoritos}</small>}
+                </div>
+              )}
+
               <label style={styles.labelCompact}>{t.customerName}</label>
               <input
                 type="text"
                 value={customerName}
+                readOnly={Boolean(clienteIdentificado)}
                 onFocus={() => setCustomerNameFocused(true)}
                 onBlur={() => setCustomerNameFocused(false)}
                 onChange={(event) => setCustomerName(event.target.value)}
@@ -1872,6 +2706,7 @@ export default function App() {
                 style={{
                   ...styles.inputCompact,
                   borderColor: customerNameFocused ? "#2563eb" : "#aeb7ff",
+                  ...(clienteIdentificado ? styles.inputClienteIdentificado : {}),
                 }}
               />
             </section>
@@ -1994,6 +2829,9 @@ export default function App() {
           ...(selectedDepartment !== "TODOS" && !search.trim()
             ? styles.catalogSingleDepartment
             : {}),
+          ...(soloFavoritos && clienteIdentificado
+            ? styles.catalogFavoritesMode
+            : {}),
         }}
       >
         {cargando && <p style={styles.loading}>{t.loading}</p>}
@@ -2002,12 +2840,14 @@ export default function App() {
         {!cargando &&
           filteredDepartments.map((department) => (
             <section key={department.name} style={styles.departmentSection}>
-              <h2 style={styles.departmentTitle}>
-                {getDepartmentLabel(department.name, language)}
-                <span style={styles.departmentTitleCount}>
-                  {department.products.length} {t.articles}
-                </span>
-              </h2>
+              {!(soloFavoritos && clienteIdentificado) && (
+                <h2 style={styles.departmentTitle}>
+                  {getDepartmentLabel(department.name, language)}
+                  <span style={styles.departmentTitleCount}>
+                    {department.products.length} {t.articles}
+                  </span>
+                </h2>
+              )}
 
               {department.products.length === 0 ? (
                 <div style={styles.emptyBox}>{t.noItems}</div>
@@ -2066,22 +2906,58 @@ export default function App() {
                             </div>
                           </div>
 
-                          {product.participaRuleta && (
-                            <MiniRuletaPromocion
-                              cantidadMinima={product.cantidadMinimaRuleta}
-                              permiteUnidades={product.permite_unidades}
-                            />
-                          )}
+                          <div style={styles.productTopActions}>
+                            {product.participaRuleta && (
+                              <MiniRuletaPromocion
+                                cantidadMinima={product.cantidadMinimaRuleta}
+                                permiteUnidades={product.permite_unidades}
+                              />
+                            )}
+
+                            {clienteIdentificado && (
+                              <button
+                                type="button"
+                                onClick={() => alternarFavorito(product.id)}
+                                style={{
+                                  ...styles.favoriteButton,
+                                  ...(favoritos.has(String(product.id))
+                                    ? styles.favoriteButtonActive
+                                    : {}),
+                                }}
+                                aria-label={
+                                  favoritos.has(String(product.id))
+                                    ? "Quitar de favoritos"
+                                    : "Añadir a favoritos"
+                                }
+                                title={
+                                  favoritos.has(String(product.id))
+                                    ? "Quitar de favoritos"
+                                    : "Añadir a favoritos"
+                                }
+                              >
+                                <Star
+                                  size={20}
+                                  fill={
+                                    favoritos.has(String(product.id))
+                                      ? "currentColor"
+                                      : "none"
+                                  }
+                                />
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         <div style={styles.quantityGrid}>
                           <label style={styles.quantityLabel}>
                             {t.boxes}
                             <input
-                              type="text"
+                              type="number"
                               inputMode="numeric"
                               pattern="[0-9]*"
                               enterKeyHint="done"
+                              min="0"
+                              step="1"
                               autoComplete="off"
                               value={quantity.boxes || ""}
                               onPointerDown={(event) =>
@@ -2089,6 +2965,7 @@ export default function App() {
                               }
                               onFocus={() => activarCampoCantidad(product.id, "boxes")}
                               onKeyDown={(event) => manejarEnterCantidad(event, product.id)}
+                              onBlur={() => setCampoCantidadActivo(null)}
                               onChange={(event) =>
                                 updateQuantity(
                                   product.id,
@@ -2108,10 +2985,12 @@ export default function App() {
                           <label style={styles.quantityLabel}>
                             {t.units}
                             <input
-                              type="text"
+                              type="number"
                               inputMode="numeric"
                               pattern="[0-9]*"
                               enterKeyHint="done"
+                              min="0"
+                              step="1"
                               autoComplete="off"
                               readOnly={!product.permite_unidades}
                               value={product.permite_unidades ? quantity.units || "" : ""}
@@ -2133,6 +3012,7 @@ export default function App() {
                                 }
                               }}
                               onKeyDown={(event) => manejarEnterCantidad(event, product.id)}
+                              onBlur={() => setCampoCantidadActivo(null)}
                               onChange={(event) =>
                                 updateQuantity(
                                   product.id,
@@ -2152,14 +3032,46 @@ export default function App() {
                             />
                           </label>
 
-                          <button
-                            type="button"
-                            onClick={() => aceptarCantidad(product.id)}
-                            style={styles.acceptQuantityButton}
-                            aria-label="Aceptar cantidad"
-                          >
-                            Aceptar
-                          </button>
+                          {(() => {
+                            const campoActivoCajas =
+                              campoCantidadActivo === `${product.id}:boxes`;
+                            const campoActivoUnidades =
+                              campoCantidadActivo === `${product.id}:units`;
+                            const cantidadEscrita = campoActivoCajas
+                              ? quantity.boxes
+                              : campoActivoUnidades
+                                ? quantity.units
+                                : "";
+
+                            if (
+                              !campoActivoCajas &&
+                              !campoActivoUnidades
+                            ) {
+                              return null;
+                            }
+
+                            if (cantidadEscrita === "" || cantidadEscrita == null) {
+                              return null;
+                            }
+
+                            return (
+                              <button
+                                type="button"
+                                style={styles.acceptQuantityButton}
+                                onPointerDown={(event) => {
+                                  // Evita que el botón pierda el foco antes de ejecutar
+                                  // el clic. Así no desaparece prematuramente en iPhone.
+                                  event.preventDefault();
+                                }}
+                                onClick={() => aceptarCantidad(product.id)}
+                                aria-label="Aceptar cantidad"
+                              >
+                                <Check size={15} strokeWidth={3} />
+                                <span>Aceptar cantidad</span>
+                              </button>
+                            );
+                          })()}
+
                         </div>
 
                         {product.participaRuleta && (() => {
@@ -2265,6 +3177,33 @@ export default function App() {
               </div>
             )}
 
+            {resumenBingoPedido && orderedItems.length > 0 && (
+              <div
+                style={
+                  resumenBingoPedido.cumple
+                    ? styles.bingoSummaryOk
+                    : styles.bingoSummaryPending
+                }
+              >
+                <div style={styles.ruletaSummaryTitle}>Promoción Bingo</div>
+                <div style={styles.ruletaSummaryText}>
+                  Llevas {resumenBingoPedido.variedadActual} {resumenBingoPedido.variedadActual === 1 ? "artículo distinto pedido" : "artículos distintos pedidos"} en cajas.
+                </div>
+                {resumenBingoPedido.cumple ? (
+                  <div style={styles.bingoSummaryMessage}>
+                    Has conseguido 1 bola de Bingo. Se incluirá en el QR del pedido.
+                  </div>
+                ) : (
+                  <div style={styles.bingoSummaryMessage}>
+                    Te faltan {resumenBingoPedido.variedadRestante} {resumenBingoPedido.variedadRestante === 1 ? "artículo distinto en cajas" : "artículos distintos en cajas"} para conseguir 1 bola.
+                  </div>
+                )}
+                <div style={styles.bingoSummaryNote}>
+                  Las unidades no cuentan para Bingo.
+                </div>
+              </div>
+            )}
+
             {orderedItems.length === 0 ? (
               <p style={styles.emptyBox}>{t.noItemsWithQuantity}</p>
             ) : (
@@ -2323,6 +3262,115 @@ export default function App() {
 }
 
 const styles = {
+  installBanner: {
+    position: "fixed",
+    left: "50%",
+    bottom: "18px",
+    transform: "translateX(-50%)",
+    zIndex: 1200,
+    width: "min(720px, calc(100% - 24px))",
+    display: "flex",
+    alignItems: "center",
+    gap: "14px",
+    padding: "14px",
+    border: "2px solid #ffffff",
+    borderRadius: "20px",
+    background: "linear-gradient(135deg, #0b1185 0%, #2835d4 100%)",
+    color: "#ffffff",
+    boxShadow: "0 16px 42px rgba(11,17,133,0.42)",
+  },
+  installBannerIcon: {
+    flex: "0 0 auto",
+    display: "grid",
+    placeItems: "center",
+    width: "48px",
+    height: "48px",
+    borderRadius: "14px",
+    background: "rgba(255,255,255,0.18)",
+  },
+  installBannerContent: {
+    minWidth: 0,
+    flex: "1 1 auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "3px",
+  },
+  installBannerTitle: {
+    fontSize: "17px",
+    lineHeight: 1.2,
+  },
+  installBannerText: {
+    fontSize: "14px",
+    lineHeight: 1.35,
+    opacity: 0.95,
+  },
+  installButton: {
+    flex: "0 0 auto",
+    border: "none",
+    borderRadius: "13px",
+    padding: "13px 18px",
+    background: "#ffffff",
+    color: "#0b1185",
+    fontSize: "15px",
+    fontWeight: "900",
+    boxShadow: "0 8px 22px rgba(0,0,0,0.18)",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  installOverlay: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 5000,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "20px",
+    background: "rgba(15,23,42,0.68)",
+  },
+  installModal: {
+    position: "relative",
+    width: "min(420px, 100%)",
+    borderRadius: "22px",
+    padding: "28px 22px 22px",
+    background: "#ffffff",
+    color: "#111827",
+    textAlign: "center",
+    boxShadow: "0 24px 70px rgba(0,0,0,0.28)",
+  },
+  installClose: {
+    position: "absolute",
+    top: "8px",
+    right: "12px",
+    border: "none",
+    background: "transparent",
+    fontSize: "30px",
+    lineHeight: 1,
+    cursor: "pointer",
+  },
+  installTitle: { margin: "12px 0 14px", fontSize: "21px" },
+  installText: { margin: "10px 0", lineHeight: 1.45, textAlign: "left" },
+  installNote: {
+    margin: "16px 0 0",
+    padding: "10px 12px",
+    borderRadius: "12px",
+    background: "#eef2ff",
+    color: "#3730a3",
+    fontSize: "13px",
+    fontWeight: "800",
+    lineHeight: 1.4,
+  },
+  installConfirmedButton: {
+    width: "100%",
+    marginTop: "14px",
+    border: "none",
+    borderRadius: "13px",
+    padding: "13px 16px",
+    background: "#0b1185",
+    color: "#ffffff",
+    fontSize: "15px",
+    fontWeight: "900",
+    cursor: "pointer",
+  },
   ruletaProgressPanel: {
     marginTop: "8px",
     padding: "10px 12px",
@@ -2828,6 +3876,13 @@ const styles = {
     paddingTop: "6px",
   },
 
+  catalogFavoritesMode: {
+    // Garantiza recorrido vertical aunque la lista personal sea muy corta.
+    // Con uno o dos favoritos, el navegador ya dispone de suficiente espacio
+    // para desplazar la cabecera sticky sin bloquear el gesto de scroll.
+    minHeight: "calc(100dvh + 180px)",
+  },
+
   departmentSection: {
     marginBottom: "16px",
   },
@@ -2911,6 +3966,33 @@ const styles = {
   productTitleBlock: {
     minWidth: 0,
     flex: 1,
+  },
+
+  productTopActions: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "4px",
+    flexShrink: 0,
+  },
+
+  favoriteButton: {
+    width: "34px",
+    height: "34px",
+    borderRadius: "999px",
+    border: "1px solid #d1d5db",
+    background: "#fff",
+    color: "#94a3b8",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    padding: 0,
+  },
+
+  favoriteButtonActive: {
+    color: "#f59e0b",
+    borderColor: "#fbbf24",
+    background: "#fffbeb",
   },
 
   ruletaPromoBadge: {
@@ -3070,23 +4152,28 @@ const styles = {
   },
 
   acceptQuantityButton: {
-    width: "52px",
-    minWidth: "52px",
-    maxWidth: "52px",
-    height: "24px",
-    minHeight: "24px",
-    maxHeight: "24px",
+    gridColumn: "1 / -1",
+    width: "164px",
+    minWidth: "164px",
+    maxWidth: "164px",
+    minHeight: "30px",
     border: "none",
-    borderRadius: "7px",
+    borderRadius: "8px",
     background: "#22c55e",
     color: "#ffffff",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    gap: "5px",
     cursor: "pointer",
-    padding: 0,
+    padding: "5px 8px",
     boxSizing: "border-box",
     flexShrink: 0,
+    fontSize: "11px",
+    lineHeight: 1,
+    fontWeight: "900",
+    touchAction: "manipulation",
+    WebkitTapHighlightColor: "transparent",
   },
 
   noteInput: {
@@ -3504,6 +4591,64 @@ const styles = {
     marginTop: "16px",
   },
 
+
+  clienteSesionCargando: {
+    marginBottom: "10px",
+    border: "1px solid #bfdbfe",
+    borderRadius: "12px",
+    padding: "10px 12px",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    fontSize: "13px",
+    fontWeight: "800",
+  },
+
+  clienteSesionActiva: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "3px",
+    marginBottom: "10px",
+    border: "1px solid #bbf7d0",
+    borderRadius: "12px",
+    padding: "10px 12px",
+    background: "#f0fdf4",
+    color: "#166534",
+    fontSize: "13px",
+  },
+
+  favoritesFilterButton: {
+    marginTop: "6px",
+    border: "1px solid #cbd5e1",
+    borderRadius: "9px",
+    background: "#ffffff",
+    color: "#334155",
+    padding: "7px 10px",
+    fontWeight: "800",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "6px",
+    cursor: "pointer",
+  },
+
+  favoritesFilterButtonActive: {
+    background: "#fffbeb",
+    borderColor: "#f59e0b",
+    color: "#b45309",
+  },
+
+  favoritesError: {
+    color: "#b91c1c",
+    fontWeight: "700",
+  },
+
+  inputClienteIdentificado: {
+    background: "#f8fafc",
+    color: "#166534",
+    fontWeight: "900",
+    cursor: "default",
+  },
+
   returnPushButton: {
     position: "fixed",
     left: "12px",
@@ -3519,4 +4664,147 @@ const styles = {
     fontWeight: "1000",
     boxShadow: "0 14px 28px rgba(14,165,233,0.35)",
   },
+
+  bingoSummaryOk: {
+    marginBottom: "18px",
+    padding: "14px",
+    border: "1px solid #8bc49b",
+    borderRadius: "14px",
+    background: "#eefaf1",
+  },
+  bingoSummaryPending: {
+    marginBottom: "18px",
+    padding: "14px",
+    border: "1px solid #d7b86a",
+    borderRadius: "14px",
+    background: "#fff9e9",
+  },
+  bingoSummaryMessage: {
+    marginTop: "8px",
+    fontWeight: 800,
+    lineHeight: 1.4,
+  },
+  bingoSummaryNote: {
+    marginTop: "6px",
+    fontSize: "13px",
+    opacity: 0.78,
+  },
+  bingoButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "7px",
+    border: "1px solid #111a8f",
+    borderRadius: "999px",
+    padding: "8px 14px",
+    background: "#111a8f",
+    color: "#ffffff",
+    fontSize: "14px",
+    fontWeight: "900",
+    cursor: "pointer",
+  },
+
+  bingoOverlay: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 10020,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "12px",
+    background: "rgba(15, 23, 42, 0.78)",
+    boxSizing: "border-box",
+  },
+
+  bingoModal: {
+    position: "relative",
+    width: "min(1540px, 100%)",
+    maxHeight: "calc(100dvh - 24px)",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    borderRadius: "30px",
+    background: "transparent",
+    boxShadow: "0 24px 70px rgba(0,0,0,0.35)",
+  },
+
+  bingoModalHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    padding: "14px 16px",
+    background: "#ffffff",
+    borderBottom: "1px solid #dbe3ef",
+  },
+
+  bingoModalTitle: {
+    display: "block",
+    color: "#111a8f",
+    fontSize: "22px",
+    fontWeight: "900",
+  },
+
+  bingoModalSubtitle: {
+    marginTop: "3px",
+    color: "#64748b",
+    fontSize: "13px",
+    fontWeight: "700",
+  },
+
+  bingoCloseButton: {
+    position: "absolute",
+    zIndex: 5,
+    top: "20px",
+    right: "20px",
+    width: "44px",
+    height: "44px",
+    flexShrink: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "2px solid rgba(255,255,255,.75)",
+    borderRadius: "999px",
+    background: "rgba(3,22,58,.88)",
+    color: "#ffffff",
+    boxShadow: "0 5px 18px rgba(0,0,0,.3)",
+    cursor: "pointer",
+  },
+
+  bingoModalBody: {
+    overflowY: "auto",
+    WebkitOverflowScrolling: "touch",
+    padding: "0",
+  },
+
+  bingoStatusBox: {
+    padding: "34px 18px",
+    borderRadius: "16px",
+    background: "#ffffff",
+    color: "#111a8f",
+    textAlign: "center",
+    fontWeight: "900",
+  },
+
+  bingoErrorBox: {
+    padding: "24px 18px",
+    border: "2px solid #dc2626",
+    borderRadius: "16px",
+    background: "#ffffff",
+    color: "#b91c1c",
+    textAlign: "center",
+    fontWeight: "800",
+  },
+
+  bingoInfoBox: {
+    marginTop: "12px",
+    padding: "12px 14px",
+    borderRadius: "12px",
+    background: "#ffffff",
+    color: "#475569",
+    textAlign: "center",
+    fontSize: "13px",
+    fontWeight: "700",
+  },
+
 };

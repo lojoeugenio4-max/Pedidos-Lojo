@@ -4,6 +4,7 @@ import { supabase } from "../supabaseClient";
 import StoreWheel from "../components/StoreWheel";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
+const BINGO_CONTROL_CHANNEL = "lojo-bingo-control";
 const SPIN_DURATION_MS = 9200;
 
 const PRODUCTOS_PUBLIC_URL =
@@ -174,13 +175,11 @@ function seleccionarPremioRuleta(premios = []) {
   return activos[activos.length - 1];
 }
 
-async function actualizarSaldoTiradas(entry, prize = null) {
+async function actualizarSaldoTiradas(entry, prize = null, qrCode = "") {
   if (!entry?.id) {
     throw new Error("La participación no tiene un identificador válido.");
   }
 
-  // Los códigos permanentes siguen siendo reutilizables y no consumen saldo.
-  // No se registran en promotion_spins porque pueden girarse indefinidamente.
   if (entry.is_permanent === true) {
     return {
       ...entry,
@@ -191,21 +190,36 @@ async function actualizarSaldoTiradas(entry, prize = null) {
     };
   }
 
-  const { data: spinResult, error: spinError } = await supabase.rpc(
-    "register_promotion_spin",
-    {
-      p_participation_id: entry.id,
-      p_prize_id: prize?.id ?? null,
-    }
-  );
+  const normalizedQr = normalizarCodigo(qrCode);
+  let spinResult = null;
 
-  if (spinError) {
-    console.error("No se pudo registrar la tirada:", spinError);
-    throw spinError;
+  if (normalizedQr) {
+    const { data, error } = await supabase.rpc(
+      "consume_game_roulette_play_by_code",
+      {
+        p_code: normalizedQr,
+        p_prize_id: prize?.id == null ? null : String(prize.id),
+      }
+    );
+    spinResult = Array.isArray(data) ? data[0] : data;
+
+    if (error || !spinResult?.ok) {
+      const detail = spinResult?.message || error?.message || "No se pudo registrar la tirada.";
+      console.error("No se pudo registrar la tirada por QR:", error || spinResult);
+      throw new Error(detail);
+    }
+  } else {
+    const { data, error } = await supabase.rpc("register_promotion_spin", {
+      p_participation_id: entry.id,
+      p_prize_id: prize?.id == null ? null : String(prize.id),
+    });
+    spinResult = data;
+    if (error) {
+      console.error("No se pudo registrar la tirada:", error);
+      throw error;
+    }
   }
 
-  // Recuperamos la fila actualizada para que la interfaz use el estado real
-  // confirmado por la base de datos, no un cálculo local aproximado.
   const { data: participation, error: participationError } = await supabase
     .from("promotion_participations")
     .select("*")
@@ -213,17 +227,12 @@ async function actualizarSaldoTiradas(entry, prize = null) {
     .single();
 
   if (participationError) {
-    console.error(
-      "La tirada se registró, pero no se pudo recargar la participación:",
-      participationError
-    );
-
+    console.error("La tirada se registró, pero no se pudo recargar la participación:", participationError);
     return {
       ...entry,
       spins_total: Number(spinResult?.spins_total ?? entry.spins_total ?? 1),
       spins_used: Number(spinResult?.spins_used ?? entry.spins_used ?? 0),
-      status:
-        Number(spinResult?.spins_remaining ?? 0) > 0 ? "pending" : "played",
+      status: Number(spinResult?.spins_remaining ?? 0) > 0 ? "pending" : "played",
     };
   }
 
@@ -252,6 +261,7 @@ function obtenerTiradasRestantesEntrada(entrada) {
 
 export default function StorePage() {
   const inputRef = useRef(null);
+  const autoValidatedCodeRef = useRef("");
 
   const [codigo, setCodigo] = useState("");
   const [entrada, setEntrada] = useState(null);
@@ -261,6 +271,10 @@ export default function StorePage() {
   const [girando, setGirando] = useState(false);
   const [premioFinal, setPremioFinal] = useState(null);
   const [premioObjetivo, setPremioObjetivo] = useState(null);
+  const [entitlement, setEntitlement] = useState(null);
+  const [bolaBingo, setBolaBingo] = useState(null);
+  const [procesandoBingo, setProcesandoBingo] = useState(false);
+  const [bomboGirando, setBomboGirando] = useState(false);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -269,6 +283,54 @@ export default function StorePage() {
   useEffect(() => {
     enviarEventoDisplay("waiting");
     return () => stopSpinSound();
+  }, []);
+
+  useEffect(() => {
+    function handleBingoEvent(event) {
+      const message = event?.data || event;
+      if (!message || message.type !== "bingo-complete") return;
+      const eventCode = normalizarCodigo(message.code);
+      const currentCode = normalizarCodigo(entitlement?.code || codigo);
+      if (!eventCode || eventCode !== currentCode) return;
+
+      setProcesandoBingo(false);
+      setBolaBingo(Number(message.ball_number) || null);
+      setEntitlement((current) => ({
+        ...current,
+        bingo_available: false,
+        bingo_remaining: Number(message.bingo_remaining || 0),
+      }));
+      setMensaje(`Bola ${message.ball_number} registrada correctamente.`);
+      setEstado(entitlement?.roulette_available ? "game-choice" : "bingo-result");
+    }
+
+    let channel;
+    try {
+      channel = new BroadcastChannel(BINGO_CONTROL_CHANNEL);
+      channel.addEventListener("message", handleBingoEvent);
+    } catch {}
+
+    function handleStorage(event) {
+      if (event.key !== BINGO_CONTROL_CHANNEL || !event.newValue) return;
+      try { handleBingoEvent(JSON.parse(event.newValue)); } catch {}
+    }
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      channel?.removeEventListener?.("message", handleBingoEvent);
+      channel?.close?.();
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [codigo, entitlement?.code, entitlement?.roulette_available]);
+
+  useEffect(() => {
+    const codeFromUrl = normalizarCodigo(
+      new URLSearchParams(window.location.search).get("code")
+    );
+    if (!codeFromUrl || autoValidatedCodeRef.current === codeFromUrl) return;
+    autoValidatedCodeRef.current = codeFromUrl;
+    setCodigo(codeFromUrl);
+    validarCodigo(codeFromUrl);
   }, []);
 
   async function validarCodigo(codeFromScanner = codigo) {
@@ -283,8 +345,75 @@ export default function StorePage() {
     setEstado("loading");
     setMensaje("");
     setEntrada(null);
+    setEntitlement(null);
+    setBolaBingo(null);
     setPremios([]);
     setPremioFinal(null);
+
+    // Primero se valida el QR común. La función bloquea estados inválidos y
+    // devuelve los juegos realmente pendientes para este pedido.
+    const { data: unifiedRaw, error: unifiedError } = await supabase.rpc(
+      "validate_game_qr",
+      { p_code: code }
+    );
+    const unified = Array.isArray(unifiedRaw) ? unifiedRaw[0] : unifiedRaw;
+
+    if (!unifiedError && unified?.ok) {
+      setCodigo(code);
+      setEntitlement(unified);
+
+      if (unified.roulette_available && unified.roulette_participation_id) {
+        const { data: rouletteEntry, error: rouletteError } = await supabase
+          .from("promotion_participations")
+          .select("*")
+          .eq("id", unified.roulette_participation_id)
+          .maybeSingle();
+
+        if (rouletteError || !rouletteEntry) {
+          console.error(rouletteError);
+          setMensaje("El QR es válido, pero no se pudo cargar la participación de Ruleta.");
+          setEstado("error");
+          return;
+        }
+
+        const { data: premiosData, error: premiosError } = await supabase
+          .from("promociones_ruleta_premios")
+          .select("*")
+          .eq("promocion_id", rouletteEntry.promotion_id)
+          .eq("activo", true)
+          .order("orden", { ascending: true })
+          .order("created_at", { ascending: true });
+
+        if (premiosError || !premiosData?.length) {
+          console.error(premiosError);
+          setMensaje("La Ruleta asociada no tiene premios activos.");
+          setEstado("error");
+          return;
+        }
+
+        setEntrada(rouletteEntry);
+        setPremios(premiosData);
+      }
+
+      setEstado(
+        unified.bingo_available && unified.roulette_available
+          ? "game-choice"
+          : unified.bingo_available
+            ? "bingo-ready"
+            : "ready"
+      );
+      return;
+    }
+
+    // Compatibilidad temporal con los QR históricos de solo Ruleta mientras
+    // todos los pedidos activos terminan de migrarse al QR común.
+    if (unifiedError) {
+      console.warn("validate_game_qr no disponible; usando validación histórica:", unifiedError);
+    } else if (unified && unified.ok === false && unified.reason !== "not_found") {
+      setMensaje(unified.message || "Este código no se puede utilizar.");
+      setEstado(unified.reason === "used" ? "used" : "error");
+      return;
+    }
 
     const { data, error } = await supabase
       .from("promotion_participations")
@@ -292,14 +421,8 @@ export default function StorePage() {
       .eq("code", code)
       .maybeSingle();
 
-    if (error) {
+    if (error || !data) {
       console.error(error);
-      setMensaje("Error consultando el código.");
-      setEstado("error");
-      return;
-    }
-
-    if (!data) {
       setMensaje("Código no encontrado.");
       setEstado("error");
       return;
@@ -307,34 +430,19 @@ export default function StorePage() {
 
     const estadoCodigo = String(data.status || "").toLowerCase();
     const estadosBloqueados = ["disabled", "cancelled", "canceled", "blocked"];
-
-    if (data.is_permanent === true && estadosBloqueados.includes(estadoCodigo)) {
+    if (estadosBloqueados.includes(estadoCodigo)) {
       setEntrada(data);
-      setMensaje("Este código VIP está desactivado.");
+      setMensaje("Este código está desactivado o bloqueado.");
       setEstado("used");
       return;
     }
-
-    if (
-      data.is_permanent !== true &&
-      data.status !== "pending" &&
-      obtenerTiradasRestantesEntrada(data) <= 0
-    ) {
+    if (data.is_permanent !== true && obtenerTiradasRestantesEntrada(data) <= 0) {
       setEntrada(data);
-      setMensaje(
-        data.status === "played"
-          ? "Este código ya fue utilizado."
-          : `Este código no está pendiente. Estado: ${data.status}`
-      );
+      setMensaje("Este código ya fue utilizado.");
       setEstado("used");
       return;
     }
-
-    if (
-      data.is_permanent !== true &&
-      data.expires_at &&
-      new Date(data.expires_at) < new Date()
-    ) {
+    if (data.is_permanent !== true && data.expires_at && new Date(data.expires_at) < new Date()) {
       setEntrada(data);
       setMensaje("Este código está caducado.");
       setEstado("error");
@@ -349,14 +457,7 @@ export default function StorePage() {
       .order("orden", { ascending: true })
       .order("created_at", { ascending: true });
 
-    if (premiosError) {
-      console.error(premiosError);
-      setMensaje("Error cargando premios.");
-      setEstado("error");
-      return;
-    }
-
-    if (!premiosData || premiosData.length === 0) {
+    if (premiosError || !premiosData?.length) {
       setMensaje("Esta promoción no tiene premios activos.");
       setEstado("error");
       return;
@@ -366,11 +467,25 @@ export default function StorePage() {
     setEntrada(data);
     setPremios(premiosData);
     setEstado("ready");
+    enviarEventoDisplay("ready", { entrada: data, premios: premiosData });
+  }
 
-    enviarEventoDisplay("ready", {
-      entrada: data,
-      premios: premiosData,
-    });
+  async function consumirBingo() {
+    if (!entitlement?.id || procesandoBingo) return;
+
+    const qrCode = normalizarCodigo(entitlement.code || codigo);
+    const displayUrl = `${window.location.origin}/?bingoDisplay=1&code=${encodeURIComponent(qrCode)}`;
+    const displayWindow = window.open(displayUrl, "lojo-bingo-display");
+
+    if (!displayWindow) {
+      setMensaje("El navegador ha bloqueado la pantalla oficial del Bingo. Permite ventanas emergentes y vuelve a intentarlo.");
+      setEstado("error");
+      return;
+    }
+
+    setProcesandoBingo(true);
+    setMensaje("Bombo oficial preparado. Pulsa GIRAR BOMBO en la pantalla de Bingo.");
+    setEstado("bingo-waiting");
   }
 
   async function girar() {
@@ -420,12 +535,17 @@ export default function StorePage() {
       stopSpinSound();
 
       try {
-        const entryActualizada = await actualizarSaldoTiradas(entrada, prize);
+        const entryActualizada = await actualizarSaldoTiradas(entrada, prize, entitlement?.code || codigo);
 
         setEntrada(entryActualizada);
         setPremioFinal(prize);
         setPremioObjetivo(null);
         setGirando(false);
+        setEntitlement((current) => current ? ({
+          ...current,
+          roulette_available: obtenerTiradasRestantesEntrada(entryActualizada) > 0,
+          roulette_remaining: obtenerTiradasRestantesEntrada(entryActualizada),
+        }) : current);
         setEstado("result");
 
         enviarEventoDisplay("result", {
@@ -444,7 +564,8 @@ export default function StorePage() {
         setPremioObjetivo(null);
         setGirando(false);
         setMensaje(
-          "No se pudo registrar la tirada. No vuelvas a girar hasta comprobar la conexión."
+          error?.message ||
+            "No se pudo registrar la tirada. No vuelvas a girar hasta comprobar la conexión."
         );
         setEstado("error");
         enviarEventoDisplay("waiting");
@@ -468,10 +589,30 @@ export default function StorePage() {
     });
   }
 
+  function continuarTrasRuleta() {
+    setPremioFinal(null);
+    setPremioObjetivo(null);
+    setMensaje("");
+
+    if (entitlement?.bingo_available) {
+      setEstado(entitlement?.roulette_available ? "game-choice" : "bingo-ready");
+      return;
+    }
+
+    if (entitlement?.roulette_available && entrada && obtenerTiradasRestantesEntrada(entrada) > 0) {
+      setEstado("ready");
+      return;
+    }
+
+    reset();
+  }
+
   function reset() {
     stopSpinSound();
     setCodigo("");
     setEntrada(null);
+    setEntitlement(null);
+    setBolaBingo(null);
     setPremios([]);
     setEstado("idle");
     setMensaje("");
@@ -516,6 +657,8 @@ export default function StorePage() {
             55% { transform: scale(1.07); opacity: 1; }
             100% { transform: scale(1); opacity: 1; }
           }
+
+          @keyframes lojoBingoDrumSpin { to { transform: rotate(360deg); } }
 
           @keyframes lojoFloat {
             0%, 100% { transform: translateY(0); }
@@ -612,6 +755,49 @@ export default function StorePage() {
         </section>
       )}
 
+      {(estado === "game-choice" || estado === "bingo-ready" || estado === "bingo-waiting" || estado === "bingo-result" || estado === "bingo-result-with-roulette") && entitlement && (
+        <section style={styles.card}>
+          <h2 style={styles.cardTitle}>QR válido · Pedido identificado</h2>
+          <p style={styles.info}>Cliente: <strong>{entitlement.customer_name || "sin nombre"}</strong></p>
+          <p style={styles.info}>Pedido: <strong>{entitlement.order_id || "sin referencia"}</strong></p>
+
+          {(estado === "game-choice" || estado === "bingo-ready") && (
+            <div style={styles.gameChoiceGrid}>
+              {entitlement.bingo_available && (
+                <button type="button" onClick={consumirBingo} disabled={procesandoBingo} style={styles.bingoActionButton}>
+                  🎱 {procesandoBingo ? "ABRIENDO BOMBO..." : "ABRIR BOMBO"}
+                </button>
+              )}
+              {entitlement.roulette_available && entrada && (
+                <button type="button" onClick={() => setEstado("ready")} style={styles.rouletteActionButton}>
+                  🎡 ABRIR RULETA
+                </button>
+              )}
+            </div>
+          )}
+
+          {estado === "bingo-waiting" && (
+            <div style={styles.bingoResultBox}>
+              <h3 style={{ margin: 0 }}>BOMBO OFICIAL EN ESPERA</h3>
+              <p style={styles.info}>Pulsa <strong>GIRAR BOMBO</strong> en la pantalla oficial. La bola no se extraerá hasta ese momento.</p>
+            </div>
+          )}
+
+          {(estado === "bingo-result" || estado === "bingo-result-with-roulette") && (
+            <div style={styles.bingoResultBox}>
+              <div style={styles.bingoBall}>{bolaBingo}</div>
+              <h2 style={{ margin: 0 }}>Bola registrada</h2>
+              <p style={styles.info}>El cartón del cliente se actualizará en tiempo real si contiene este número.</p>
+              {estado === "bingo-result-with-roulette" ? (
+                <button type="button" onClick={() => setEstado("game-choice")} style={styles.rouletteActionButton}>ELEGIR SIGUIENTE JUEGO ›</button>
+              ) : (
+                <button type="button" onClick={reset} style={styles.nextButton}>FINALIZAR ›</button>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
       {(estado === "ready" || estado === "result") && entrada && (
         <section className="store-game-layout" style={styles.gameLayout}>
           <div style={styles.wheelSide}>
@@ -670,8 +856,8 @@ export default function StorePage() {
                     SIGUIENTE TIRADA ({tiradasRestantes}) ›
                   </button>
                 ) : (
-                  <button type="button" onClick={reset} style={styles.nextButton}>
-                    CONTINUAR ›
+                  <button type="button" onClick={continuarTrasRuleta} style={styles.nextButton}>
+                    {entitlement?.bingo_available ? "ELEGIR BINGO ›" : "FINALIZAR ›"}
                   </button>
                 )}
               </div>
@@ -684,6 +870,83 @@ export default function StorePage() {
 }
 
 const styles = {
+  gameChoiceGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 14,
+    marginTop: 20,
+  },
+  bingoActionButton: {
+    border: 0,
+    borderRadius: 16,
+    padding: "20px 18px",
+    background: "linear-gradient(135deg, #7c3aed, #4c1d95)",
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+  rouletteActionButton: {
+    border: 0,
+    borderRadius: 16,
+    padding: "20px 18px",
+    background: "linear-gradient(135deg, #f59e0b, #b45309)",
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+  bingoDrum: {
+    position: "relative",
+    width: 170,
+    height: 170,
+    margin: "4px auto 16px",
+    border: "10px solid #d9a52b",
+    borderRadius: "50%",
+    overflow: "hidden",
+    background: "radial-gradient(circle, #174a8b 0 55%, #071c46 58%)",
+    boxShadow: "inset 0 0 0 4px #ffef9d, 0 12px 28px #0006",
+  },
+  bingoDrumSpinning: {
+    animation: "lojoBingoDrumSpin .28s linear infinite",
+  },
+  bingoDrumBars: {
+    position: "absolute",
+    inset: -15,
+    background: "repeating-linear-gradient(75deg, transparent 0 14px, #ffe58a99 15px 20px, transparent 21px 31px)",
+  },
+  bingoDrumHub: {
+    position: "absolute",
+    inset: 55,
+    display: "grid",
+    placeItems: "center",
+    border: "4px double #fff0a0",
+    borderRadius: "50%",
+    background: "#a96b0c",
+    color: "#fff4c2",
+    fontWeight: 950,
+    zIndex: 2,
+  },
+  bingoResultBox: {
+    display: "grid",
+    justifyItems: "center",
+    gap: 14,
+    textAlign: "center",
+    padding: 24,
+  },
+  bingoBall: {
+    width: 150,
+    height: 150,
+    borderRadius: "50%",
+    display: "grid",
+    placeItems: "center",
+    background: "#fff",
+    color: "#111827",
+    border: "12px solid #7c3aed",
+    boxShadow: "0 18px 45px rgba(124,58,237,.45)",
+    fontSize: 64,
+    fontWeight: 1000,
+  },
   page: {
     minHeight: "100dvh",
     height: "100dvh",
