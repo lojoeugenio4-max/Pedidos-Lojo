@@ -11,6 +11,7 @@ import {
 import { supabase } from "./supabaseClient";
 import StorePage from "./pages/StorePage";
 import DisplayPage from "./pages/DisplayPage";
+import BingoDemo from "./pages/bingo/BingoDemo";
 import logoLojo from "./assets/logo-lojo.jpg";
 import {
   construirTextoPedidoWhatsApp,
