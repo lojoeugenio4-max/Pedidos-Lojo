@@ -62,25 +62,15 @@ function normalizarFilas(card) {
   });
 }
 
-function esNumeroDeCarton(value) {
-  if (value === null || value === undefined || value === "") return false;
-  const number = Number(value);
-  return Number.isInteger(number) && number >= 1 && number <= 90;
-}
-
-function numerosDeFila(row) {
-  return row.filter(esNumeroDeCarton).map(Number);
-}
-
 function tieneLinea(rows, markedNumbers) {
   return rows.some((row) => {
-    const nums = numerosDeFila(row);
+    const nums = row.map(Number).filter(Number.isFinite);
     return nums.length > 0 && nums.every((number) => markedNumbers.has(number));
   });
 }
 
 function tieneBingo(rows, markedNumbers) {
-  const nums = rows.flat().filter(esNumeroDeCarton).map(Number);
+  const nums = rows.flat().map(Number).filter(Number.isFinite);
   return nums.length > 0 && nums.every((number) => markedNumbers.has(number));
 }
 
@@ -128,13 +118,12 @@ export default function BingoCard({
   const previousDrawnRef = useRef(null);
   const previousLineRef = useRef(false);
   const previousBingoRef = useRef(false);
-  const previousSpecialRef = useRef(false);
   const celebrationTimeoutRef = useRef(null);
   const rows = useMemo(() => normalizarFilas(card), [card]);
   const markedNumbers = useMemo(() => normalizarNumeros(drawnNumbers), [drawnNumbers]);
   const lineCompleted = useMemo(() => tieneLinea(rows, markedNumbers), [rows, markedNumbers]);
   const bingoCompleted = useMemo(() => tieneBingo(rows, markedNumbers), [rows, markedNumbers]);
-  const markedCount = rows.flat().filter((value) => esNumeroDeCarton(value) && markedNumbers.has(Number(value))).length;
+  const markedCount = rows.flat().filter((value) => Number.isFinite(Number(value)) && markedNumbers.has(Number(value))).length;
   const drawnCount = Array.isArray(drawnNumbers) ? new Set(drawnNumbers.map(Number).filter(Number.isFinite)).size : 0;
   const specialWon = Boolean(bingoCompleted && specialPrize?.active && specialPrize?.maxBalls > 0 && drawnCount <= specialPrize.maxBalls);
   const formattedEndDate = endDate ? new Date(`${endDate}T12:00:00`).toLocaleDateString("es-ES") : "Sin fecha límite";
@@ -148,7 +137,6 @@ export default function BingoCard({
       previousDrawnRef.current = currentDrawn;
       previousLineRef.current = lineCompleted;
       previousBingoRef.current = bingoCompleted;
-      previousSpecialRef.current = specialWon;
       return;
     }
 
@@ -163,40 +151,36 @@ export default function BingoCard({
     const matches = newNumbers.filter((number) => cardNumbers.has(number));
 
     if (matches.length) {
-      const achievedSpecial = specialWon && !previousSpecialRef.current;
       const achievedBingo = bingoCompleted && !previousBingoRef.current;
       const achievedLine = lineCompleted && !previousLineRef.current;
-      const celebrationType = achievedSpecial || achievedBingo ? "bingo" : achievedLine ? "linea" : "numero";
+      const celebrationType = achievedBingo ? "bingo" : achievedLine ? "linea" : "numero";
 
       setHighlightedNumbers(matches);
       setLiveMessage(
-        achievedSpecial
-          ? `¡BINGO ESPECIAL! Cartón completado en ${drawnCount} bolas`
-          : achievedBingo
-            ? "¡BINGO! Has completado tu cartón"
-            : achievedLine
-              ? "¡LÍNEA! Has completado una línea"
-              : matches.length === 1
-                ? `¡La bola ${matches[0]} está en tu cartón!`
-                : `¡${matches.length} bolas nuevas están en tu cartón!`
+        achievedBingo
+          ? "¡BINGO! Has completado tu cartón"
+          : achievedLine
+            ? "¡LÍNEA! Has completado una línea"
+            : matches.length === 1
+              ? `¡La bola ${matches[0]} está en tu cartón!`
+              : `¡${matches.length} bolas nuevas están en tu cartón!`
       );
 
       if (soundEnabled) reproducirCelebracion(celebrationType);
       if (typeof navigator !== "undefined" && navigator.vibrate) {
-        navigator.vibrate(achievedSpecial || achievedBingo ? [180, 90, 180, 90, 320] : [120, 70, 180]);
+        navigator.vibrate(achievedBingo ? [180, 90, 180, 90, 320] : [120, 70, 180]);
       }
 
       window.clearTimeout(celebrationTimeoutRef.current);
       celebrationTimeoutRef.current = window.setTimeout(() => {
         setHighlightedNumbers([]);
         setLiveMessage("");
-      }, achievedSpecial || achievedBingo ? 6500 : 4200);
+      }, achievedBingo ? 6500 : 4200);
     }
 
     previousLineRef.current = lineCompleted;
     previousBingoRef.current = bingoCompleted;
-    previousSpecialRef.current = specialWon;
-  }, [drawnNumbers, rows, lineCompleted, bingoCompleted, specialWon, drawnCount, soundEnabled]);
+  }, [drawnNumbers, rows, lineCompleted, bingoCompleted, soundEnabled]);
 
   useEffect(() => () => {
     window.clearTimeout(celebrationTimeoutRef.current);
@@ -260,7 +244,7 @@ export default function BingoCard({
           <div className="cl-card-actions">
             <div className="cl-card-status"><CheckCircle2 size={23} /> CARTÓN ÚNICO</div>
             <div className={`cl-check ${bingoCompleted ? "cl-check--won" : ""}`}>
-              {specialWon ? "¡BINGO ESPECIAL!" : bingoCompleted ? "¡BINGO!" : lineCompleted ? "¡LÍNEA!" : `${markedCount} NÚMEROS MARCADOS`}
+              {bingoCompleted ? "¡BINGO!" : lineCompleted ? "¡LÍNEA!" : `${markedCount} NÚMEROS MARCADOS`}
             </div>
             <button type="button" className="cl-sound" onClick={toggleSound} aria-label={soundEnabled ? "Desactivar sonido" : "Activar sonido"}>
               {soundEnabled ? <Volume2 size={27} /> : <VolumeX size={27} />}
