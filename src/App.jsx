@@ -2202,13 +2202,33 @@ export default function App() {
   }
 
   function pedidoCumpleBingo(participacionBingo) {
-    return Boolean(
-      participacionBingo?.qualified ??
-        participacionBingo?.clasificado ??
-        participacionBingo?.eligible ??
-        participacionBingo?.cumple ??
-        participacionBingo?.bingo_eligible
-    );
+    if (!participacionBingo || typeof participacionBingo !== "object") {
+      return false;
+    }
+
+    const valor =
+      participacionBingo.qualified ??
+      participacionBingo.clasificado ??
+      participacionBingo.eligible ??
+      participacionBingo.cumple ??
+      participacionBingo.bingo_eligible ??
+      false;
+
+    if (typeof valor === "boolean") {
+      return valor;
+    }
+
+    if (typeof valor === "number") {
+      return valor === 1;
+    }
+
+    if (typeof valor === "string") {
+      return ["true", "1", "yes", "si", "sí"].includes(
+        valor.trim().toLowerCase()
+      );
+    }
+
+    return false;
   }
 
   async function crearParticipacionJuegos({
