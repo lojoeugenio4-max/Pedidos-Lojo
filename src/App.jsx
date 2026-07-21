@@ -1356,24 +1356,31 @@ export default function App() {
   }, [departamentosRuleta]);
 
   const cantidadesMinimasRuletaPorArticulo = useMemo(() => {
-    const reglas = new Map();
+    // Se usan mapas separados por tipo de clave (id / código / nombre) en
+    // lugar de un único Map compartido. Antes, al mezclar todas las claves
+    // en el mismo Map, el id numérico interno de un artículo (p. ej. 1)
+    // podía coincidir con el código de otro artículo distinto (p. ej. el
+    // código "1"), y uno pisaba el mínimo del otro según el orden de
+    // procesamiento. Eso provocaba que el artículo con código 1 (mínimo 20
+    // cajas) mostrara el mínimo configurado para otro artículo cuyo id
+    // interno era también "1".
+    const porId = new Map();
+    const porCodigo = new Map();
+    const porNombre = new Map();
 
     articulosRuleta.forEach((item) => {
       const cantidadMinima = obtenerCantidadMinimaRuletaArticulo(item);
-      const claves = [
-        item.articulo_id,
-        item.codigo_articulo,
-        item.nombre_articulo,
-      ]
-        .map((valor) => normalizePromoValue(valor))
-        .filter(Boolean);
 
-      claves.forEach((clave) => {
-        reglas.set(clave, cantidadMinima);
-      });
+      const claveId = normalizePromoValue(item.articulo_id);
+      const claveCodigo = normalizePromoValue(item.codigo_articulo);
+      const claveNombre = normalizePromoValue(item.nombre_articulo);
+
+      if (claveId) porId.set(claveId, cantidadMinima);
+      if (claveCodigo) porCodigo.set(claveCodigo, cantidadMinima);
+      if (claveNombre) porNombre.set(claveNombre, cantidadMinima);
     });
 
-    return reglas;
+    return { porId, porCodigo, porNombre };
   }, [articulosRuleta]);
 
   const productos = useMemo(() => {
@@ -1390,9 +1397,9 @@ export default function App() {
           codigosRuleta.has(codigoArticulo) ||
           nombresArticulosRuleta.has(nombreArticulo);
         const cantidadMinimaRuleta =
-          cantidadesMinimasRuletaPorArticulo.get(articuloId) ||
-          cantidadesMinimasRuletaPorArticulo.get(codigoArticulo) ||
-          cantidadesMinimasRuletaPorArticulo.get(nombreArticulo) ||
+          cantidadesMinimasRuletaPorArticulo.porId.get(articuloId) ||
+          cantidadesMinimasRuletaPorArticulo.porCodigo.get(codigoArticulo) ||
+          cantidadesMinimasRuletaPorArticulo.porNombre.get(nombreArticulo) ||
           1;
 
         return {
