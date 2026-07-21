@@ -2335,13 +2335,15 @@ export default function App() {
       : null;
 
     let participacionJuegos = null;
-    const clientePuedeUsarFlujoNuevo = Boolean(clienteIdentificado?.id && clienteToken);
+    // El QR común debe crearse para cualquier pedido que consiga Ruleta o Bingo,
+    // también cuando el cliente no está identificado. Para clientes anónimos,
+    // customer_token se envía como null, pero el order_id y la participación
+    // de Ruleta permiten validar y consumir el QR desde la pantalla de caja.
     if (
-      clientePuedeUsarFlujoNuevo &&
-      (participacionRuleta ||
-        participacionBingo?.qualified ||
-        participacionBingo?.clasificado ||
-        participacionBingo?.eligible)
+      participacionRuleta ||
+      participacionBingo?.qualified ||
+      participacionBingo?.clasificado ||
+      participacionBingo?.eligible
     ) {
       try {
         participacionJuegos = await crearParticipacionJuegos({
