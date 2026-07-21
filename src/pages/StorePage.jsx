@@ -124,7 +124,33 @@ function playSirena() {
 }
 
 function normalizarCodigo(value) {
-  return String(value || "")
+  let raw = String(value || "").trim();
+  if (!raw) return "";
+
+  // El QR contiene una URL (?store=1&code=XXXX). Los lectores físicos suelen
+  // escribir la URL completa como si fueran un teclado, por lo que debemos
+  // extraer el parámetro code antes de consultar Supabase.
+  try {
+    const decoded = decodeURIComponent(raw);
+    const urlCandidate = /^https?:\/\//i.test(decoded)
+      ? decoded
+      : /^www\./i.test(decoded)
+        ? `https://${decoded}`
+        : null;
+
+    if (urlCandidate) {
+      const codeFromUrl = new URL(urlCandidate).searchParams.get("code");
+      if (codeFromUrl) raw = codeFromUrl;
+    } else if (raw.includes("code=")) {
+      const query = raw.includes("?") ? raw.split("?").slice(1).join("?") : raw;
+      const codeFromQuery = new URLSearchParams(query).get("code");
+      if (codeFromQuery) raw = codeFromQuery;
+    }
+  } catch (error) {
+    console.warn("No se pudo interpretar el contenido del QR; se usará como código manual.", error);
+  }
+
+  return raw
     .trim()
     .toUpperCase()
     .replace(/[’‘`´']/g, "-")
