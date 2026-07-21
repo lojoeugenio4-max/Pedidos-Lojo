@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle, RotateCcw, Search, XCircle } from "lucide-react";
 import { supabase } from "../supabaseClient";
-import { legacySupabase } from "../supabaseLegacyClient";
 import StoreWheel from "../components/StoreWheel";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
@@ -378,11 +377,9 @@ export default function StorePage() {
     setPremios([]);
     setPremioFinal(null);
 
-    // PRIORIDAD ABSOLUTA A LOS QR MAESTROS HISTÓRICOS.
-    // Se consultan antes del QR común para que sigan operativos aunque
-    // game_entitlements o validate_game_qr estén sin configurar o fallen.
-    let masterClient = supabase;
-    let { data: masterEntry, error: masterError } = await supabase
+    // Los QR maestros se comprueban exclusivamente en PRODUCCIÓN.
+    // La migración ya está finalizada y el lector no debe consultar BETA.
+    const { data: masterEntry, error: masterError } = await supabase
       .from("promotion_participations")
       .select("*")
       .eq("code", code)
@@ -393,27 +390,8 @@ export default function StorePage() {
       console.warn("No se pudo comprobar el QR maestro en producción:", masterError);
     }
 
-    // Compatibilidad urgente: los QR maestros creados en la antigua BETA
-    // siguen siendo utilizables mientras se copian definitivamente a producción.
-    // Esta consulta es solo de lectura; todos los datos nuevos se guardan en producción.
-    if (!masterEntry) {
-      const legacyResult = await legacySupabase
-        .from("promotion_participations")
-        .select("*")
-        .eq("code", code)
-        .eq("is_permanent", true)
-        .maybeSingle();
-
-      if (legacyResult.error) {
-        console.warn("No se pudo comprobar el QR maestro histórico:", legacyResult.error);
-      } else if (legacyResult.data) {
-        masterEntry = legacyResult.data;
-        masterClient = legacySupabase;
-      }
-    }
-
     if (masterEntry) {
-      const { data: premiosMaster, error: premiosMasterError } = await masterClient
+      const { data: premiosMaster, error: premiosMasterError } = await supabase
         .from("promociones_ruleta_premios")
         .select("*")
         .eq("promocion_id", masterEntry.promotion_id)
