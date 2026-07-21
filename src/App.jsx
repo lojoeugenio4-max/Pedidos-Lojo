@@ -2186,27 +2186,28 @@ export default function App() {
     };
   }
 
-  function normalizarResultadoRpc(data, clavesAnidadas = []) {
-    const respuesta = Array.isArray(data) ? data[0] : data;
-    if (!respuesta || typeof respuesta !== "object") return respuesta;
+  function normalizarRespuestaRpc(raw) {
+    let value = Array.isArray(raw) ? raw[0] : raw;
+    const clavesAnidadas = ["result", "resultado", "data", "bingo_result", "order_result", "entitlement"];
 
-    for (const clave of clavesAnidadas) {
-      const valor = respuesta?.[clave];
-      if (valor && typeof valor === "object") {
-        return { ...respuesta, ...valor };
-      }
+    for (let i = 0; i < 4 && value && typeof value === "object"; i += 1) {
+      const nestedKey = clavesAnidadas.find(
+        (key) => value[key] && typeof value[key] === "object"
+      );
+      if (!nestedKey) break;
+      value = Array.isArray(value[nestedKey]) ? value[nestedKey][0] : value[nestedKey];
     }
 
-    return respuesta;
+    return value;
   }
 
-  function bingoConseguidoEnResultado(resultado) {
+  function pedidoCumpleBingo(participacionBingo) {
     return Boolean(
-      resultado?.qualified ??
-        resultado?.clasificado ??
-        resultado?.eligible ??
-        resultado?.cumple ??
-        resultado?.bingo_eligible
+      participacionBingo?.qualified ??
+        participacionBingo?.clasificado ??
+        participacionBingo?.eligible ??
+        participacionBingo?.cumple ??
+        participacionBingo?.bingo_eligible
     );
   }
 
@@ -2217,7 +2218,7 @@ export default function App() {
     tiradasRuleta = 0,
     participacionBingo = null,
   }) {
-    const bingoConseguido = bingoConseguidoEnResultado(participacionBingo);
+    const bingoConseguido = pedidoCumpleBingo(participacionBingo);
     const ruletaConseguida = Boolean(participacionRuleta);
 
     if (!ruletaConseguida && !bingoConseguido) return null;
@@ -2244,23 +2245,13 @@ export default function App() {
 
     if (error) throw error;
 
-    const resultado = normalizarResultadoRpc(data, [
-      "entitlement",
-      "game_entitlement",
-      "result",
-      "data",
-    ]);
-
-    if (resultado?.ok === false) {
-      throw new Error(resultado?.message || "Supabase rechazó la creación del QR común.");
-    }
-
-    const codigo = resultado?.code || resultado?.codigo || null;
+    const entitlement = normalizarRespuestaRpc(data);
+    const codigo = entitlement?.code || entitlement?.codigo || null;
     if (!codigo) {
-      throw new Error("La participación común se creó sin código QR.");
+      throw new Error("Supabase creó la participación de juegos sin devolver un código QR válido.");
     }
 
-    return resultado;
+    return entitlement;
   }
 
   async function registrarPedidoParaBingo(itemsPedido, pedidoId) {
@@ -2284,18 +2275,12 @@ export default function App() {
       throw error;
     }
 
-    const result = normalizarResultadoRpc(data, [
-      "bingo_result",
-      "order_result",
-      "result",
-      "data",
-    ]);
-
-    if (result?.ok === false) {
-      throw new Error(result?.message || "Supabase rechazó el pedido para Bingo.");
+    const result = normalizarRespuestaRpc(data);
+    if (!result || typeof result !== "object") {
+      throw new Error("Supabase no devolvió una respuesta válida al registrar el pedido de Bingo.");
     }
 
-    if (bingoConseguidoEnResultado(result)) setCartonBingo(null);
+    if (pedidoCumpleBingo(result)) setCartonBingo(null);
     return result;
   }
 
@@ -2399,7 +2384,7 @@ export default function App() {
 
         alert(
           `El pedido no se enviará porque no se pudo registrar el Bingo.${
-            detalleErrorBingo ? `\n\n${detalleErrorBingo}` : " Inténtalo de nuevo."
+            detalleErrorBingo ? `\n\n${detalleErrorBingo}` : ""
           }`
         );
         return;
@@ -2412,7 +2397,7 @@ export default function App() {
     // también necesitan su fila en game_entitlements para que el lector los valide.
     if (
       participacionRuleta ||
-      bingoConseguidoEnResultado(participacionBingo)
+      pedidoCumpleBingo(participacionBingo)
     ) {
       try {
         participacionJuegos = await crearParticipacionJuegos({
