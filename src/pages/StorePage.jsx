@@ -377,7 +377,45 @@ export default function StorePage() {
     setPremios([]);
     setPremioFinal(null);
 
-    // Primero se valida el QR común. La función bloquea estados inválidos y
+    // PRIORIDAD ABSOLUTA A LOS QR MAESTROS HISTÓRICOS.
+    // Se consultan antes del QR común para que sigan operativos aunque
+    // game_entitlements o validate_game_qr estén sin configurar o fallen.
+    const { data: masterEntry, error: masterError } = await supabase
+      .from("promotion_participations")
+      .select("*")
+      .eq("code", code)
+      .eq("is_permanent", true)
+      .maybeSingle();
+
+    if (masterError) {
+      console.warn("No se pudo comprobar el QR maestro:", masterError);
+    }
+
+    if (masterEntry) {
+      const { data: premiosMaster, error: premiosMasterError } = await supabase
+        .from("promociones_ruleta_premios")
+        .select("*")
+        .eq("promocion_id", masterEntry.promotion_id)
+        .eq("activo", true)
+        .order("orden", { ascending: true })
+        .order("created_at", { ascending: true });
+
+      if (premiosMasterError || !premiosMaster?.length) {
+        console.error(premiosMasterError);
+        setMensaje("El QR maestro es válido, pero la promoción no tiene premios activos.");
+        setEstado("error");
+        return;
+      }
+
+      setCodigo(code);
+      setEntrada(masterEntry);
+      setPremios(premiosMaster);
+      setEstado("ready");
+      enviarEventoDisplay("ready", { entrada: masterEntry, premios: premiosMaster });
+      return;
+    }
+
+    // Después se valida el QR común. La función bloquea estados inválidos y
     // devuelve los juegos realmente pendientes para este pedido.
     const { data: unifiedRaw, error: unifiedError } = await supabase.rpc(
       "validate_game_qr",
