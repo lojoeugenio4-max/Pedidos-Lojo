@@ -1,8 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = "https://tdpvhhvwnkyfnuujajku.supabase.co";
+// BASE DE DATOS PRINCIPAL DE PRODUCCIÓN: pedidos-lojo.
+// Todas las altas, pedidos, participaciones y validaciones nuevas deben usarla.
+const supabaseUrl = "https://bohlxagrtpjvqrgkonlo.supabase.co";
 
 const supabaseAnonKey =
-  "sb_publishable_PQyNF-G7B6URCYZSWHnfbQ_k1Sn0VRk";
+  "sb_publishable_tpgtppDeMr2dGJIiZtB5nA_OXih8FKF";
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
