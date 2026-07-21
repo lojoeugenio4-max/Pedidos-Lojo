@@ -1763,20 +1763,31 @@ export default function App() {
       Number(configuracionBingoCliente.variedad_minima || 1)
     );
 
-    const reglasPorCodigo = new Map(
-      articulosBingoCliente.map((regla) => [
-        normalizarCodigoRuleta(regla.codigo),
-        regla,
-      ])
-    );
+    const reglasPorCodigo = new Map();
+    articulosBingoCliente.forEach((regla) => {
+      const codigoRegla = normalizarCodigoRuleta(regla.codigo);
+      const articuloId = normalizarCodigoRuleta(regla.articuloId);
+      if (codigoRegla) reglasPorCodigo.set(codigoRegla, regla);
+      if (articuloId) reglasPorCodigo.set(articuloId, regla);
+    });
     const codigosValidos = new Set();
 
     orderedItems.forEach((item) => {
-      const codigo = normalizarCodigoRuleta(
-        item.product.codigo || item.product.idnum || ""
-      );
-      const regla = reglasPorCodigo.get(codigo);
+      const posiblesCodigos = [
+        item.product.codigo,
+        item.product.idnum,
+        item.product.id,
+        item.product.articulo_id,
+      ]
+        .map(normalizarCodigoRuleta)
+        .filter(Boolean);
+
+      const regla = posiblesCodigos
+        .map((codigo) => reglasPorCodigo.get(codigo))
+        .find(Boolean);
       if (!regla) return;
+
+      const codigo = normalizarCodigoRuleta(regla.codigo);
 
       const cajas = Number(item.boxes || 0);
       const unidades = Number(item.units || 0);
@@ -2382,26 +2393,39 @@ export default function App() {
     const articulosPorId = new Map(
       articulosConfigurados.map((articulo) => [String(articulo.id), articulo])
     );
-    const reglasPorCodigo = new Map(
-      (reglas || []).map((regla) => {
-        const articulo = articulosPorId.get(String(regla.articulo_id)) || {};
-        const codigo = normalizarCodigoRuleta(
-          regla.codigo_articulo || articulo.codigo || ""
-        );
-        return [codigo, {
-          cantidadMinima: Math.max(1, Number(regla.cantidad_minima || 1)),
-          permiteUnidades: Boolean(articulo.permite_unidades),
-        }];
-      }).filter(([codigo]) => codigo)
-    );
+    const reglasPorCodigo = new Map();
+    (reglas || []).forEach((regla) => {
+      const articulo = articulosPorId.get(String(regla.articulo_id)) || {};
+      const codigoRegla = normalizarCodigoRuleta(
+        regla.codigo_articulo || articulo.codigo || ""
+      );
+      const articuloId = normalizarCodigoRuleta(regla.articulo_id || articulo.id || "");
+      const reglaNormalizada = {
+        codigo: codigoRegla,
+        cantidadMinima: Math.max(1, Number(regla.cantidad_minima || 1)),
+        permiteUnidades: Boolean(articulo.permite_unidades),
+      };
+      if (codigoRegla) reglasPorCodigo.set(codigoRegla, reglaNormalizada);
+      if (articuloId) reglasPorCodigo.set(articuloId, reglaNormalizada);
+    });
 
     const items = itemsPedido
       .map((item) => {
-        const codigo = normalizarCodigoRuleta(
-          item.product.codigo || item.product.idnum || ""
-        );
-        const regla = reglasPorCodigo.get(codigo);
+        const posiblesCodigos = [
+          item.product.codigo,
+          item.product.idnum,
+          item.product.id,
+          item.product.articulo_id,
+        ]
+          .map(normalizarCodigoRuleta)
+          .filter(Boolean);
+
+        const regla = posiblesCodigos
+          .map((codigo) => reglasPorCodigo.get(codigo))
+          .find(Boolean);
         if (!regla) return null;
+
+        const codigo = regla.codigo;
 
         const cajas = Number(item.boxes || 0);
         const unidades = Number(item.units || 0);
