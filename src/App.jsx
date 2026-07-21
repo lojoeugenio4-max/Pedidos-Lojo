@@ -1757,6 +1757,9 @@ export default function App() {
 
   const resumenBingoPedido = useMemo(() => {
     if (!clienteIdentificado?.id || !configuracionBingoCliente) return null;
+    // Si RLS no permite leer las reglas desde el navegador, no mostramos un
+    // resultado falso. La validación definitiva se hace al enviar mediante RPC.
+    if (!Array.isArray(articulosBingoCliente) || articulosBingoCliente.length === 0) return null;
 
     const variedadMinima = Math.max(
       1,
@@ -2365,84 +2368,16 @@ export default function App() {
   }
 
   async function registrarPedidoParaBingo(itemsPedido, pedidoId) {
-    // Bingo solo está disponible para clientes realmente identificados.
-    // Los clientes anónimos conservan intacto el flujo histórico de pedido + Ruleta.
+    // La función SQL es la única fuente de verdad para decidir qué artículos
+    // cuentan para Bingo. Enviamos el pedido completo y Supabase aplica allí
+    // promociones_bingo_articulos, cantidad_minima y permite_unidades.
     if (!clienteIdentificado?.id || !clienteToken || !configuracionBingoCliente) return null;
 
-    // Se vuelve a leer la configuración real justo al enviar el pedido. Así nunca
-    // se concede Bingo por un artículo que no esté asociado a la promoción activa.
-    const { data: reglas, error: reglasError } = await supabase
-      .from("promociones_bingo_articulos")
-      .select("articulo_id,codigo_articulo,cantidad_minima")
-      .eq("promocion_id", configuracionBingoCliente.id);
-
-    if (reglasError) throw reglasError;
-
-    const ids = [...new Set((reglas || []).map((regla) => regla.articulo_id).filter(Boolean))];
-    let articulosConfigurados = [];
-
-    if (ids.length > 0) {
-      const { data, error } = await supabase
-        .from("articulos")
-        .select("id,codigo,permite_unidades")
-        .in("id", ids);
-      if (error) throw error;
-      articulosConfigurados = data || [];
-    }
-
-    const articulosPorId = new Map(
-      articulosConfigurados.map((articulo) => [String(articulo.id), articulo])
-    );
-    const reglasPorCodigo = new Map();
-    (reglas || []).forEach((regla) => {
-      const articulo = articulosPorId.get(String(regla.articulo_id)) || {};
-      const codigoRegla = normalizarCodigoRuleta(
-        regla.codigo_articulo || articulo.codigo || ""
-      );
-      const articuloId = normalizarCodigoRuleta(regla.articulo_id || articulo.id || "");
-      const reglaNormalizada = {
-        codigo: codigoRegla,
-        cantidadMinima: Math.max(1, Number(regla.cantidad_minima || 1)),
-        permiteUnidades: Boolean(articulo.permite_unidades),
-      };
-      if (codigoRegla) reglasPorCodigo.set(codigoRegla, reglaNormalizada);
-      if (articuloId) reglasPorCodigo.set(articuloId, reglaNormalizada);
-    });
-
-    const items = itemsPedido
-      .map((item) => {
-        const posiblesCodigos = [
-          item.product.codigo,
-          item.product.idnum,
-          item.product.id,
-          item.product.articulo_id,
-        ]
-          .map(normalizarCodigoRuleta)
-          .filter(Boolean);
-
-        const regla = posiblesCodigos
-          .map((codigo) => reglasPorCodigo.get(codigo))
-          .find(Boolean);
-        if (!regla) return null;
-
-        const codigo = regla.codigo;
-
-        const cajas = Number(item.boxes || 0);
-        const unidades = Number(item.units || 0);
-        const cumpleCantidad = regla.permiteUnidades
-          ? cajas > 0 || unidades >= regla.cantidadMinima
-          : cajas >= regla.cantidadMinima;
-
-        if (!cumpleCantidad) return null;
-
-        return {
-          codigo,
-          cajas,
-          unidades,
-          permite_unidades: regla.permiteUnidades,
-        };
-      })
-      .filter(Boolean);
+    const items = itemsPedido.map((item) => ({
+      codigo: String(item.product.codigo || item.product.idnum || "").trim(),
+      cajas: Number(item.boxes || 0),
+      unidades: Number(item.units || 0),
+    }));
 
     const { data, error } = await supabase.rpc("registrar_pedido_bingo", {
       p_token: clienteToken,
