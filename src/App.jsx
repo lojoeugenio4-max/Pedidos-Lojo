@@ -194,6 +194,16 @@ function normalizePromoValue(value) {
   return normalizeText(value).replace(/[^a-z0-9ñ]/gi, "");
 }
 
+
+function buscarReglaBingoParaItem(item, reglas = []) {
+  const articuloIdPedido = item?.product?.id;
+  if (articuloIdPedido === null || articuloIdPedido === undefined) return null;
+
+  return reglas.find(
+    (regla) => String(regla.articuloId) === String(articuloIdPedido)
+  ) || null;
+}
+
 function productMatchesSearch(product, searchText) {
   const normalizedProduct = normalizeText(
     `${product.codigo || ""} ${product.nombre || ""} ${product.offerText || ""}`
@@ -684,7 +694,7 @@ export default function App() {
 
       const { data: reglas, error: reglasError } = await supabase
         .from("promociones_bingo_articulos")
-        .select("articulo_id,codigo_articulo,cantidad_minima")
+        .select("articulo_id,codigo_articulo,nombre_articulo,cantidad_minima")
         .eq("promocion_id", promocionId);
 
       if (!activo) return;
@@ -722,10 +732,11 @@ export default function App() {
           return {
             articuloId: regla.articulo_id,
             codigo: String(regla.codigo_articulo || articulo.codigo || "").trim(),
+            nombre: String(regla.nombre_articulo || "").trim(),
             cantidadMinima: Math.max(1, Number(regla.cantidad_minima || 1)),
             permiteUnidades: Boolean(articulo.permite_unidades),
           };
-        }).filter((regla) => regla.codigo)
+        }).filter((regla) => regla.articuloId != null)
       );
     }
 
@@ -1776,18 +1787,7 @@ export default function App() {
     const codigosValidos = new Set();
 
     orderedItems.forEach((item) => {
-      const posiblesCodigos = [
-        item.product.codigo,
-        item.product.idnum,
-        item.product.id,
-        item.product.articulo_id,
-      ]
-        .map(normalizarCodigoRuleta)
-        .filter(Boolean);
-
-      const regla = posiblesCodigos
-        .map((codigo) => reglasPorCodigo.get(codigo))
-        .find(Boolean);
+      const regla = buscarReglaBingoParaItem(item, articulosBingoCliente);
       if (!regla) return;
 
       const codigo = normalizarCodigoRuleta(regla.codigo);
@@ -2373,11 +2373,23 @@ export default function App() {
     // promociones_bingo_articulos, cantidad_minima y permite_unidades.
     if (!clienteIdentificado?.id || !clienteToken || !configuracionBingoCliente) return null;
 
-    const items = itemsPedido.map((item) => ({
-      codigo: String(item.product.codigo || item.product.idnum || "").trim(),
-      cajas: Number(item.boxes || 0),
-      unidades: Number(item.units || 0),
-    }));
+    const items = itemsPedido.map((item) => {
+      const reglaBingo = buscarReglaBingoParaItem(item, articulosBingoCliente);
+
+      return {
+        // El artículo se identifica exclusivamente por su ID.
+        // Tras encontrar la regla por ID, se envía su código canónico a Supabase.
+        codigo: String(
+          reglaBingo?.codigo ||
+          item.product.codigo ||
+          item.product.idnum ||
+          item.product.id ||
+          ""
+        ).trim(),
+        cajas: Number(item.boxes || 0),
+        unidades: Number(item.units || 0),
+      };
+    });
 
     const { data, error } = await supabase.rpc("registrar_pedido_bingo", {
       p_token: clienteToken,
