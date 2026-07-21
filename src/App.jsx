@@ -443,6 +443,7 @@ export default function App() {
   const [errorBingo, setErrorBingo] = useState("");
   const [premiosBingo, setPremiosBingo] = useState({ line: null, bingo: null, special: null });
   const [configuracionBingoCliente, setConfiguracionBingoCliente] = useState(null);
+  const [articulosBingoCliente, setArticulosBingoCliente] = useState([]);
 
   const [premiosRuleta, setPremiosRuleta] = useState([]);
   const [configuracionRuleta, setConfiguracionRuleta] = useState(null);
@@ -670,6 +671,67 @@ export default function App() {
     cargarDisponibilidadBingo();
     return () => { activo = false; };
   }, []);
+
+  useEffect(() => {
+    let activo = true;
+
+    async function cargarArticulosBingo() {
+      const promocionId = configuracionBingoCliente?.id;
+      if (!promocionId) {
+        setArticulosBingoCliente([]);
+        return;
+      }
+
+      const { data: reglas, error: reglasError } = await supabase
+        .from("promociones_bingo_articulos")
+        .select("articulo_id,codigo_articulo,cantidad_minima")
+        .eq("promocion_id", promocionId);
+
+      if (!activo) return;
+      if (reglasError) {
+        console.error("No se pudieron cargar los artículos del Bingo:", reglasError);
+        setArticulosBingoCliente([]);
+        return;
+      }
+
+      const ids = [...new Set((reglas || []).map((regla) => regla.articulo_id).filter(Boolean))];
+      let articulos = [];
+
+      if (ids.length > 0) {
+        const { data, error } = await supabase
+          .from("articulos")
+          .select("id,codigo,permite_unidades")
+          .in("id", ids);
+
+        if (!activo) return;
+        if (error) {
+          console.error("No se pudieron completar los artículos del Bingo:", error);
+          setArticulosBingoCliente([]);
+          return;
+        }
+        articulos = data || [];
+      }
+
+      const articulosPorId = new Map(
+        articulos.map((articulo) => [String(articulo.id), articulo])
+      );
+
+      setArticulosBingoCliente(
+        (reglas || []).map((regla) => {
+          const articulo = articulosPorId.get(String(regla.articulo_id)) || {};
+          return {
+            articuloId: regla.articulo_id,
+            codigo: String(regla.codigo_articulo || articulo.codigo || "").trim(),
+            cantidadMinima: Math.max(1, Number(regla.cantidad_minima || 1)),
+            permiteUnidades: Boolean(articulo.permite_unidades),
+          };
+        }).filter((regla) => regla.codigo)
+      );
+    }
+
+    cargarArticulosBingo();
+    return () => { activo = false; };
+  }, [configuracionBingoCliente?.id]);
 
   async function abrirMiBingo() {
     if (!clienteIdentificado?.id || !clienteToken || !configuracionBingoCliente) return;
@@ -1701,19 +1763,31 @@ export default function App() {
       Number(configuracionBingoCliente.variedad_minima || 1)
     );
 
-    const codigosEnCajas = new Set();
+    const reglasPorCodigo = new Map(
+      articulosBingoCliente.map((regla) => [
+        normalizarCodigoRuleta(regla.codigo),
+        regla,
+      ])
+    );
+    const codigosValidos = new Set();
 
     orderedItems.forEach((item) => {
-      if (Number(item.boxes || 0) <= 0) return;
+      const codigo = normalizarCodigoRuleta(
+        item.product.codigo || item.product.idnum || ""
+      );
+      const regla = reglasPorCodigo.get(codigo);
+      if (!regla) return;
 
-      const codigo = String(
-        item.product.codigo || item.product.idnum || item.product.id || ""
-      ).trim();
+      const cajas = Number(item.boxes || 0);
+      const unidades = Number(item.units || 0);
+      const cumpleCantidad = regla.permiteUnidades
+        ? cajas > 0 || unidades >= regla.cantidadMinima
+        : cajas >= regla.cantidadMinima;
 
-      if (codigo) codigosEnCajas.add(codigo);
+      if (cumpleCantidad) codigosValidos.add(codigo);
     });
 
-    const variedadActual = codigosEnCajas.size;
+    const variedadActual = codigosValidos.size;
 
     return {
       cumple: variedadActual >= variedadMinima,
@@ -1721,7 +1795,12 @@ export default function App() {
       variedadMinima,
       variedadRestante: Math.max(0, variedadMinima - variedadActual),
     };
-  }, [orderedItems, clienteIdentificado?.id, configuracionBingoCliente]);
+  }, [
+    orderedItems,
+    clienteIdentificado?.id,
+    configuracionBingoCliente,
+    articulosBingoCliente,
+  ]);
 
   const obtenerEstadoArticuloRuleta = (product, quantity = {}) => {
     if (!product?.participaRuleta) return null;
@@ -2278,12 +2357,69 @@ export default function App() {
     // Bingo solo está disponible para clientes realmente identificados.
     // Los clientes anónimos conservan intacto el flujo histórico de pedido + Ruleta.
     if (!clienteIdentificado?.id || !clienteToken || !configuracionBingoCliente) return null;
-    const items = itemsPedido.map((item) => ({
-      codigo: String(item.product.codigo || item.product.idnum || "").trim(),
-      cajas: Number(item.boxes || 0),
-      unidades: Number(item.units || 0),
-      permite_unidades: Boolean(item.product.permite_unidades),
-    }));
+
+    // Se vuelve a leer la configuración real justo al enviar el pedido. Así nunca
+    // se concede Bingo por un artículo que no esté asociado a la promoción activa.
+    const { data: reglas, error: reglasError } = await supabase
+      .from("promociones_bingo_articulos")
+      .select("articulo_id,codigo_articulo,cantidad_minima")
+      .eq("promocion_id", configuracionBingoCliente.id);
+
+    if (reglasError) throw reglasError;
+
+    const ids = [...new Set((reglas || []).map((regla) => regla.articulo_id).filter(Boolean))];
+    let articulosConfigurados = [];
+
+    if (ids.length > 0) {
+      const { data, error } = await supabase
+        .from("articulos")
+        .select("id,codigo,permite_unidades")
+        .in("id", ids);
+      if (error) throw error;
+      articulosConfigurados = data || [];
+    }
+
+    const articulosPorId = new Map(
+      articulosConfigurados.map((articulo) => [String(articulo.id), articulo])
+    );
+    const reglasPorCodigo = new Map(
+      (reglas || []).map((regla) => {
+        const articulo = articulosPorId.get(String(regla.articulo_id)) || {};
+        const codigo = normalizarCodigoRuleta(
+          regla.codigo_articulo || articulo.codigo || ""
+        );
+        return [codigo, {
+          cantidadMinima: Math.max(1, Number(regla.cantidad_minima || 1)),
+          permiteUnidades: Boolean(articulo.permite_unidades),
+        }];
+      }).filter(([codigo]) => codigo)
+    );
+
+    const items = itemsPedido
+      .map((item) => {
+        const codigo = normalizarCodigoRuleta(
+          item.product.codigo || item.product.idnum || ""
+        );
+        const regla = reglasPorCodigo.get(codigo);
+        if (!regla) return null;
+
+        const cajas = Number(item.boxes || 0);
+        const unidades = Number(item.units || 0);
+        const cumpleCantidad = regla.permiteUnidades
+          ? cajas > 0 || unidades >= regla.cantidadMinima
+          : cajas >= regla.cantidadMinima;
+
+        if (!cumpleCantidad) return null;
+
+        return {
+          codigo,
+          cajas,
+          unidades,
+          permite_unidades: regla.permiteUnidades,
+        };
+      })
+      .filter(Boolean);
+
     const { data, error } = await supabase.rpc("registrar_pedido_bingo", {
       p_token: clienteToken,
       p_order_id: pedidoId,
@@ -3263,7 +3399,7 @@ export default function App() {
               >
                 <div style={styles.ruletaSummaryTitle}>Promoción Bingo</div>
                 <div style={styles.ruletaSummaryText}>
-                  Llevas {resumenBingoPedido.variedadActual} {resumenBingoPedido.variedadActual === 1 ? "artículo distinto pedido" : "artículos distintos pedidos"} en cajas.
+                  Llevas {resumenBingoPedido.variedadActual} {resumenBingoPedido.variedadActual === 1 ? "artículo válido" : "artículos válidos"} para Bingo.
                 </div>
                 {resumenBingoPedido.cumple ? (
                   <div style={styles.bingoSummaryMessage}>
@@ -3275,7 +3411,7 @@ export default function App() {
                   </div>
                 )}
                 <div style={styles.bingoSummaryNote}>
-                  Las unidades no cuentan para Bingo.
+                  Solo cuentan los artículos y cantidades configurados en la promoción.
                 </div>
               </div>
             )}
