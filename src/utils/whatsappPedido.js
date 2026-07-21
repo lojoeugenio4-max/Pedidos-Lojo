@@ -1,3 +1,14 @@
+function normalizarRespuestaJuego(raw) {
+  let value = Array.isArray(raw) ? raw[0] : raw;
+  const claves = ["result", "resultado", "data", "bingo_result", "order_result", "entitlement"];
+  for (let i = 0; i < 4 && value && typeof value === "object"; i += 1) {
+    const key = claves.find((candidate) => value[candidate] && typeof value[candidate] === "object");
+    if (!key) break;
+    value = Array.isArray(value[key]) ? value[key][0] : value[key];
+  }
+  return value;
+}
+
 function construirUrlQr(codigoParticipacion) {
   if (!codigoParticipacion) return "";
 
@@ -86,16 +97,23 @@ export function construirTextoPedidoWhatsApp({
     lines.push("");
   }
 
+  const participacionJuegosNormalizada = normalizarRespuestaJuego(participacionJuegos);
+  const participacionBingoNormalizada = normalizarRespuestaJuego(participacionBingo);
+
   const codigoJuegos =
-    participacionJuegos?.code ||
-    participacionJuegos?.codigo ||
+    participacionJuegosNormalizada?.code ||
+    participacionJuegosNormalizada?.codigo ||
     codigoParticipacion ||
     participacionRuleta?.code ||
     participacionRuleta?.codigo ||
     null;
 
   const bingoConseguido = Boolean(
-    participacionBingo?.qualified ?? participacionBingo?.clasificado ?? participacionBingo?.eligible
+    participacionBingoNormalizada?.qualified ??
+      participacionBingoNormalizada?.clasificado ??
+      participacionBingoNormalizada?.eligible ??
+      participacionBingoNormalizada?.cumple ??
+      participacionBingoNormalizada?.bingo_eligible
   );
 
   if (codigoJuegos) {
