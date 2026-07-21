@@ -1,13 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 
-const promocionInicial = {
-  nombre: "Promoción bingo principal",
-  activa: true,
-  variedad_minima: 15,
-  mensaje_cliente: "Tu pedido puede conseguir un cartón de Bingo.",
-};
-
 function normalizar(texto) {
   return String(texto || "")
     .toLowerCase()
@@ -41,7 +34,7 @@ export default function BingoArticulos() {
     cargarDatos();
   }, []);
 
-  async function obtenerOCrearPromocion() {
+  async function obtenerPromocion() {
     const { data, error } = await supabase
       .from("promociones_bingo")
       .select("*")
@@ -51,17 +44,13 @@ export default function BingoArticulos() {
 
     if (error) throw error;
 
-    if (data) return data;
+    if (!data) {
+      throw new Error(
+        "No existe una configuración de Bingo. Guarda primero la configuración del Bingo."
+      );
+    }
 
-    const { data: nueva, error: crearError } = await supabase
-      .from("promociones_bingo")
-      .insert(promocionInicial)
-      .select("*")
-      .single();
-
-    if (crearError) throw crearError;
-
-    return nueva;
+    return data;
   }
 
   async function cargarDatos() {
@@ -70,7 +59,7 @@ export default function BingoArticulos() {
     setMensaje("");
 
     try {
-      const promocionData = await obtenerOCrearPromocion();
+      const promocionData = await obtenerPromocion();
       setPromocion(promocionData);
 
       const { data: departamentosData, error: departamentosError } = await supabase
