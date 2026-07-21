@@ -124,37 +124,38 @@ function playSirena() {
 }
 
 function normalizarCodigo(value) {
-  let raw = String(value || "").trim();
-  if (!raw) return "";
-
-  // El QR contiene una URL (?store=1&code=XXXX). Los lectores físicos suelen
-  // escribir la URL completa como si fueran un teclado, por lo que debemos
-  // extraer el parámetro code antes de consultar Supabase.
-  try {
-    const decoded = decodeURIComponent(raw);
-    const urlCandidate = /^https?:\/\//i.test(decoded)
-      ? decoded
-      : /^www\./i.test(decoded)
-        ? `https://${decoded}`
-        : null;
-
-    if (urlCandidate) {
-      const codeFromUrl = new URL(urlCandidate).searchParams.get("code");
-      if (codeFromUrl) raw = codeFromUrl;
-    } else if (raw.includes("code=")) {
-      const query = raw.includes("?") ? raw.split("?").slice(1).join("?") : raw;
-      const codeFromQuery = new URLSearchParams(query).get("code");
-      if (codeFromQuery) raw = codeFromQuery;
-    }
-  } catch (error) {
-    console.warn("No se pudo interpretar el contenido del QR; se usará como código manual.", error);
-  }
-
-  return raw
+  return String(value || "")
     .trim()
     .toUpperCase()
     .replace(/[’‘`´']/g, "-")
     .replace(/\s+/g, "");
+}
+
+// Los lectores físicos pueden entregar el código puro o la URL completa
+// contenida en el QR. Esta función mantiene ambos formatos compatibles,
+// incluidos todos los QR históricos todavía pendientes de utilizar.
+function extraerCodigoQr(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const candidatos = [raw];
+  try {
+    const decodificado = decodeURIComponent(raw);
+    if (decodificado !== raw) candidatos.push(decodificado);
+  } catch {}
+
+  for (const candidato of candidatos) {
+    try {
+      const url = new URL(candidato, window.location.origin);
+      const codigoUrl =
+        url.searchParams.get("code") ||
+        url.searchParams.get("codigo") ||
+        url.searchParams.get("qr");
+      if (codigoUrl) return normalizarCodigo(codigoUrl);
+    } catch {}
+  }
+
+  return normalizarCodigo(raw);
 }
 
 function getPrizeImageUrl(premio) {
@@ -350,7 +351,7 @@ export default function StorePage() {
   }, [codigo, entitlement?.code, entitlement?.roulette_available]);
 
   useEffect(() => {
-    const codeFromUrl = normalizarCodigo(
+    const codeFromUrl = extraerCodigoQr(
       new URLSearchParams(window.location.search).get("code")
     );
     if (!codeFromUrl || autoValidatedCodeRef.current === codeFromUrl) return;
@@ -360,7 +361,7 @@ export default function StorePage() {
   }, []);
 
   async function validarCodigo(codeFromScanner = codigo) {
-    const code = normalizarCodigo(codeFromScanner);
+    const code = extraerCodigoQr(codeFromScanner);
 
     if (!code) {
       setMensaje("Introduce o escanea un código.");
