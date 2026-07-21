@@ -2335,10 +2335,9 @@ export default function App() {
       : null;
 
     let participacionJuegos = null;
-    // El QR común debe crearse para cualquier pedido que consiga Ruleta o Bingo,
-    // también cuando el cliente no está identificado. Para clientes anónimos,
-    // customer_token se envía como null, pero el order_id y la participación
-    // de Ruleta permiten validar y consumir el QR desde la pantalla de caja.
+    // El QR común debe crearse para cualquier pedido que consiga Ruleta o Bingo.
+    // No puede depender de que el cliente esté identificado: los pedidos anónimos
+    // también necesitan su fila en game_entitlements para que el lector los valide.
     if (
       participacionRuleta ||
       participacionBingo?.qualified ||
