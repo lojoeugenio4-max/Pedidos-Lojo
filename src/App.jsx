@@ -4165,10 +4165,10 @@ const styles = {
   },
 
   ruletaPromoBadge: {
-    width: "116px",
+    width: "132px",
     height: "auto",
-    minWidth: "116px",
-    maxWidth: "116px",
+    minWidth: "132px",
+    maxWidth: "132px",
     boxSizing: "border-box",
     display: "flex",
     flexDirection: "column",
@@ -4199,6 +4199,8 @@ const styles = {
   ruletaPromoMinimo: {
     display: "block",
     width: "100%",
+    boxSizing: "border-box",
+    padding: "0 2px",
     fontSize: "14px",
     lineHeight: "15px",
     fontWeight: "1000",
@@ -4206,6 +4208,8 @@ const styles = {
     textAlign: "center",
     whiteSpace: "nowrap",
     overflow: "visible",
+    textOverflow: "clip",
+    letterSpacing: "-0.2px",
   },
 
   productName: {
