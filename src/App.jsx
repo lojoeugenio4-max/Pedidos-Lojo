@@ -2186,6 +2186,30 @@ export default function App() {
     };
   }
 
+  function normalizarResultadoRpc(data, clavesAnidadas = []) {
+    const respuesta = Array.isArray(data) ? data[0] : data;
+    if (!respuesta || typeof respuesta !== "object") return respuesta;
+
+    for (const clave of clavesAnidadas) {
+      const valor = respuesta?.[clave];
+      if (valor && typeof valor === "object") {
+        return { ...respuesta, ...valor };
+      }
+    }
+
+    return respuesta;
+  }
+
+  function bingoConseguidoEnResultado(resultado) {
+    return Boolean(
+      resultado?.qualified ??
+        resultado?.clasificado ??
+        resultado?.eligible ??
+        resultado?.cumple ??
+        resultado?.bingo_eligible
+    );
+  }
+
   async function crearParticipacionJuegos({
     pedidoId,
     customerNamePedido,
@@ -2193,11 +2217,7 @@ export default function App() {
     tiradasRuleta = 0,
     participacionBingo = null,
   }) {
-    const bingoConseguido = Boolean(
-      participacionBingo?.qualified ??
-        participacionBingo?.clasificado ??
-        participacionBingo?.eligible
-    );
+    const bingoConseguido = bingoConseguidoEnResultado(participacionBingo);
     const ruletaConseguida = Boolean(participacionRuleta);
 
     if (!ruletaConseguida && !bingoConseguido) return null;
@@ -2223,7 +2243,24 @@ export default function App() {
     );
 
     if (error) throw error;
-    return Array.isArray(data) ? data[0] : data;
+
+    const resultado = normalizarResultadoRpc(data, [
+      "entitlement",
+      "game_entitlement",
+      "result",
+      "data",
+    ]);
+
+    if (resultado?.ok === false) {
+      throw new Error(resultado?.message || "Supabase rechazó la creación del QR común.");
+    }
+
+    const codigo = resultado?.code || resultado?.codigo || null;
+    if (!codigo) {
+      throw new Error("La participación común se creó sin código QR.");
+    }
+
+    return resultado;
   }
 
   async function registrarPedidoParaBingo(itemsPedido, pedidoId) {
@@ -2237,12 +2274,28 @@ export default function App() {
       permite_unidades: Boolean(item.product.permite_unidades),
     }));
     const { data, error } = await supabase.rpc("registrar_pedido_bingo", {
-      p_token: clienteToken, p_order_id: pedidoId, p_items: items,
+      p_token: clienteToken,
+      p_order_id: pedidoId,
+      p_items: items,
     });
-    if (error) { console.warn("No se pudo registrar el pedido para Bingo:", error); return null; }
-    const result = Array.isArray(data) ? data[0] : data;
 
-    if (result?.qualified) { setCartonBingo(null); }
+    if (error) {
+      console.error("No se pudo registrar el pedido para Bingo:", error);
+      throw error;
+    }
+
+    const result = normalizarResultadoRpc(data, [
+      "bingo_result",
+      "order_result",
+      "result",
+      "data",
+    ]);
+
+    if (result?.ok === false) {
+      throw new Error(result?.message || "Supabase rechazó el pedido para Bingo.");
+    }
+
+    if (bingoConseguidoEnResultado(result)) setCartonBingo(null);
     return result;
   }
 
@@ -2330,9 +2383,28 @@ export default function App() {
       }
     }
 
-    const participacionBingo = clienteIdentificado?.id
-      ? await registrarPedidoParaBingo(itemsPedido, pedidoId)
-      : null;
+    let participacionBingo = null;
+    if (clienteIdentificado?.id) {
+      try {
+        participacionBingo = await registrarPedidoParaBingo(itemsPedido, pedidoId);
+      } catch (error) {
+        const detalleErrorBingo = [
+          error?.code ? `Código: ${error.code}` : null,
+          error?.message ? `Mensaje: ${error.message}` : null,
+          error?.details ? `Detalle: ${error.details}` : null,
+          error?.hint ? `Sugerencia: ${error.hint}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        alert(
+          `El pedido no se enviará porque no se pudo registrar el Bingo.${
+            detalleErrorBingo ? `\n\n${detalleErrorBingo}` : " Inténtalo de nuevo."
+          }`
+        );
+        return;
+      }
+    }
 
     let participacionJuegos = null;
     // El QR común debe crearse para cualquier pedido que consiga Ruleta o Bingo.
@@ -2340,9 +2412,7 @@ export default function App() {
     // también necesitan su fila en game_entitlements para que el lector los valide.
     if (
       participacionRuleta ||
-      participacionBingo?.qualified ||
-      participacionBingo?.clasificado ||
-      participacionBingo?.eligible
+      bingoConseguidoEnResultado(participacionBingo)
     ) {
       try {
         participacionJuegos = await crearParticipacionJuegos({
