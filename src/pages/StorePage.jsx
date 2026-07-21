@@ -377,8 +377,10 @@ export default function StorePage() {
     setPremios([]);
     setPremioFinal(null);
 
-    // Los QR maestros se comprueban exclusivamente en PRODUCCIÓN.
-    // La migración ya está finalizada y el lector no debe consultar BETA.
+    // PRIORIDAD ABSOLUTA A LOS QR MAESTROS HISTÓRICOS.
+    // Se consultan antes del QR común para que sigan operativos aunque
+    // game_entitlements o validate_game_qr estén sin configurar o fallen.
+    const masterClient = supabase;
     const { data: masterEntry, error: masterError } = await supabase
       .from("promotion_participations")
       .select("*")
@@ -391,7 +393,7 @@ export default function StorePage() {
     }
 
     if (masterEntry) {
-      const { data: premiosMaster, error: premiosMasterError } = await supabase
+      const { data: premiosMaster, error: premiosMasterError } = await masterClient
         .from("promociones_ruleta_premios")
         .select("*")
         .eq("promocion_id", masterEntry.promotion_id)
