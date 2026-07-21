@@ -1777,20 +1777,13 @@ export default function App() {
       Number(configuracionBingoCliente.variedad_minima || 1)
     );
 
-    const reglasPorCodigo = new Map();
-    articulosBingoCliente.forEach((regla) => {
-      const codigoRegla = normalizarCodigoRuleta(regla.codigo);
-      const articuloId = normalizarCodigoRuleta(regla.articuloId);
-      if (codigoRegla) reglasPorCodigo.set(codigoRegla, regla);
-      if (articuloId) reglasPorCodigo.set(articuloId, regla);
-    });
-    const codigosValidos = new Set();
+    const articulosValidos = new Set();
 
     orderedItems.forEach((item) => {
       const regla = buscarReglaBingoParaItem(item, articulosBingoCliente);
       if (!regla) return;
 
-      const codigo = normalizarCodigoRuleta(regla.codigo);
+      const articuloId = String(regla.articuloId);
 
       const cajas = Number(item.boxes || 0);
       const unidades = Number(item.units || 0);
@@ -1798,10 +1791,10 @@ export default function App() {
         ? cajas > 0 || unidades >= regla.cantidadMinima
         : cajas >= regla.cantidadMinima;
 
-      if (cumpleCantidad) codigosValidos.add(codigo);
+      if (cumpleCantidad) articulosValidos.add(articuloId);
     });
 
-    const variedadActual = codigosValidos.size;
+    const variedadActual = articulosValidos.size;
 
     return {
       cumple: variedadActual >= variedadMinima,
@@ -2377,15 +2370,8 @@ export default function App() {
       const reglaBingo = buscarReglaBingoParaItem(item, articulosBingoCliente);
 
       return {
-        // El artículo se identifica exclusivamente por su ID.
-        // Tras encontrar la regla por ID, se envía su código canónico a Supabase.
-        codigo: String(
-          reglaBingo?.codigo ||
-          item.product.codigo ||
-          item.product.idnum ||
-          item.product.id ||
-          ""
-        ).trim(),
+        // Bingo identifica el artículo exclusivamente por articulos.id.
+        articulo_id: item?.product?.id ?? null,
         cajas: Number(item.boxes || 0),
         unidades: Number(item.units || 0),
       };
