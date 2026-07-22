@@ -1977,6 +1977,23 @@ export default function App() {
     };
   };
 
+  // Igual que obtenerEstadoArticuloRuleta, pero para Bingo. Bingo es
+  // exclusivo de clientes identificados, así que sin cliente identificado
+  // no se calcula nada (ni se insinúa que el artículo participa).
+  const obtenerEstadoArticuloBingo = (product, quantity = {}) => {
+    if (!product?.participaBingo || !clienteIdentificado) return null;
+
+    const minimo = Math.max(1, Number(product.cantidadMinimaBingo || 1));
+    const cajas = Number(quantity.boxes || 0);
+    const unidades = Number(quantity.units || 0);
+
+    const completo = product.permite_unidades
+      ? cajas > 0 || unidades >= minimo
+      : cajas >= minimo;
+
+    return { completo };
+  };
+
   const activarCampoCantidad = (productId, field) => {
     // Solo marca el artículo y el campo activo. No cambia el departamento,
     // no busca el artículo y no modifica el scroll.
@@ -3405,21 +3422,31 @@ export default function App() {
 
                         </div>
 
-                        {product.participaRuleta && (() => {
-                          const estadoRuleta = obtenerEstadoArticuloRuleta(
-                            product,
-                            quantity
-                          );
+                        {(() => {
+                          const estadoRuleta = product.participaRuleta
+                            ? obtenerEstadoArticuloRuleta(product, quantity)
+                            : null;
+                          const estadoBingo = obtenerEstadoArticuloBingo(product, quantity);
 
-                          // Solo se muestra la confirmación de que YA cuenta
-                          // para la Ruleta. El aviso de "te faltan X" se ha
-                          // quitado: el badge con el mínimo, junto al nombre
-                          // del artículo, ya deja claro cuánto hace falta.
-                          if (!estadoRuleta?.completo) return null;
+                          const rouletteOk = Boolean(estadoRuleta?.completo);
+                          const bingoOk = Boolean(estadoBingo?.completo);
+
+                          // Solo se muestra la confirmación de que YA cuenta.
+                          // El aviso de "te faltan X" se ha quitado: el badge
+                          // con el mínimo, junto al nombre del artículo, ya
+                          // deja claro cuánto hace falta.
+                          if (!rouletteOk && !bingoOk) return null;
+
+                          const texto =
+                            rouletteOk && bingoOk
+                              ? "✓ Este artículo ya cuenta para Ruleta y Bingo"
+                              : rouletteOk
+                              ? "✓ Este artículo ya cuenta para la Ruleta"
+                              : "✓ Este artículo ya cuenta para el Bingo";
 
                           return (
                             <div style={styles.ruletaProductStatusOk}>
-                              {estadoRuleta.texto}
+                              {texto}
                             </div>
                           );
                         })()}
