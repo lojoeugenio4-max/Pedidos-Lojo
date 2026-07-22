@@ -18,8 +18,19 @@ function construirUrlQr(codigoParticipacion) {
   urlParticipacion.searchParams.set("code", codigoParticipacion);
 
   const params = new URLSearchParams({
-    size: "360",
-    margin: "2",
+    size: "400",
+    // Un margen de 2 módulos es más "bonito" pero no deja suficiente zona
+    // de silencio alrededor del QR. La mayoría de lectores físicos de caja
+    // (láser/CCD) son mucho más estrictos que la cámara de un móvil y
+    // necesitan el margen mínimo estándar de 4 módulos para reconocer el
+    // código; con margin=2 el QR se veía bien pero muchos escáneres no
+    // lograban decodificarlo. Con la app se podía leer manualmente el
+    // código porque no depende de escanear la imagen.
+    margin: "4",
+    // Nivel de corrección de errores más alto para que el QR siga siendo
+    // legible aunque la pantalla del móvil tenga brillo bajo, esté algo
+    // borroso o el escáner capture el código en un ángulo poco favorable.
+    ecLevel: "M",
     text: urlParticipacion.toString(),
   });
 
