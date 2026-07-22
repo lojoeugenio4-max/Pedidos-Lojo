@@ -2001,23 +2001,25 @@ export default function App() {
     setCampoCantidadActivo(`${productId}:${field}`);
   };
 
-  const alinearArticuloActivo = (input, offsetCabecera) => {
+  const alinearArticuloActivo = (input) => {
     if (!input || document.activeElement !== input) return;
 
     const article = input.closest("article");
+    const departmentSection = article?.closest("section");
+    const departmentTitle = departmentSection?.querySelector("h2");
+    const topArea = document.querySelector("[data-top-area='true']");
+
     if (!article) return;
 
     const articleRect = article.getBoundingClientRect();
-    const alturaVisible = window.visualViewport?.height || window.innerHeight;
+    const topAreaRect = topArea?.getBoundingClientRect();
+    const titleHeight = departmentTitle?.getBoundingClientRect().height || 0;
 
     // La tarjeta queda en la misma zona visual que el primer artículo de un
     // departamento: justo debajo de la cabecera y del título, nunca oculta.
-    // offsetCabecera se calcula ANTES de que aparezca el teclado (ver
-    // prepararCampoCantidad) porque, en iOS, medir un elemento "sticky"
-    // con el teclado ya abierto no es fiable.
     const desiredArticleTop = Math.max(
       12,
-      Math.min(alturaVisible * 0.28, offsetCabecera ?? 0)
+      Math.min(window.innerHeight * 0.28, (topAreaRect?.bottom || 0) + titleHeight + 10)
     );
 
     const delta = articleRect.top - desiredArticleTop;
@@ -2052,25 +2054,11 @@ export default function App() {
     // la primera vez que se activa el campo.
     if (yaEstabaActivo) return;
 
-    // Medimos la cabecera AHORA, con el teclado todavía cerrado: en iOS,
-    // medir un elemento "sticky" con el teclado ya abierto no es fiable
-    // (el viewport de diseño no encoge igual que el visual) y eso era lo
-    // que disparaba la tarjeta hacia arriba. El resultado se reutiliza
-    // más abajo, cuando el teclado ya esté abierto.
-    const article = input.closest("article");
-    const departmentSection = article?.closest("section");
-    const departmentTitle = departmentSection?.querySelector("h2");
-    const topArea = document.querySelector("[data-top-area='true']");
-    const offsetCabecera =
-      (topArea?.getBoundingClientRect().bottom || 0) +
-      (departmentTitle?.getBoundingClientRect().height || 0) +
-      10;
-
     let adjusted = false;
     const ajustarUnaVez = () => {
       if (adjusted || document.activeElement !== input) return;
       adjusted = true;
-      requestAnimationFrame(() => alinearArticuloActivo(input, offsetCabecera));
+      requestAnimationFrame(() => alinearArticuloActivo(input));
     };
 
     // En iOS/Android la altura visible cambia cuando aparece el teclado.
