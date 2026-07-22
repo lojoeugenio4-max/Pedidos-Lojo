@@ -1450,7 +1450,7 @@ export default function App() {
   const idsArticulosBingo = useMemo(() => {
     return new Set(
       articulosBingoCliente
-        .map((item) => normalizePromoValue(item.articulo_id))
+        .map((item) => normalizePromoValue(item.articuloId))
         .filter(Boolean)
     );
   }, [articulosBingoCliente]);
@@ -1458,8 +1458,8 @@ export default function App() {
   const cantidadesMinimasBingoPorArticulo = useMemo(() => {
     const porId = new Map();
     articulosBingoCliente.forEach((item) => {
-      const claveId = normalizePromoValue(item.articulo_id);
-      if (claveId) porId.set(claveId, Math.max(1, Number(item.cantidad_minima || 1)));
+      const claveId = normalizePromoValue(item.articuloId);
+      if (claveId) porId.set(claveId, Math.max(1, Number(item.cantidadMinima || 1)));
     });
     return porId;
   }, [articulosBingoCliente]);
