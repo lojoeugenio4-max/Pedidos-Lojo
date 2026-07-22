@@ -1551,6 +1551,19 @@ export default function App() {
     [productosVisibles]
   );
 
+  // El departamento de Bingo, igual que el de Ruleta, es exclusivo de
+  // clientes identificados (entran con su enlace personal): un visitante
+  // anónimo no debe ni verlo en el desplegable de departamentos.
+  const productosBingo = useMemo(
+    () =>
+      clienteIdentificado
+        ? ordenarProductos(
+            productosVisibles.filter((product) => product.participaBingo)
+          )
+        : [],
+    [productosVisibles, clienteIdentificado]
+  );
+
   const departamentosCatalogo = useMemo(() => {
     const grupos = [];
 
@@ -1575,6 +1588,13 @@ export default function App() {
       });
     }
 
+    if (productosBingo.length > 0) {
+      grupos.push({
+        name: "BINGO",
+        products: ordenarProductos(productosBingo),
+      });
+    }
+
     departamentos.forEach((departamento) => {
       const nombreDepartamento = String(departamento.nombre || "").trim();
 
@@ -1583,6 +1603,7 @@ export default function App() {
         nombreDepartamento === "NOVEDAD" ||
         nombreDepartamento === "OFERTAS" ||
         nombreDepartamento === "RULETA" ||
+        nombreDepartamento === "BINGO" ||
         nombreDepartamento === "TODOS" ||
         nombreDepartamento === "ARTÍCULOS BUSCADOS"
       ) {
@@ -1610,6 +1631,7 @@ export default function App() {
     productosConOferta,
     productosNovedad,
     productosRuleta,
+    productosBingo,
     soloFavoritos,
     clienteIdentificado,
     favoritos,
@@ -1658,7 +1680,7 @@ export default function App() {
         .filter(
           (nombre) =>
             nombre &&
-            !["NOVEDAD", "OFERTAS", "RULETA", "TODOS", "ARTÍCULOS BUSCADOS"].includes(
+            !["NOVEDAD", "OFERTAS", "RULETA", "BINGO", "TODOS", "ARTÍCULOS BUSCADOS"].includes(
               nombre
             )
         );
@@ -1714,6 +1736,8 @@ export default function App() {
         selectedProducts = productosConOferta;
       } else if (selectedDepartment === "RULETA") {
         selectedProducts = productosRuleta;
+      } else if (selectedDepartment === "BINGO") {
+        selectedProducts = productosBingo;
       } else {
         selectedProducts = productosVisibles.filter(
           (product) => product.department === selectedDepartment
@@ -1764,6 +1788,7 @@ export default function App() {
     productosNovedad,
     productosConOferta,
     productosRuleta,
+    productosBingo,
   ]);
 
   useEffect(() => {
@@ -3065,7 +3090,12 @@ export default function App() {
                       setSelectedDepartment(option.name);
                       setDepartmentDropdownOpen(false);
                     }}
-                    style={styles.departmentOption}
+                    style={{
+                      ...styles.departmentOption,
+                      ...(["RULETA", "BINGO"].includes(option.name)
+                        ? styles.departmentOptionPromo
+                        : {}),
+                    }}
                   >
                     <span>{option.label}</span>
                     <span style={styles.departmentCount}>{option.count}</span>
@@ -3130,7 +3160,14 @@ export default function App() {
           filteredDepartments.map((department) => (
             <section key={department.name} style={styles.departmentSection}>
               {!(soloFavoritos && clienteIdentificado) && (
-                <h2 style={styles.departmentTitle}>
+                <h2
+                  style={{
+                    ...styles.departmentTitle,
+                    ...(["RULETA", "BINGO"].includes(department.name)
+                      ? styles.departmentTitlePromo
+                      : {}),
+                  }}
+                >
                   {getDepartmentLabel(department.name, language)}
                   <span style={styles.departmentTitleCount}>
                     {department.products.length} {t.articles}
@@ -4148,6 +4185,10 @@ const styles = {
     textAlign: "left",
   },
 
+  departmentOptionPromo: {
+    color: "#dc2626",
+  },
+
   departmentCount: {
     color: "#64748b",
     fontWeight: "900",
@@ -4187,6 +4228,11 @@ const styles = {
     justifyContent: "space-between",
     margin: "0 0 5px",
     fontSize: "14px",
+  },
+
+  departmentTitlePromo: {
+    color: "#dc2626",
+    fontWeight: "900",
   },
 
   departmentTitleCount: {
