@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { CheckCircle, RotateCcw, Search, XCircle } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import StoreWheel from "../components/StoreWheel";
+import StoreBingoDrum from "../components/StoreBingoDrum";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
 const BINGO_CONTROL_CHANNEL = "lojo-bingo-control";
 const SPIN_DURATION_MS = 9200;
+const BINGO_SPIN_DURATION_MS = 4200;
 
 const PRODUCTOS_PUBLIC_URL =
   "https://bohlxagrtpjvqrgkonlo.supabase.co/storage/v1/object/public/productos";
@@ -536,22 +538,89 @@ export default function StorePage() {
     enviarEventoDisplay("ready", { entrada: data, premios: premiosData });
   }
 
-  async function consumirBingo() {
-    if (!entitlement?.id || procesandoBingo) return;
+  function consumirBingo() {
+    if (!entitlement?.id) return;
+
+    setBolaBingo(null);
+    setMensaje("");
+    setEstado("bingo-waiting");
+
+    // Igual que la Ruleta: no se abre ninguna ventana nueva. La pantalla del
+    // Televisor ya está abierta de forma permanente (lojo-ruleta-display) y
+    // reacciona sola a este aviso, igual que ya hace con la ruleta.
+    enviarEventoDisplay("bingo-waiting", { entrada: entitlement });
+  }
+
+  async function girarBombo() {
+    if (!entitlement?.id || bomboGirando) return;
 
     const qrCode = normalizarCodigo(entitlement.code || codigo);
-    const displayUrl = `${window.location.origin}/?bingoDisplay=1&code=${encodeURIComponent(qrCode)}`;
-    const displayWindow = window.open(displayUrl, "lojo-bingo-display");
 
-    if (!displayWindow) {
-      setMensaje("El navegador ha bloqueado la pantalla oficial del Bingo. Permite ventanas emergentes y vuelve a intentarlo.");
+    setMensaje("");
+    setBomboGirando(true);
+    enviarEventoDisplay("bingo-spin", { entrada: entitlement });
+
+    try {
+      const { data: raw, error: reserveError } = await supabase.rpc(
+        "reserve_game_bingo_ball_by_code",
+        { p_code: qrCode }
+      );
+      const reservation = Array.isArray(raw) ? raw[0] : raw;
+
+      if (reserveError || !reservation?.ok) {
+        throw new Error(
+          reservation?.message || reserveError?.message || "No se pudo reservar la bola."
+        );
+      }
+
+      const ballNumber = Number(reservation.ball_number);
+      const reservationToken = String(reservation.reservation_token || "");
+
+      if (!Number.isInteger(ballNumber) || ballNumber < 1 || !reservationToken) {
+        throw new Error("Supabase no devolvió una reserva válida.");
+      }
+
+      window.setTimeout(async () => {
+        try {
+          const { data: finalRaw, error: finalizeError } = await supabase.rpc(
+            "finalize_game_bingo_ball_by_code",
+            { p_code: qrCode, p_reservation_token: reservationToken }
+          );
+          const result = Array.isArray(finalRaw) ? finalRaw[0] : finalRaw;
+
+          if (finalizeError || !result?.ok) {
+            throw new Error(
+              result?.message || finalizeError?.message || "No se pudo publicar la bola."
+            );
+          }
+
+          setBomboGirando(false);
+          setBolaBingo(ballNumber);
+          setEntitlement((current) =>
+            current
+              ? {
+                  ...current,
+                  bingo_available: false,
+                  bingo_remaining: Number(result.bingo_remaining || 0),
+                }
+              : current
+          );
+          setEstado(entitlement?.roulette_available ? "bingo-result-with-roulette" : "bingo-result");
+
+          enviarEventoDisplay("bingo-result", { entrada: entitlement, numero: ballNumber });
+        } catch (finalizeFailure) {
+          setBomboGirando(false);
+          setMensaje(finalizeFailure?.message || "No se pudo publicar la bola.");
+          setEstado("error");
+          enviarEventoDisplay("waiting");
+        }
+      }, BINGO_SPIN_DURATION_MS);
+    } catch (drawFailure) {
+      setBomboGirando(false);
+      setMensaje(drawFailure?.message || "No se pudo iniciar la extracción.");
       setEstado("error");
-      return;
+      enviarEventoDisplay("waiting");
     }
-
-    setProcesandoBingo(true);
-    setMensaje("Bombo oficial preparado. Pulsa GIRAR BOMBO en la pantalla de Bingo.");
-    setEstado("bingo-waiting");
   }
 
   async function girar() {
@@ -844,8 +913,17 @@ export default function StorePage() {
 
           {estado === "bingo-waiting" && (
             <div style={styles.bingoResultBox}>
-              <h3 style={{ margin: 0 }}>BOMBO OFICIAL EN ESPERA</h3>
-              <p style={styles.info}>Pulsa <strong>GIRAR BOMBO</strong> en la pantalla oficial. La bola no se extraerá hasta ese momento.</p>
+              <h3 style={{ margin: 0 }}>BOMBO OFICIAL</h3>
+              <StoreBingoDrum
+                girando={bomboGirando}
+                numeroFinal={bolaBingo}
+                onGirar={girarBombo}
+                mensaje={
+                  bomboGirando
+                    ? "Extrayendo la bola…"
+                    : "Pulsa GIRAR BOMBO para extraer la bola. También se verá en la pantalla grande."
+                }
+              />
             </div>
           )}
 
