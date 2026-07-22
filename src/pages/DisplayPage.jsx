@@ -137,11 +137,68 @@ export default function DisplayPage() {
   const [girando, setGirando] = useState(false);
   const [bingoNumbers, setBingoNumbers] = useState([]);
   const [bingoTrigger, setBingoTrigger] = useState(null);
+  const [premiosBingoTV, setPremiosBingoTV] = useState([]);
 
   useEffect(() => {
     cargarPremios();
     return escucharEventos();
   }, []);
+
+  useEffect(() => {
+    if (estado.startsWith("bingo")) cargarPremiosBingoTV();
+  }, [estado]);
+
+  async function cargarPremiosBingoTV() {
+    const hoy = new Date().toISOString().slice(0, 10);
+    const { data: promo, error: promoError } = await supabase
+      .from("promociones_bingo")
+      .select("*")
+      .eq("activa", true)
+      .or(`fecha_inicio.is.null,fecha_inicio.lte.${hoy}`)
+      .or(`fecha_fin.is.null,fecha_fin.gte.${hoy}`)
+      .order("updated_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (promoError || !promo) {
+      setPremiosBingoTV([]);
+      return;
+    }
+
+    const prizeIds = [
+      promo.premio_linea_articulo_id,
+      promo.premio_linea_especial_articulo_id,
+      promo.premio_bingo_articulo_id,
+      promo.premio_especial_articulo_id,
+    ].filter(Boolean);
+
+    let articulosPorId = new Map();
+    if (prizeIds.length) {
+      const { data: articulos } = await supabase
+        .from("articulos")
+        .select("id,nombre,foto")
+        .in("id", prizeIds);
+      articulosPorId = new Map((articulos || []).map((a) => [String(a.id), a]));
+    }
+
+    const construir = (tipo, label, special = false) => {
+      const articulo = articulosPorId.get(String(promo[`premio_${tipo}_articulo_id`] || ""));
+      return {
+        active: Boolean(promo[`premio_${tipo}_activo`]),
+        name: promo[`premio_${tipo}_nombre`] || articulo?.nombre || "",
+        image: getPrizeImageUrl(articulo),
+        label,
+        special,
+      };
+    };
+
+    setPremiosBingoTV([
+      construir("linea", "Premio por línea"),
+      construir("linea_especial", `Línea en ${promo.premio_linea_especial_max_bolas || 0} bolas`, true),
+      construir("bingo", "Premio por Bingo"),
+      construir("especial", `Bingo en ${promo.premio_especial_max_bolas || 0} bolas`, true),
+    ]);
+  }
 
   async function cargarPremios() {
     const hoy = new Date().toISOString().slice(0, 10);
@@ -307,6 +364,7 @@ export default function DisplayPage() {
         numbers={bingoNumbers}
         pendingTrigger={bingoTrigger}
         mostrarControles={false}
+        premios={premiosBingoTV}
       />
     );
   }
