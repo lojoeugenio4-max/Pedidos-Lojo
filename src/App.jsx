@@ -1089,6 +1089,16 @@ export default function App() {
 
   useEffect(() => {
     const handleScroll = () => {
+      // No cambiamos el tamaño de la cabecera mientras se está editando una
+      // cantidad. Antes, si el campo activo era el del primer artículo,
+      // el propio scroll que el teléfono hace para enseñar ese campo por
+      // encima del teclado ya cruzaba estos 90px: la cabecera se encogía
+      // de golpe en ese instante, cambiaba de tamaño, y ese cambio de
+      // tamaño era lo que hacía "saltar" al artículo hacia arriba hasta
+      // perderse detrás de la cabecera. Los demás artículos no lo sufrían
+      // porque, al estar más abajo, la cabecera ya estaba encogida de
+      // antes de tocarlos.
+      if (campoCantidadActivo) return;
       setHeaderCollapsed(window.scrollY > 90);
     };
 
@@ -1096,7 +1106,7 @@ export default function App() {
     window.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [campoCantidadActivo]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -2001,76 +2011,23 @@ export default function App() {
     setCampoCantidadActivo(`${productId}:${field}`);
   };
 
-  const alinearArticuloActivo = (input) => {
-    if (!input || document.activeElement !== input) return;
-
-    const article = input.closest("article");
-    const departmentSection = article?.closest("section");
-    const departmentTitle = departmentSection?.querySelector("h2");
-    const topArea = document.querySelector("[data-top-area='true']");
-
-    if (!article) return;
-
-    const articleRect = article.getBoundingClientRect();
-    const topAreaRect = topArea?.getBoundingClientRect();
-    const titleHeight = departmentTitle?.getBoundingClientRect().height || 0;
-
-    // La tarjeta queda en la misma zona visual que el primer artículo de un
-    // departamento: justo debajo de la cabecera y del título, nunca oculta.
-    const desiredArticleTop = Math.max(
-      12,
-      Math.min(window.innerHeight * 0.28, (topAreaRect?.bottom || 0) + titleHeight + 10)
-    );
-
-    const delta = articleRect.top - desiredArticleTop;
-    if (Math.abs(delta) > 2) {
-      const destino = Math.max(0, window.scrollY + delta);
-      window.scrollTo({ top: destino, left: 0, behavior: "auto" });
-    }
-  };
-
   const prepararCampoCantidad = (event, productId, field) => {
     const input = event.currentTarget;
-    const clave = `${productId}:${field}`;
-    const yaEstabaActivo = campoCantidadActivo === clave;
 
     activarCampoCantidad(productId, field);
 
     // El foco se obtiene SINCRÓNICAMENTE durante el primer toque. Así el
-    // teclado se abre en ese mismo toque. Cancelamos únicamente la acción
-    // nativa posterior para impedir que el navegador vuelva a desplazar la
-    // página o quite el cursor al terminar el gesto.
-    event.preventDefault();
-    input.focus({ preventScroll: true });
+    // teclado se abre en ese mismo toque.
+    //
+    // NOTA: aquí antes había código propio que recalculaba la posición de
+    // scroll para dejar la tarjeta justo debajo de la cabecera. Se quitó
+    // porque en iPhone provocaba que la tarjeta subiera cada vez más hasta
+    // perderse detrás de la cabecera (dos intentos de arreglarlo no
+    // funcionaron, el segundo incluso empeoró el problema). El propio
+    // Safari ya desplaza la página para dejar visible el campo enfocado
+    // por encima del teclado, así que dejamos que lo haga él.
+    input.focus();
     input.select?.();
-
-    // Si el campo ya estaba activo (el usuario vuelve a tocarlo mientras
-    // escribe, para mover el cursor o corregir), NO se repite el
-    // realineado. Repetirlo en cada toque iba sumando un pequeño desajuste
-    // de scroll en cada llamada y, tras varios toques seguidos sobre el
-    // mismo campo, la tarjeta terminaba subiendo hasta perderse detrás de
-    // la cabecera (muy notorio en el primer artículo de la lista, al no
-    // haber nada por encima que absorbiera ese desajuste). Solo alineamos
-    // la primera vez que se activa el campo.
-    if (yaEstabaActivo) return;
-
-    let adjusted = false;
-    const ajustarUnaVez = () => {
-      if (adjusted || document.activeElement !== input) return;
-      adjusted = true;
-      requestAnimationFrame(() => alinearArticuloActivo(input));
-    };
-
-    // En iOS/Android la altura visible cambia cuando aparece el teclado.
-    // Esperamos ese cambio para colocar la tarjeta una sola vez, manteniendo
-    // el foco y el teclado abiertos.
-    const viewport = window.visualViewport;
-    if (viewport) {
-      viewport.addEventListener("resize", ajustarUnaVez, { once: true });
-      setTimeout(ajustarUnaVez, 220);
-    } else {
-      setTimeout(ajustarUnaVez, 120);
-    }
   };
 
   const updateQuantity = (productId, field, value) => {
