@@ -298,7 +298,7 @@ function MiniBingoPromocion({ cantidadMinima = 1, permiteUnidades = true }) {
 
   return (
     <div style={styles.ruletaPromoBadge} aria-label={`Bingo, mínimo ${minimo} ${unidadMinima}`}>
-      <span style={styles.bingoPromoEmoji}>🎱</span>
+      <span style={styles.bingoBallIcono}><b style={styles.bingoBallNumero}>8</b></span>
       <span style={styles.ruletaPromoText}>Bingo</span>
       <span style={styles.ruletaPromoMinimo}>Mín. {minimo} {unidadMinima}</span>
     </div>
@@ -316,14 +316,19 @@ function MiniPromocionesBadge({
   participaBingo,
   cantidadMinimaBingo,
   permiteUnidadesBingo = true,
+  mostrarBingo = false,
 }) {
-  if (!participaRuleta && !participaBingo) return null;
+  // El Bingo es exclusivo de clientes identificados (entran con su enlace
+  // personal): a un visitante anónimo nunca se le debe insinuar que existe.
+  const bingoVisible = participaBingo && mostrarBingo;
 
-  if (participaRuleta && !participaBingo) {
+  if (!participaRuleta && !bingoVisible) return null;
+
+  if (participaRuleta && !bingoVisible) {
     return <MiniRuletaPromocion cantidadMinima={cantidadMinimaRuleta} permiteUnidades={permiteUnidadesRuleta} />;
   }
 
-  if (participaBingo && !participaRuleta) {
+  if (bingoVisible && !participaRuleta) {
     return <MiniBingoPromocion cantidadMinima={cantidadMinimaBingo} permiteUnidades={permiteUnidadesBingo} />;
   }
 
@@ -344,7 +349,7 @@ function MiniPromocionesBadge({
       </div>
       <div style={styles.promoBadgeDobleDivisor} />
       <div style={styles.promoBadgeDobleFila}>
-        <span style={styles.promoBadgeDobleIconoEmoji}>🎱</span>
+        <span style={styles.promoBadgeDobleIconoEmoji}><b style={styles.bingoBallNumeroChico}>8</b></span>
         <span style={styles.promoBadgeDobleTexto}>Bingo</span>
         <span style={styles.promoBadgeDobleMinimo}>Mín. {minBingo} {unidadBingo}</span>
       </div>
@@ -3187,7 +3192,7 @@ export default function App() {
                           </div>
 
                           <div style={styles.productTopActions}>
-                            {(product.participaRuleta || product.participaBingo) && (
+                            {(product.participaRuleta || (product.participaBingo && clienteIdentificado)) && (
                               <MiniPromocionesBadge
                                 participaRuleta={product.participaRuleta}
                                 cantidadMinimaRuleta={product.cantidadMinimaRuleta}
@@ -3195,6 +3200,7 @@ export default function App() {
                                 participaBingo={product.participaBingo}
                                 cantidadMinimaBingo={product.cantidadMinimaBingo}
                                 permiteUnidadesBingo={product.permite_unidades}
+                                mostrarBingo={Boolean(clienteIdentificado)}
                               />
                             )}
 
@@ -4327,14 +4333,18 @@ const styles = {
     letterSpacing: "-0.2px",
   },
 
-  bingoPromoEmoji: {
-    width: "36px",
-    height: "36px",
-    fontSize: "28px",
-    lineHeight: "36px",
-    textAlign: "center",
-    display: "block",
+  bingoBallIcono: {
+    width: "34px",
+    height: "34px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     flexShrink: 0,
+    borderRadius: "50%",
+    border: "2px double #fff0a2",
+    outline: "2px solid #a5691a",
+    background: "radial-gradient(circle at 32% 26%, #fff 0 12%, #fff8d1 32%, #e4ad34 68%, #a5691a 100%)",
+    boxShadow: "inset -6px -7px 8px #5e260533, 0 2px 4px #0004",
   },
 
   promoBadgeDoble: {
@@ -4367,10 +4377,34 @@ const styles = {
 
   promoBadgeDobleIconoEmoji: {
     width: "16px",
-    fontSize: "13px",
-    lineHeight: "16px",
-    textAlign: "center",
+    height: "16px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     flexShrink: 0,
+    borderRadius: "50%",
+    border: "1px double #fff0a2",
+    outline: "1px solid #a5691a",
+    background: "radial-gradient(circle at 32% 26%, #fff 0 12%, #fff8d1 32%, #e4ad34 68%, #a5691a 100%)",
+    boxShadow: "inset -3px -3px 4px #5e260533",
+  },
+
+  bingoBallNumero: {
+    color: "#c1121f",
+    fontWeight: 950,
+    fontFamily: "Georgia, serif",
+    fontSize: "16px",
+    lineHeight: 1,
+    textShadow: "0 1px 0 #fff",
+  },
+
+  bingoBallNumeroChico: {
+    color: "#c1121f",
+    fontWeight: 950,
+    fontFamily: "Georgia, serif",
+    fontSize: "9px",
+    lineHeight: 1,
+    textShadow: "0 1px 0 #fff",
   },
 
   promoBadgeDobleTexto: {
