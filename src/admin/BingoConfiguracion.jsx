@@ -5,8 +5,9 @@ import { supabaseStorage } from "../supabaseStorageClient";
 const configuracionVacia = {
   nombre: "Promoción bingo principal", activa: false, variedad_minima: 15,
   mensaje_cliente: "Tu pedido cumple las condiciones para participar en el Bingo.",
-  fecha_inicio: "", fecha_fin: "",
+  fecha_inicio: "", fecha_fin: "", bolas_por_pedido: 1,
   premio_linea_activo: false, premio_linea_nombre: "", premio_linea_mensaje: "", premio_linea_articulo_id: "",
+  premio_linea_especial_activo: false, premio_linea_especial_nombre: "", premio_linea_especial_mensaje: "", premio_linea_especial_articulo_id: "", premio_linea_especial_max_bolas: 50,
   premio_bingo_activo: false, premio_bingo_nombre: "", premio_bingo_mensaje: "", premio_bingo_articulo_id: "",
   premio_especial_activo: false, premio_especial_nombre: "", premio_especial_mensaje: "", premio_especial_articulo_id: "", premio_especial_max_bolas: 50,
 };
@@ -36,8 +37,12 @@ export default function BingoConfiguracion() {
     if (data) setConfiguracion({
       nombre: data.nombre || "", activa: Boolean(data.activa), variedad_minima: data.variedad_minima ?? 15,
       mensaje_cliente: data.mensaje_cliente || "", fecha_inicio: data.fecha_inicio || "", fecha_fin: data.fecha_fin || "",
+      bolas_por_pedido: data.bolas_por_pedido ?? 1,
       premio_linea_activo: Boolean(data.premio_linea_activo), premio_linea_nombre: data.premio_linea_nombre || "",
       premio_linea_mensaje: data.premio_linea_mensaje || "", premio_linea_articulo_id: String(data.premio_linea_articulo_id || ""),
+      premio_linea_especial_activo: Boolean(data.premio_linea_especial_activo), premio_linea_especial_nombre: data.premio_linea_especial_nombre || "",
+      premio_linea_especial_mensaje: data.premio_linea_especial_mensaje || "", premio_linea_especial_articulo_id: String(data.premio_linea_especial_articulo_id || ""),
+      premio_linea_especial_max_bolas: data.premio_linea_especial_max_bolas ?? 50,
       premio_bingo_activo: Boolean(data.premio_bingo_activo), premio_bingo_nombre: data.premio_bingo_nombre || "",
       premio_bingo_mensaje: data.premio_bingo_mensaje || "", premio_bingo_articulo_id: String(data.premio_bingo_articulo_id || ""),
       premio_especial_activo: Boolean(data.premio_especial_activo), premio_especial_nombre: data.premio_especial_nombre || "",
@@ -60,10 +65,15 @@ export default function BingoConfiguracion() {
     if (Number.isNaN(variedadMinima) || variedadMinima < 1) return terminarError("La variedad mínima debe ser un número igual o mayor que 1.");
     if (configuracion.fecha_inicio && configuracion.fecha_fin && configuracion.fecha_fin < configuracion.fecha_inicio) return terminarError("La fecha fin no puede ser anterior a la fecha de inicio.");
     if (configuracion.premio_linea_activo && !configuracion.premio_linea_articulo_id) return terminarError("Selecciona un artículo para el premio por línea.");
+    if (configuracion.premio_linea_especial_activo && !configuracion.premio_linea_especial_articulo_id) return terminarError("Selecciona un artículo para el premio de línea especial.");
     if (configuracion.premio_bingo_activo && !configuracion.premio_bingo_articulo_id) return terminarError("Selecciona un artículo para el premio por Bingo.");
     if (configuracion.premio_especial_activo && !configuracion.premio_especial_articulo_id) return terminarError("Selecciona un artículo para el premio especial.");
     const maxBolasEspecial = Number.parseInt(configuracion.premio_especial_max_bolas, 10);
     if (configuracion.premio_especial_activo && (Number.isNaN(maxBolasEspecial) || maxBolasEspecial < 1 || maxBolasEspecial > 90)) return terminarError("El límite del premio especial debe estar entre 1 y 90 bolas.");
+    const maxBolasLineaEspecial = Number.parseInt(configuracion.premio_linea_especial_max_bolas, 10);
+    if (configuracion.premio_linea_especial_activo && (Number.isNaN(maxBolasLineaEspecial) || maxBolasLineaEspecial < 1 || maxBolasLineaEspecial > 90)) return terminarError("El límite de línea especial debe estar entre 1 y 90 bolas.");
+    const bolasPorPedido = Number.parseInt(configuracion.bolas_por_pedido, 10);
+    if (Number.isNaN(bolasPorPedido) || bolasPorPedido < 1 || bolasPorPedido > 90) return terminarError("Las bolas por pedido deben estar entre 1 y 90.");
 
     const { data: actual, error: buscarError } = await supabase.from("promociones_bingo").select("id").order("created_at", { ascending: true }).limit(1).maybeSingle();
     if (buscarError) return terminarError("No se ha podido comprobar la configuración actual.");
@@ -71,8 +81,12 @@ export default function BingoConfiguracion() {
       nombre: configuracion.nombre.trim() || "Promoción bingo principal", activa: configuracion.activa,
       variedad_minima: variedadMinima, mensaje_cliente: configuracion.mensaje_cliente.trim(),
       fecha_inicio: configuracion.fecha_inicio || null, fecha_fin: configuracion.fecha_fin || null,
+      bolas_por_pedido: bolasPorPedido,
       premio_linea_activo: configuracion.premio_linea_activo, premio_linea_nombre: configuracion.premio_linea_nombre.trim(),
       premio_linea_mensaje: configuracion.premio_linea_mensaje.trim(), premio_linea_articulo_id: configuracion.premio_linea_articulo_id || null,
+      premio_linea_especial_activo: configuracion.premio_linea_especial_activo, premio_linea_especial_nombre: configuracion.premio_linea_especial_nombre.trim(),
+      premio_linea_especial_mensaje: configuracion.premio_linea_especial_mensaje.trim(), premio_linea_especial_articulo_id: configuracion.premio_linea_especial_articulo_id || null,
+      premio_linea_especial_max_bolas: maxBolasLineaEspecial,
       premio_bingo_activo: configuracion.premio_bingo_activo, premio_bingo_nombre: configuracion.premio_bingo_nombre.trim(),
       premio_bingo_mensaje: configuracion.premio_bingo_mensaje.trim(), premio_bingo_articulo_id: configuracion.premio_bingo_articulo_id || null,
       premio_especial_activo: configuracion.premio_especial_activo, premio_especial_nombre: configuracion.premio_especial_nombre.trim(),
@@ -92,6 +106,7 @@ export default function BingoConfiguracion() {
     <div style={grid}>
       <label style={label}>Nombre de la promoción<input style={input} value={configuracion.nombre} onChange={(e)=>cambiarCampo("nombre",e.target.value)} /></label>
       <label style={label}>Variedad mínima de artículos<input style={input} type="number" min="1" value={configuracion.variedad_minima} onChange={(e)=>cambiarCampo("variedad_minima",e.target.value)} /></label>
+      <label style={label}>Bolas que se dan por cada pedido que cumple<input style={input} type="number" min="1" max="90" value={configuracion.bolas_por_pedido} onChange={(e)=>cambiarCampo("bolas_por_pedido",e.target.value)} /></label>
       <label style={label}>Fecha inicio<input style={input} type="date" value={configuracion.fecha_inicio} onChange={(e)=>cambiarCampo("fecha_inicio",e.target.value)} /></label>
       <label style={label}>Fecha fin<input style={input} type="date" value={configuracion.fecha_fin} onChange={(e)=>cambiarCampo("fecha_fin",e.target.value)} /></label>
       <label style={checkLabel}><input type="checkbox" checked={configuracion.activa} onChange={(e)=>cambiarCampo("activa",e.target.checked)} />Promoción activa</label>
@@ -99,6 +114,11 @@ export default function BingoConfiguracion() {
     </div>
     <div style={premiosGrid}>
       <SeccionPremio tipo="linea" titulo="🏅 Premio por línea" activo={configuracion.premio_linea_activo} nombre={configuracion.premio_linea_nombre} mensaje={configuracion.premio_linea_mensaje} articuloId={configuracion.premio_linea_articulo_id} articulos={articulos} onActivo={(v)=>cambiarCampo("premio_linea_activo",v)} onNombre={(v)=>cambiarCampo("premio_linea_nombre",v)} onMensaje={(v)=>cambiarCampo("premio_linea_mensaje",v)} onArticulo={(a)=>elegirArticulo("linea",a)} />
+      <div>
+        <SeccionPremio tipo="linea_especial" titulo="⭐ Línea especial (línea rápida)" activo={configuracion.premio_linea_especial_activo} nombre={configuracion.premio_linea_especial_nombre} mensaje={configuracion.premio_linea_especial_mensaje} articuloId={configuracion.premio_linea_especial_articulo_id} articulos={articulos} onActivo={(v)=>cambiarCampo("premio_linea_especial_activo",v)} onNombre={(v)=>cambiarCampo("premio_linea_especial_nombre",v)} onMensaje={(v)=>cambiarCampo("premio_linea_especial_mensaje",v)} onArticulo={(a)=>elegirArticulo("linea_especial",a)} />
+        <label style={{...label,marginTop:10}}>Máximo de bolas para conseguirlo<input style={input} type="number" min="1" max="90" value={configuracion.premio_linea_especial_max_bolas} onChange={(e)=>cambiarCampo("premio_linea_especial_max_bolas",e.target.value)} disabled={!configuracion.premio_linea_especial_activo}/></label>
+        <div style={{...ayuda,marginTop:8}}>Se concede únicamente si el cliente completa la línea cuando se han cantado como máximo este número de bolas.</div>
+      </div>
       <SeccionPremio tipo="bingo" titulo="🎱 Premio por Bingo" activo={configuracion.premio_bingo_activo} nombre={configuracion.premio_bingo_nombre} mensaje={configuracion.premio_bingo_mensaje} articuloId={configuracion.premio_bingo_articulo_id} articulos={articulos} onActivo={(v)=>cambiarCampo("premio_bingo_activo",v)} onNombre={(v)=>cambiarCampo("premio_bingo_nombre",v)} onMensaje={(v)=>cambiarCampo("premio_bingo_mensaje",v)} onArticulo={(a)=>elegirArticulo("bingo",a)} />
       <div>
         <SeccionPremio tipo="especial" titulo="⭐ Premio especial por Bingo rápido" activo={configuracion.premio_especial_activo} nombre={configuracion.premio_especial_nombre} mensaje={configuracion.premio_especial_mensaje} articuloId={configuracion.premio_especial_articulo_id} articulos={articulos} onActivo={(v)=>cambiarCampo("premio_especial_activo",v)} onNombre={(v)=>cambiarCampo("premio_especial_nombre",v)} onMensaje={(v)=>cambiarCampo("premio_especial_mensaje",v)} onArticulo={(a)=>elegirArticulo("especial",a)} />
