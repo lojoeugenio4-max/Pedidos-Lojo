@@ -448,6 +448,7 @@ export default function BingoShow() {
   const [drawMessage, setDrawMessage] = useState("");
   const [drawFinished, setDrawFinished] = useState(false);
   const [premiosTV, setPremiosTV] = useState([]);
+  const [customerToken, setCustomerToken] = useState("");
   const timers = useRef([]);
   const locallyStartedDraws = useRef(new Set());
   const finalizingDrawRef = useRef(false);
@@ -488,15 +489,28 @@ export default function BingoShow() {
       setLoading(false);
       return;
     }
+    let token = "";
+    if (qrCode) {
+      const { data: rawValidate } = await supabase.rpc("validate_game_qr", { p_code: qrCode });
+      const validated = Array.isArray(rawValidate) ? rawValidate[0] : rawValidate;
+      token = String(validated?.customer_token || "").trim();
+    }
+    setCustomerToken(token);
+    if (!token) {
+      setNumbers([]);
+      setLoading(false);
+      return;
+    }
     const { data: draws, error: drawsError } = await supabase
       .from("bingo_draws")
       .select("number,drawn_at")
       .eq("edition_id", data.edition_id)
+      .eq("customer_token", token)
       .order("drawn_at", { ascending: true });
     if (drawsError) setError("No se han podido cargar las bolas cantadas.");
     setNumbers((draws || []).map((draw) => Number(draw.number)));
     setLoading(false);
-  }, [demoMode]);
+  }, [demoMode, qrCode]);
 
   useEffect(() => { loadPromotion(); }, [loadPromotion]);
 
@@ -573,13 +587,14 @@ export default function BingoShow() {
   }, [demoMode, promotion, revealNumber]);
 
   useEffect(() => {
-    if (demoMode || !promotion?.edition_id) return undefined;
+    if (demoMode || !promotion?.edition_id || !customerToken) return undefined;
     const channel = supabase
-      .channel(`bingo-show-${promotion.edition_id}`)
+      .channel(`bingo-show-${promotion.edition_id}-${customerToken}`)
       .on("postgres_changes", {
         event: "INSERT", schema: "public", table: "bingo_draws",
-        filter: `edition_id=eq.${promotion.edition_id}`,
+        filter: `customer_token=eq.${customerToken}`,
       }, (payload) => {
+        if (String(payload.new?.edition_id || "") !== String(promotion.edition_id)) return;
         const number = Number(payload.new?.number);
         if (!number) return;
         if (locallyStartedDraws.current.has(number)) {
@@ -590,7 +605,7 @@ export default function BingoShow() {
       })
       .subscribe();
     return () => supabase.removeChannel(channel);
-  }, [demoMode, promotion?.edition_id, revealNumber]);
+  }, [demoMode, promotion?.edition_id, customerToken, revealNumber]);
 
   useEffect(() => () => timers.current.forEach(window.clearTimeout), []);
 
