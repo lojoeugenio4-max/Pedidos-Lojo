@@ -451,7 +451,7 @@ export default function App() {
   const [cartonBingo, setCartonBingo] = useState(null);
   const [cargandoBingo, setCargandoBingo] = useState(false);
   const [errorBingo, setErrorBingo] = useState("");
-  const [premiosBingo, setPremiosBingo] = useState({ line: null, bingo: null, special: null });
+  const [premiosBingo, setPremiosBingo] = useState({ line: null, lineSpecial: null, bingo: null, special: null });
   const [configuracionBingoCliente, setConfiguracionBingoCliente] = useState(null);
   const [articulosBingoCliente, setArticulosBingoCliente] = useState([]);
 
@@ -655,7 +655,7 @@ export default function App() {
     setCartonBingo(null);
     setMostrarBingo(false);
     setErrorBingo("");
-    setPremiosBingo({ line: null, bingo: null, special: null });
+    setPremiosBingo({ line: null, lineSpecial: null, bingo: null, special: null });
   }, [clienteIdentificado?.id]);
 
   useEffect(() => {
@@ -802,7 +802,7 @@ export default function App() {
 
       if (!promo) throw new Error("El Bingo no está activo o ha finalizado.");
       setConfiguracionBingoCliente(promo);
-      const prizeIds = [...new Set([promo?.premio_linea_articulo_id, promo?.premio_bingo_articulo_id, promo?.premio_especial_articulo_id].filter(Boolean))];
+      const prizeIds = [...new Set([promo?.premio_linea_articulo_id, promo?.premio_linea_especial_articulo_id, promo?.premio_bingo_articulo_id, promo?.premio_especial_articulo_id].filter(Boolean))];
       let prizeArticles = [];
       if (prizeIds.length) {
         const { data: articles } = await supabase.from("articulos").select("id,nombre,foto").in("id", prizeIds);
@@ -821,6 +821,7 @@ export default function App() {
       };
       setPremiosBingo({
         line: makePrize("linea"),
+        lineSpecial: { ...makePrize("linea_especial"), maxBalls: Number(promo?.premio_linea_especial_max_bolas) || 0 },
         bingo: makePrize("bingo"),
         special: { ...makePrize("especial"), maxBalls: Number(promo?.premio_especial_max_bolas) || 0 },
       });
@@ -2352,6 +2353,9 @@ export default function App() {
           : 0,
         p_bingo_eligible: bingoConseguido,
         p_bingo_reference: participacionBingo || null,
+        p_bingo_plays_total: bingoConseguido
+          ? Math.max(1, Number(configuracionBingoCliente?.bolas_por_pedido || 1))
+          : 0,
         p_expires_at: null,
       }
     );
@@ -2762,6 +2766,7 @@ export default function App() {
                     drawnNumbers={cartonBingo.drawn_numbers}
                     customerName={clienteIdentificado.nombre}
                     linePrize={premiosBingo.line}
+                    lineSpecialPrize={premiosBingo.lineSpecial}
                     bingoPrize={premiosBingo.bingo}
                     specialPrize={premiosBingo.special}
                     endDate={configuracionBingoCliente.fecha_fin}
