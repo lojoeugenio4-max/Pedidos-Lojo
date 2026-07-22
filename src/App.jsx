@@ -490,6 +490,7 @@ export default function App() {
     () => localStorage.getItem(LANGUAGE_STORAGE_KEY) || "es"
   );
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const estabaEditandoCantidadRef = useRef(false);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [mostrarAyudaInstalacion, setMostrarAyudaInstalacion] = useState(false);
   const [appInstalada, setAppInstalada] = useState(() => {
@@ -1098,14 +1099,38 @@ export default function App() {
       // perderse detrás de la cabecera. Los demás artículos no lo sufrían
       // porque, al estar más abajo, la cabecera ya estaba encogida de
       // antes de tocarlos.
-      if (campoCantidadActivo) return;
+      if (campoCantidadActivo || estabaEditandoCantidadRef.current) return;
       setHeaderCollapsed(window.scrollY > 90);
     };
 
-    handleScroll();
+    const terminandoDeEditar =
+      estabaEditandoCantidadRef.current && !campoCantidadActivo;
+    estabaEditandoCantidadRef.current = Boolean(campoCantidadActivo);
+
+    let timer = null;
+    if (terminandoDeEditar) {
+      // Al aceptar la cantidad y cerrarse el teclado, el propio teléfono
+      // también reajusta el scroll para recuperar el espacio que ocupaba
+      // el teclado. Si en ese mismo instante dejamos que la cabecera
+      // cambie de tamaño otra vez, los dos ajustes compiten entre sí y el
+      // artículo siguiente al que se acaba de editar se pierde igual que
+      // le pasaba antes al primero. Esperamos a que el cierre del teclado
+      // se asiente antes de reactivar el colapso.
+      estabaEditandoCantidadRef.current = true;
+      timer = setTimeout(() => {
+        estabaEditandoCantidadRef.current = false;
+        handleScroll();
+      }, 350);
+    } else {
+      handleScroll();
+    }
+
     window.addEventListener("scroll", handleScroll, { passive: true });
 
-    return () => window.removeEventListener("scroll", handleScroll);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener("scroll", handleScroll);
+    };
   }, [campoCantidadActivo]);
 
   useEffect(() => {
