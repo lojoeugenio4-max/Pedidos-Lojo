@@ -186,6 +186,7 @@ export default function DisplayPage() {
       return {
         active: Boolean(promo[`premio_${tipo}_activo`]),
         name: promo[`premio_${tipo}_nombre`] || articulo?.nombre || "",
+        message: promo[`premio_${tipo}_mensaje`] || "",
         image: getPrizeImageUrl(articulo),
         label,
         special,
