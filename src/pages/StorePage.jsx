@@ -583,6 +583,14 @@ export default function StorePage() {
 
     setBolaBingo(null);
     setMensaje("");
+    setBomboGirando(false);
+    // Muy importante: si no se limpia aquí, al volver a montar el bombo
+    // para el siguiente cliente, este seguía teniendo guardado el
+    // disparador (bingoTrigger) de la jugada anterior y lo confundía con
+    // uno nuevo, reproduciendo la bola de otro cliente antes de dejar
+    // pulsar GIRAR BOMBO.
+    setBingoTrigger(null);
+    pendingBingoReservaRef.current = null;
     setEstado("bingo-waiting");
 
     const numeros = await cargarNumerosBingo();
@@ -817,6 +825,10 @@ export default function StorePage() {
     setGirando(false);
     setPremioFinal(null);
     setPremioObjetivo(null);
+    setBomboGirando(false);
+    setBingoTrigger(null);
+    setBingoNumbers([]);
+    pendingBingoReservaRef.current = null;
     enviarEventoDisplay("waiting");
 
     window.setTimeout(() => {
