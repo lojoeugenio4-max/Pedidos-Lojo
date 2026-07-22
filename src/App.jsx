@@ -2024,12 +2024,15 @@ export default function App() {
 
     const delta = articleRect.top - desiredArticleTop;
     if (Math.abs(delta) > 2) {
-      window.scrollBy({ top: delta, left: 0, behavior: "auto" });
+      const destino = Math.max(0, window.scrollY + delta);
+      window.scrollTo({ top: destino, left: 0, behavior: "auto" });
     }
   };
 
   const prepararCampoCantidad = (event, productId, field) => {
     const input = event.currentTarget;
+    const clave = `${productId}:${field}`;
+    const yaEstabaActivo = campoCantidadActivo === clave;
 
     activarCampoCantidad(productId, field);
 
@@ -2040,6 +2043,16 @@ export default function App() {
     event.preventDefault();
     input.focus({ preventScroll: true });
     input.select?.();
+
+    // Si el campo ya estaba activo (el usuario vuelve a tocarlo mientras
+    // escribe, para mover el cursor o corregir), NO se repite el
+    // realineado. Repetirlo en cada toque iba sumando un pequeño desajuste
+    // de scroll en cada llamada y, tras varios toques seguidos sobre el
+    // mismo campo, la tarjeta terminaba subiendo hasta perderse detrás de
+    // la cabecera (muy notorio en el primer artículo de la lista, al no
+    // haber nada por encima que absorbiera ese desajuste). Solo alineamos
+    // la primera vez que se activa el campo.
+    if (yaEstabaActivo) return;
 
     let adjusted = false;
     const ajustarUnaVez = () => {
