@@ -3256,15 +3256,15 @@ export default function App() {
                             quantity
                           );
 
+                          // Solo se muestra la confirmación de que YA cuenta
+                          // para la Ruleta. El aviso de "te faltan X" se ha
+                          // quitado: el badge con el mínimo, junto al nombre
+                          // del artículo, ya deja claro cuánto hace falta.
+                          if (!estadoRuleta?.completo) return null;
+
                           return (
-                            <div
-                              style={
-                                estadoRuleta?.completo
-                                  ? styles.ruletaProductStatusOk
-                                  : styles.ruletaProductStatusPending
-                              }
-                            >
-                              {estadoRuleta?.texto}
+                            <div style={styles.ruletaProductStatusOk}>
+                              {estadoRuleta.texto}
                             </div>
                           );
                         })()}
@@ -4244,15 +4244,14 @@ const styles = {
   offerBadge: {
     background: "#fff7ed",
     color: "#9a3412",
-    borderRadius: "999px",
-    padding: "2px 6px",
+    borderRadius: "8px",
+    padding: "3px 8px",
     fontSize: "11px",
     fontWeight: "900",
-    lineHeight: "1.15",
-    maxWidth: "210px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    lineHeight: "1.25",
+    whiteSpace: "normal",
+    wordBreak: "break-word",
+    display: "inline-block",
   },
 
   quantityGrid: {
