@@ -108,6 +108,7 @@ export default function BingoCard({
   drawnNumbers = [],
   customerName = "",
   linePrize = null,
+  lineSpecialPrize = null,
   bingoPrize = null,
   specialPrize = null,
   endDate = "",
@@ -126,6 +127,7 @@ export default function BingoCard({
   const markedCount = rows.flat().filter((value) => Number.isFinite(Number(value)) && markedNumbers.has(Number(value))).length;
   const drawnCount = Array.isArray(drawnNumbers) ? new Set(drawnNumbers.map(Number).filter(Number.isFinite)).size : 0;
   const specialWon = Boolean(bingoCompleted && specialPrize?.active && specialPrize?.maxBalls > 0 && drawnCount <= specialPrize.maxBalls);
+  const lineSpecialWon = Boolean(lineCompleted && lineSpecialPrize?.active && lineSpecialPrize?.maxBalls > 0 && drawnCount <= lineSpecialPrize.maxBalls);
   const formattedEndDate = endDate ? new Date(`${endDate}T12:00:00`).toLocaleDateString("es-ES") : "Sin fecha límite";
 
   useEffect(() => {
@@ -254,6 +256,7 @@ export default function BingoCard({
 
         <aside className="cl-prizes" aria-label="Premios del Bingo">
           <PrizePanel title="PREMIO POR LÍNEA" prize={linePrize} won={lineCompleted} />
+          {lineSpecialPrize?.active && <PrizePanel special title={`LÍNEA EN ${lineSpecialPrize.maxBalls} BOLAS O MENOS`} prize={lineSpecialPrize} won={lineSpecialWon} />}
           <PrizePanel title="PREMIO POR BINGO" prize={bingoPrize} won={bingoCompleted} />
           {specialPrize?.active && <PrizePanel special title={`BINGO EN ${specialPrize.maxBalls} BOLAS O MENOS`} prize={specialPrize} won={specialWon} />}
         </aside>
@@ -263,7 +266,7 @@ export default function BingoCard({
         <div><UserRound /><span><small>JUGADOR:</small><strong>{customerName || "Cliente Cash Lojo"}</strong></span></div>
         <div><Clock3 /><span><small>FECHA LÍMITE:</small><strong>{formattedEndDate}</strong></span></div>
         <div><CheckCircle2 /><span><small>BOLAS CANTADAS:</small><strong>{drawnCount}</strong></span></div>
-        <div><Gift /><span><small>PREMIOS:</small><strong>{[linePrize?.active, bingoPrize?.active, specialPrize?.active].filter(Boolean).length} activos</strong></span></div>
+        <div><Gift /><span><small>PREMIOS:</small><strong>{[linePrize?.active, lineSpecialPrize?.active, bingoPrize?.active, specialPrize?.active].filter(Boolean).length} activos</strong></span></div>
       </footer>
     </section>
   );
@@ -328,7 +331,7 @@ const styles = `
 .cl-check { color:#fff; background:linear-gradient(#708095,#526274); font-size:22px; text-align:center; }
 .cl-check--won { background:linear-gradient(#f2261f,#c9070b); }
 .cl-sound { width:88px; padding:0; color:#fff; background:#082d6a; cursor:pointer; }
-.cl-prizes { min-width:0; display:grid; grid-template-rows:1fr 1fr; gap:13px; }
+.cl-prizes { min-width:0; display:grid; grid-template-rows:repeat(auto-fit,minmax(160px,1fr)); gap:13px; }
 .cl-prize { min-height:250px; display:flex; flex-direction:column; overflow:hidden; border:3px solid #f5dca8; border-radius:25px; padding:10px; background:linear-gradient(#103f83,#092c68); }
 .cl-prize__title { padding:2px 8px 12px; text-align:center; font-size:clamp(19px,2.1vw,31px); font-weight:950; }
 .cl-prize__body { flex:1; min-height:0; display:grid; grid-template-columns:minmax(170px,40%) 1fr; align-items:center; gap:18px; overflow:hidden; padding:14px 18px; border-radius:20px; color:#090909; background:linear-gradient(120deg,#fffdf5,#fff7e5); }
