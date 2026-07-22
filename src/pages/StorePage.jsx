@@ -565,10 +565,14 @@ export default function StorePage() {
 
       if (promoError || !promo?.edition_id) return [];
 
+      const customerToken = entitlement?.customer_token;
+      if (!customerToken) return [];
+
       const { data: draws, error: drawsError } = await supabase
         .from("bingo_draws")
         .select("number,drawn_at")
         .eq("edition_id", promo.edition_id)
+        .eq("customer_token", customerToken)
         .order("drawn_at", { ascending: true });
 
       if (drawsError) return [];
