@@ -2758,6 +2758,7 @@ export default function App() {
                 <>
                   <BingoDrum
                     editionId={cartonBingo.edition_id}
+                    customerToken={clienteToken}
                     initialNumbers={cartonBingo.drawn_numbers}
                     onNumbersChange={(numbers) => setCartonBingo((current) => current ? { ...current, drawn_numbers: numbers } : current)}
                   />
