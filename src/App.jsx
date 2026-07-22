@@ -2325,6 +2325,18 @@ export default function App() {
     return false;
   }
 
+  function bloquesCumplidosBingo(participacionBingo) {
+    if (!participacionBingo || typeof participacionBingo !== "object") return 1;
+    const matched = Number(
+      participacionBingo.matched ?? participacionBingo.matched_count ?? 0
+    );
+    const required = Number(
+      participacionBingo.required ?? participacionBingo.required_count ?? 0
+    );
+    if (!Number.isFinite(required) || required <= 0) return 1;
+    return Math.max(1, Math.floor(matched / required));
+  }
+
   async function crearParticipacionJuegos({
     pedidoId,
     customerNamePedido,
@@ -2354,7 +2366,7 @@ export default function App() {
         p_bingo_eligible: bingoConseguido,
         p_bingo_reference: participacionBingo || null,
         p_bingo_plays_total: bingoConseguido
-          ? Math.max(1, Number(configuracionBingoCliente?.bolas_por_pedido || 1))
+          ? Math.max(1, bloquesCumplidosBingo(participacionBingo) * Number(configuracionBingoCliente?.bolas_por_pedido || 1))
           : 0,
         p_expires_at: null,
       }
