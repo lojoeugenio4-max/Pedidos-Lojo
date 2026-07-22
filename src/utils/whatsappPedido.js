@@ -12,11 +12,16 @@ function normalizarRespuestaJuego(raw) {
 function construirUrlQr(codigoParticipacion) {
   if (!codigoParticipacion) return "";
 
-  const baseUrl = String(import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin);
-  const urlParticipacion = new URL(baseUrl);
-  urlParticipacion.searchParams.set("store", "1");
-  urlParticipacion.searchParams.set("code", codigoParticipacion);
-
+  // Antes el QR llevaba solo el código corto (p. ej. "LJK6TU4P") y lo leía
+  // cualquier lector sin problema. En algún momento se cambió para meter
+  // ahí dentro la URL completa de la tienda con el código como parámetro
+  // (algo como "https://.../?store=1&code=LJ-8380-B1AC"), que son muchos
+  // más caracteres. Un QR con más contenido necesita una versión más densa
+  // (más celdas, más pequeñas), y eso es lo que muchos lectores de caja no
+  // consiguen resolver bien, aunque un móvil con buena cámara sí pueda.
+  // El código de caja (StorePage) ya sabe leer tanto una URL como el
+  // código suelto, así que no hace falta meter la URL en el QR: basta con
+  // el código, igual que antes.
   const params = new URLSearchParams({
     size: "400",
     // Un margen de 2 módulos es más "bonito" pero no deja suficiente zona
@@ -31,10 +36,31 @@ function construirUrlQr(codigoParticipacion) {
     // legible aunque la pantalla del móvil tenga brillo bajo, esté algo
     // borroso o el escáner capture el código en un ángulo poco favorable.
     ecLevel: "M",
-    text: urlParticipacion.toString(),
+    text: codigoParticipacion,
   });
 
   return `https://quickchart.io/qr?${params.toString()}`;
+}
+
+// Muchos lectores de mano tipo "pistola" son escáneres LÁSER de 1 sola
+// línea (lectura 1D): están diseñados para códigos de barras lineales
+// (Code128, EAN...) y son físicamente incapaces de decodificar un QR (2D),
+// por bien generado que esté. Como el código de participación es texto
+// plano corto, generamos también un código de barras Code128 con ese
+// mismo texto para que esos lectores 1D puedan leerlo igual que si se
+// escribiera a mano.
+function construirUrlCodigoBarras(codigoParticipacion) {
+  if (!codigoParticipacion) return "";
+
+  const params = new URLSearchParams({
+    type: "code128",
+    text: codigoParticipacion,
+    width: "3",
+    height: "110",
+    includetext: "true",
+  });
+
+  return `https://quickchart.io/barcode?${params.toString()}`;
 }
 
 export function construirTextoPedidoWhatsApp({
@@ -129,6 +155,7 @@ export function construirTextoPedidoWhatsApp({
 
   if (codigoJuegos) {
     const urlQr = construirUrlQr(codigoJuegos);
+    const urlBarras = construirUrlCodigoBarras(codigoJuegos);
 
     const numeroTiradas = participacionRuleta
       ? Math.max(
@@ -153,6 +180,12 @@ export function construirTextoPedidoWhatsApp({
     if (urlQr) {
       lines.push("📷 *QR para presentar en caja:*");
       lines.push(urlQr);
+      lines.push("");
+    }
+
+    if (urlBarras) {
+      lines.push("📊 *Código de barras (si el lector de caja no lee el QR):*");
+      lines.push(urlBarras);
       lines.push("");
     }
 
