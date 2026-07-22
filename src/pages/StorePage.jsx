@@ -2,12 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { CheckCircle, RotateCcw, Search, XCircle } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import StoreWheel from "../components/StoreWheel";
-import StoreBingoDrum from "../components/StoreBingoDrum";
+import BingoDrumStage from "../components/BingoDrumStage";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
 const BINGO_CONTROL_CHANNEL = "lojo-bingo-control";
 const SPIN_DURATION_MS = 9200;
-const BINGO_SPIN_DURATION_MS = 4200;
 
 const PRODUCTOS_PUBLIC_URL =
   "https://bohlxagrtpjvqrgkonlo.supabase.co/storage/v1/object/public/productos";
@@ -291,6 +290,7 @@ function obtenerTiradasRestantesEntrada(entrada) {
 export default function StorePage() {
   const inputRef = useRef(null);
   const autoValidatedCodeRef = useRef("");
+  const pendingBingoReservaRef = useRef(null);
 
   const [codigo, setCodigo] = useState("");
   const [entrada, setEntrada] = useState(null);
@@ -304,6 +304,8 @@ export default function StorePage() {
   const [bolaBingo, setBolaBingo] = useState(null);
   const [procesandoBingo, setProcesandoBingo] = useState(false);
   const [bomboGirando, setBomboGirando] = useState(false);
+  const [bingoNumbers, setBingoNumbers] = useState([]);
+  const [bingoTrigger, setBingoTrigger] = useState(null);
 
   useEffect(() => {
     const el = inputRef.current;
@@ -548,17 +550,49 @@ export default function StorePage() {
     enviarEventoDisplay("ready", { entrada: data, premios: premiosData });
   }
 
-  function consumirBingo() {
+  async function cargarNumerosBingo() {
+    try {
+      const hoy = new Date().toISOString().slice(0, 10);
+      const { data: promo, error: promoError } = await supabase
+        .from("promociones_bingo")
+        .select("id,edition_id,activa,fecha_inicio,fecha_fin")
+        .eq("activa", true)
+        .or(`fecha_inicio.is.null,fecha_inicio.lte.${hoy}`)
+        .or(`fecha_fin.is.null,fecha_fin.gte.${hoy}`)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (promoError || !promo?.edition_id) return [];
+
+      const { data: draws, error: drawsError } = await supabase
+        .from("bingo_draws")
+        .select("number,drawn_at")
+        .eq("edition_id", promo.edition_id)
+        .order("drawn_at", { ascending: true });
+
+      if (drawsError) return [];
+      return (draws || []).map((draw) => Number(draw.number));
+    } catch {
+      return [];
+    }
+  }
+
+  async function consumirBingo() {
     if (!entitlement?.id) return;
 
     setBolaBingo(null);
     setMensaje("");
     setEstado("bingo-waiting");
 
+    const numeros = await cargarNumerosBingo();
+    setBingoNumbers(numeros);
+
     // Igual que la Ruleta: no se abre ninguna ventana nueva. La pantalla del
     // Televisor ya está abierta de forma permanente (lojo-ruleta-display) y
-    // reacciona sola a este aviso, igual que ya hace con la ruleta.
-    enviarEventoDisplay("bingo-waiting", { entrada: entitlement });
+    // reacciona sola a este aviso, igual que ya hace con la ruleta. Se le
+    // manda el mismo bombo (BingoDrumStage) y el mismo historial de bolas.
+    enviarEventoDisplay("bingo-waiting", { entrada: entitlement, numeros });
   }
 
   async function girarBombo() {
@@ -568,7 +602,6 @@ export default function StorePage() {
 
     setMensaje("");
     setBomboGirando(true);
-    enviarEventoDisplay("bingo-spin", { entrada: entitlement });
 
     try {
       const { data: raw, error: reserveError } = await supabase.rpc(
@@ -590,46 +623,66 @@ export default function StorePage() {
         throw new Error("Supabase no devolvió una reserva válida.");
       }
 
-      window.setTimeout(async () => {
-        try {
-          const { data: finalRaw, error: finalizeError } = await supabase.rpc(
-            "finalize_game_bingo_ball_by_code",
-            { p_code: qrCode, p_reservation_token: reservationToken }
-          );
-          const result = Array.isArray(finalRaw) ? finalRaw[0] : finalRaw;
+      pendingBingoReservaRef.current = { ballNumber, reservationToken, qrCode };
 
-          if (finalizeError || !result?.ok) {
-            throw new Error(
-              result?.message || finalizeError?.message || "No se pudo publicar la bola."
-            );
-          }
-
-          setBomboGirando(false);
-          setBolaBingo(ballNumber);
-          setEntitlement((current) =>
-            current
-              ? {
-                  ...current,
-                  bingo_available: false,
-                  bingo_remaining: Number(result.bingo_remaining || 0),
-                }
-              : current
-          );
-          setEstado(entitlement?.roulette_available ? "bingo-result-with-roulette" : "bingo-result");
-
-          enviarEventoDisplay("bingo-result", { entrada: entitlement, numero: ballNumber });
-        } catch (finalizeFailure) {
-          setBomboGirando(false);
-          setMensaje(finalizeFailure?.message || "No se pudo publicar la bola.");
-          setEstado("error");
-          enviarEventoDisplay("waiting");
-        }
-      }, BINGO_SPIN_DURATION_MS);
+      // Disparamos la MISMA animación del bombo a la vez en el TPV (aquí
+      // debajo, vía bingoTrigger) y en el Televisor (vía el aviso
+      // "bingo-spin"): ambas pantallas montan el mismo componente
+      // BingoDrumStage y corren la misma secuencia (mezcla → extracción →
+      // revelado), como ya hace la Ruleta con StoreWheel en las dos
+      // pantallas.
+      const token = Date.now();
+      setBingoTrigger({ number: ballNumber, token });
+      enviarEventoDisplay("bingo-spin", { entrada: entitlement, numero: ballNumber, token });
     } catch (drawFailure) {
       setBomboGirando(false);
       setMensaje(drawFailure?.message || "No se pudo iniciar la extracción.");
       setEstado("error");
       enviarEventoDisplay("waiting");
+    }
+  }
+
+  // Se llama quando el bombo (en el TPV) termina de revelar la bola: es el
+  // momento visual exacto en el que la bola "cae", así que aprovechamos
+  // para confirmar de verdad la extracción contra Supabase.
+  async function onBingoRevealComplete(ballNumber) {
+    const pendiente = pendingBingoReservaRef.current;
+    if (!pendiente || pendiente.ballNumber !== ballNumber) return;
+
+    try {
+      const { data: finalRaw, error: finalizeError } = await supabase.rpc(
+        "finalize_game_bingo_ball_by_code",
+        { p_code: pendiente.qrCode, p_reservation_token: pendiente.reservationToken }
+      );
+      const result = Array.isArray(finalRaw) ? finalRaw[0] : finalRaw;
+
+      if (finalizeError || !result?.ok) {
+        throw new Error(
+          result?.message || finalizeError?.message || "No se pudo publicar la bola."
+        );
+      }
+
+      setBomboGirando(false);
+      setBolaBingo(ballNumber);
+      setEntitlement((current) =>
+        current
+          ? {
+              ...current,
+              bingo_available: false,
+              bingo_remaining: Number(result.bingo_remaining || 0),
+            }
+          : current
+      );
+      setEstado(entitlement?.roulette_available ? "bingo-result-with-roulette" : "bingo-result");
+
+      enviarEventoDisplay("bingo-result", { entrada: entitlement, numero: ballNumber });
+    } catch (finalizeFailure) {
+      setBomboGirando(false);
+      setMensaje(finalizeFailure?.message || "No se pudo publicar la bola.");
+      setEstado("error");
+      enviarEventoDisplay("waiting");
+    } finally {
+      pendingBingoReservaRef.current = null;
     }
   }
 
@@ -901,7 +954,7 @@ export default function StorePage() {
         </section>
       )}
 
-      {(estado === "game-choice" || estado === "bingo-ready" || estado === "bingo-waiting" || estado === "bingo-result" || estado === "bingo-result-with-roulette") && entitlement && (
+      {(estado === "game-choice" || estado === "bingo-ready" || estado === "bingo-result" || estado === "bingo-result-with-roulette") && entitlement && (
         <section style={styles.card}>
           <h2 style={styles.cardTitle}>QR válido · Pedido identificado</h2>
           <p style={styles.info}>Cliente: <strong>{entitlement.customer_name || "sin nombre"}</strong></p>
@@ -922,22 +975,6 @@ export default function StorePage() {
             </div>
           )}
 
-          {estado === "bingo-waiting" && (
-            <div style={styles.bingoResultBox}>
-              <h3 style={{ margin: 0 }}>BOMBO OFICIAL</h3>
-              <StoreBingoDrum
-                girando={bomboGirando}
-                numeroFinal={bolaBingo}
-                onGirar={girarBombo}
-                mensaje={
-                  bomboGirando
-                    ? "Extrayendo la bola…"
-                    : "Pulsa GIRAR BOMBO para extraer la bola. También se verá en la pantalla grande."
-                }
-              />
-            </div>
-          )}
-
           {(estado === "bingo-result" || estado === "bingo-result-with-roulette") && (
             <div style={styles.bingoResultBox}>
               <div style={styles.bingoBall}>{bolaBingo}</div>
@@ -950,6 +987,25 @@ export default function StorePage() {
               )}
             </div>
           )}
+        </section>
+      )}
+
+      {estado === "bingo-waiting" && entitlement && (
+        <section style={styles.bingoStageSection}>
+          <BingoDrumStage
+            numbers={bingoNumbers}
+            pendingTrigger={bingoTrigger}
+            onRevealComplete={onBingoRevealComplete}
+            mostrarControles
+            drawing={bomboGirando}
+            drawMessage={
+              bomboGirando
+                ? "Extrayendo la bola…"
+                : "Pulsa GIRAR BOMBO para extraer la bola. Se verá a la vez en la pantalla grande."
+            }
+            onGirar={girarBombo}
+            error={estado === "error" ? mensaje : ""}
+          />
         </section>
       )}
 
@@ -1025,6 +1081,9 @@ export default function StorePage() {
 }
 
 const styles = {
+  bingoStageSection: {
+    width: "100%",
+  },
   gameChoiceGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
