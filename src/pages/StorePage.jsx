@@ -306,7 +306,17 @@ export default function StorePage() {
   const [bomboGirando, setBomboGirando] = useState(false);
 
   useEffect(() => {
-    inputRef.current?.focus();
+    const el = inputRef.current;
+    if (!el) return;
+    el.focus();
+    // Selecciona todo el texto que hubiera (p. ej. un intento fallido
+    // anterior). Así, el siguiente escaneo con la pistola lectora
+    // sobrescribe el campo en vez de seguir escribiendo detrás del texto
+    // que ya había, que era lo que provocaba que, tras un par de intentos,
+    // el campo acumulara varios códigos pegados uno detrás de otro y
+    // "Código no encontrado" saliera aunque el QR fuera perfectamente
+    // válido y se hubiera leído bien.
+    el.select();
   }, [estado]);
 
   useEffect(() => {
@@ -856,6 +866,7 @@ export default function StorePage() {
               ref={inputRef}
               value={codigo}
               onChange={(event) => setCodigo(event.target.value.toUpperCase())}
+              onFocus={(event) => event.target.select()}
               placeholder="••••••••"
               autoComplete="off"
               type="password"
