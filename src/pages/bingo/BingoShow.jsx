@@ -449,6 +449,7 @@ export default function BingoShow() {
   const [drawFinished, setDrawFinished] = useState(false);
   const [premiosTV, setPremiosTV] = useState([]);
   const [customerToken, setCustomerToken] = useState("");
+  const [esPruebas, setEsPruebas] = useState(false);
   const timers = useRef([]);
   const locallyStartedDraws = useRef(new Set());
   const finalizingDrawRef = useRef(false);
@@ -494,6 +495,7 @@ export default function BingoShow() {
       const { data: rawValidate } = await supabase.rpc("validate_game_qr", { p_code: qrCode });
       const validated = Array.isArray(rawValidate) ? rawValidate[0] : rawValidate;
       token = String(validated?.customer_token || "").trim();
+      setEsPruebas(Boolean(validated?.es_pruebas));
     }
     setCustomerToken(token);
     if (!token) {
@@ -663,7 +665,10 @@ export default function BingoShow() {
           schedule(() => {
             setDrawing(false);
             setDrawMessage("");
-            setDrawFinished(true);
+            // Para el cliente de pruebas dejamos el botón activo para poder
+            // seguir sacando bolas sin salir de esta pantalla. Para un
+            // pedido real, se congela como hasta ahora.
+            setDrawFinished(!esPruebas);
             sendBingoControlEvent({
               type: "bingo-complete",
               code: qrCode,
