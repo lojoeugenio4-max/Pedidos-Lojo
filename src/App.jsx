@@ -1894,12 +1894,16 @@ export default function App() {
     });
 
     const variedadActual = articulosValidos.size;
+    const cumple = variedadActual >= variedadMinima;
+    const bolasPorBloque = Math.max(1, Number(configuracionBingoCliente.bolas_por_pedido || 1));
+    const bloquesCumplidos = cumple ? Math.floor(variedadActual / variedadMinima) : 0;
 
     return {
-      cumple: variedadActual >= variedadMinima,
+      cumple,
       variedadActual,
       variedadMinima,
       variedadRestante: Math.max(0, variedadMinima - variedadActual),
+      bolasConseguidas: bloquesCumplidos * bolasPorBloque,
     };
   }, [
     orderedItems,
@@ -3481,7 +3485,7 @@ export default function App() {
                 </div>
                 {resumenBingoPedido.cumple ? (
                   <div style={styles.bingoSummaryMessage}>
-                    Has conseguido 1 bola de Bingo. Se incluirá en el QR del pedido.
+                    Has conseguido {resumenBingoPedido.bolasConseguidas} {resumenBingoPedido.bolasConseguidas === 1 ? "bola" : "bolas"} de Bingo. Se {resumenBingoPedido.bolasConseguidas === 1 ? "incluirá" : "incluirán"} en el QR del pedido.
                   </div>
                 ) : (
                   <div style={styles.bingoSummaryMessage}>
