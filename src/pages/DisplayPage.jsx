@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import StoreWheel from "../components/StoreWheel";
+import StoreBingoDrum from "../components/StoreBingoDrum";
 import logoLojo from "../assets/logo-lojo.jpg";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
@@ -134,6 +135,9 @@ export default function DisplayPage() {
   const [premioFinal, setPremioFinal] = useState(null);
   const [premioObjetivo, setPremioObjetivo] = useState(null);
   const [girando, setGirando] = useState(false);
+  const [bingoEntrada, setBingoEntrada] = useState(null);
+  const [bingoGirando, setBingoGirando] = useState(false);
+  const [bingoNumero, setBingoNumero] = useState(null);
 
   useEffect(() => {
     cargarPremios();
@@ -232,6 +236,39 @@ export default function DisplayPage() {
         setPremioObjetivo(null);
         setGirando(false);
       }, 12000);
+      return;
+    }
+
+    // Eventos del Bingo: mismo mecanismo que la Ruleta (misma pantalla del
+    // Televisor, ya abierta de forma permanente), solo cambia lo que se pinta.
+    if (event.type === "bingo-waiting") {
+      setEstado("bingo-waiting");
+      setBingoEntrada(payload.entrada || null);
+      setBingoGirando(false);
+      setBingoNumero(null);
+      return;
+    }
+
+    if (event.type === "bingo-spin") {
+      setEstado("bingo-spin");
+      setBingoEntrada(payload.entrada || bingoEntrada);
+      setBingoGirando(true);
+      setBingoNumero(null);
+      return;
+    }
+
+    if (event.type === "bingo-result") {
+      setEstado("bingo-result");
+      setBingoEntrada(payload.entrada || bingoEntrada);
+      setBingoGirando(false);
+      setBingoNumero(payload.numero ?? null);
+
+      window.setTimeout(() => {
+        setEstado("waiting");
+        setBingoEntrada(null);
+        setBingoGirando(false);
+        setBingoNumero(null);
+      }, 12000);
     }
   }
 
@@ -327,75 +364,124 @@ export default function DisplayPage() {
 
       <section style={styles.header}>
         <div style={styles.kicker}>CASH LOJO</div>
-        <h1 style={styles.title}>¡GIRA Y GANA!</h1>
-        <p style={styles.subtitle}>Ruleta promocional en tienda</p>
+        <h1 style={styles.title}>
+          {estado.startsWith("bingo") ? "¡BINGO!" : "¡GIRA Y GANA!"}
+        </h1>
+        <p style={styles.subtitle}>
+          {estado.startsWith("bingo") ? "Bombo oficial en tienda" : "Ruleta promocional en tienda"}
+        </p>
       </section>
 
-      <section className="display-stage" style={styles.stage}>
-        <div style={styles.wheelWrap}>
-          <StoreWheel
-            premios={premios}
-            girando={girando}
-            premioFinal={premioFinal}
-            premioObjetivo={premioObjetivo}
-            mostrarBoton={false}
-            lucesReposo={estado !== "spin" && estado !== "result"}
-            modoDisplay
-            duracionGiro={SPIN_DURATION_MS}
-          />
+      {estado.startsWith("bingo") ? (
+        <section className="display-stage" style={styles.stage}>
+          <div style={styles.wheelWrap}>
+            <StoreBingoDrum
+              girando={bingoGirando}
+              numeroFinal={bingoNumero}
+              mostrarBoton={false}
+              modoDisplay
+            />
 
-          {estado !== "result" && (
-            <div style={styles.waitingBadge}>
-              <span style={styles.pulseDot} />
-              {estado === "spin"
-                ? "Girando..."
-                : estado === "ready"
-                  ? "Participante listo"
-                  : "Esperando siguiente participante"}
-            </div>
-          )}
-        </div>
+            {estado !== "bingo-result" && (
+              <div style={styles.waitingBadge}>
+                <span style={styles.pulseDot} />
+                {estado === "bingo-spin" ? "Extrayendo la bola..." : "Bombo listo"}
+              </div>
+            )}
+          </div>
 
-        <div className="display-side" style={styles.side}>
-          {estado !== "result" ? (
-            <div style={styles.waitPanel}>
-              <div style={styles.bigIcon}>🎁</div>
-              <h2 style={styles.waitTitle}>
-                {estado === "ready" ? "Código válido" : "Premio sorpresa"}
-              </h2>
-              <p style={styles.waitText}>
-                {estado === "ready"
-                  ? "El participante ya puede girar la ruleta."
-                  : "Escanea tu QR en caja y gira la ruleta delante de todos."}
-              </p>
+          <div className="display-side" style={styles.side}>
+            {estado !== "bingo-result" ? (
+              <div style={styles.waitPanel}>
+                <div style={styles.bigIcon}>🎱</div>
+                <h2 style={styles.waitTitle}>Bingo Cash Lojo</h2>
+                <p style={styles.waitText}>
+                  {estado === "bingo-spin"
+                    ? "La bola está a punto de salir del bombo."
+                    : "El cliente va a extraer una bola desde caja."}
+                </p>
 
-              {entrada?.customer_name && (
-                <div style={styles.customerName}>{entrada.customer_name}</div>
-              )}
-            </div>
-          ) : (
-            <div
-              style={{
-                ...styles.resultBox,
-                ...(esJackpot ? styles.resultBoxJackpot : {}),
-              }}
-            >
-              <div style={styles.resultIcon}>{esJackpot ? "🚨🎉🚨" : "★ ¡ENHORABUENA! ★"}</div>
+                {bingoEntrada?.customer_name && (
+                  <div style={styles.customerName}>{bingoEntrada.customer_name}</div>
+                )}
+              </div>
+            ) : (
+              <div style={styles.resultBox}>
+                <div style={styles.resultIcon}>★ ¡BOLA CANTADA! ★</div>
+                <div style={styles.giftPlaceholder}>{bingoNumero}</div>
+                <div style={styles.hasGanado}>NÚMERO</div>
+                <strong style={styles.prizeName}>{bingoNumero}</strong>
+              </div>
+            )}
+          </div>
+        </section>
+      ) : (
+        <section className="display-stage" style={styles.stage}>
+          <div style={styles.wheelWrap}>
+            <StoreWheel
+              premios={premios}
+              girando={girando}
+              premioFinal={premioFinal}
+              premioObjetivo={premioObjetivo}
+              mostrarBoton={false}
+              lucesReposo={estado !== "spin" && estado !== "result"}
+              modoDisplay
+              duracionGiro={SPIN_DURATION_MS}
+            />
 
-              {premioImagen ? (
-                <div style={styles.imageGlow}>
-                  <img src={premioImagen} alt="" style={styles.prizeImage} />
-                </div>
-              ) : (
-                <div style={styles.giftPlaceholder}>🎁</div>
-              )}
+            {estado !== "result" && (
+              <div style={styles.waitingBadge}>
+                <span style={styles.pulseDot} />
+                {estado === "spin"
+                  ? "Girando..."
+                  : estado === "ready"
+                    ? "Participante listo"
+                    : "Esperando siguiente participante"}
+              </div>
+            )}
+          </div>
 
-              <div style={styles.hasGanado}>HAS GANADO</div>
-              <strong style={styles.prizeName}>{premioFinal?.nombre}</strong>
-            </div>
-          )}
-        </div>
-      </section>
+          <div className="display-side" style={styles.side}>
+            {estado !== "result" ? (
+              <div style={styles.waitPanel}>
+                <div style={styles.bigIcon}>🎁</div>
+                <h2 style={styles.waitTitle}>
+                  {estado === "ready" ? "Código válido" : "Premio sorpresa"}
+                </h2>
+                <p style={styles.waitText}>
+                  {estado === "ready"
+                    ? "El participante ya puede girar la ruleta."
+                    : "Escanea tu QR en caja y gira la ruleta delante de todos."}
+                </p>
+
+                {entrada?.customer_name && (
+                  <div style={styles.customerName}>{entrada.customer_name}</div>
+                )}
+              </div>
+            ) : (
+              <div
+                style={{
+                  ...styles.resultBox,
+                  ...(esJackpot ? styles.resultBoxJackpot : {}),
+                }}
+              >
+                <div style={styles.resultIcon}>{esJackpot ? "🚨🎉🚨" : "★ ¡ENHORABUENA! ★"}</div>
+
+                {premioImagen ? (
+                  <div style={styles.imageGlow}>
+                    <img src={premioImagen} alt="" style={styles.prizeImage} />
+                  </div>
+                ) : (
+                  <div style={styles.giftPlaceholder}>🎁</div>
+                )}
+
+                <div style={styles.hasGanado}>HAS GANADO</div>
+                <strong style={styles.prizeName}>{premioFinal?.nombre}</strong>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
     </main>
   );
 }
