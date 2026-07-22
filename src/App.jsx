@@ -292,6 +292,66 @@ function MiniRuletaPromocion({ cantidadMinima = 1, permiteUnidades = true }) {
   );
 }
 
+function MiniBingoPromocion({ cantidadMinima = 1, permiteUnidades = true }) {
+  const minimo = Math.max(1, Number(cantidadMinima || 1));
+  const unidadMinima = permiteUnidades ? "ud." : "cajas";
+
+  return (
+    <div style={styles.ruletaPromoBadge} aria-label={`Bingo, mínimo ${minimo} ${unidadMinima}`}>
+      <span style={styles.bingoPromoEmoji}>🎱</span>
+      <span style={styles.ruletaPromoText}>Bingo</span>
+      <span style={styles.ruletaPromoMinimo}>Mín. {minimo} {unidadMinima}</span>
+    </div>
+  );
+}
+
+// Cuando un artículo participa en Ruleta Y en Bingo a la vez, en vez de
+// mostrar dos pastillas de 132px una junto a otra (satura la ficha), se
+// muestra una sola pastilla con las dos líneas compactas. Si solo
+// participa en una de las dos, se mantiene el mismo aspecto de siempre.
+function MiniPromocionesBadge({
+  participaRuleta,
+  cantidadMinimaRuleta,
+  permiteUnidadesRuleta = true,
+  participaBingo,
+  cantidadMinimaBingo,
+  permiteUnidadesBingo = true,
+}) {
+  if (!participaRuleta && !participaBingo) return null;
+
+  if (participaRuleta && !participaBingo) {
+    return <MiniRuletaPromocion cantidadMinima={cantidadMinimaRuleta} permiteUnidades={permiteUnidadesRuleta} />;
+  }
+
+  if (participaBingo && !participaRuleta) {
+    return <MiniBingoPromocion cantidadMinima={cantidadMinimaBingo} permiteUnidades={permiteUnidadesBingo} />;
+  }
+
+  const minRuleta = Math.max(1, Number(cantidadMinimaRuleta || 1));
+  const unidadRuleta = permiteUnidadesRuleta ? "ud." : "cajas";
+  const minBingo = Math.max(1, Number(cantidadMinimaBingo || 1));
+  const unidadBingo = permiteUnidadesBingo ? "ud." : "cajas";
+
+  return (
+    <div
+      style={styles.promoBadgeDoble}
+      aria-label={`Ruleta, mínimo ${minRuleta} ${unidadRuleta}; Bingo, mínimo ${minBingo} ${unidadBingo}`}
+    >
+      <div style={styles.promoBadgeDobleFila}>
+        <img src="/productos/Ruleta.webp" alt="Ruleta" style={styles.promoBadgeDobleIcono} />
+        <span style={styles.promoBadgeDobleTexto}>Ruleta</span>
+        <span style={styles.promoBadgeDobleMinimo}>Mín. {minRuleta} {unidadRuleta}</span>
+      </div>
+      <div style={styles.promoBadgeDobleDivisor} />
+      <div style={styles.promoBadgeDobleFila}>
+        <span style={styles.promoBadgeDobleIconoEmoji}>🎱</span>
+        <span style={styles.promoBadgeDobleTexto}>Bingo</span>
+        <span style={styles.promoBadgeDobleMinimo}>Mín. {minBingo} {unidadBingo}</span>
+      </div>
+    </div>
+  );
+}
+
 
 function crearCartonBingo90() {
   // Cartón clásico: 3 filas, 9 columnas y 15 números (5 por fila).
@@ -1384,6 +1444,26 @@ export default function App() {
     return { porId, porCodigo, porNombre };
   }, [articulosRuleta]);
 
+  // El Bingo, a diferencia de la Ruleta, identifica los artículos
+  // EXCLUSIVAMENTE por id (así es como registrar_pedido_bingo los valida),
+  // así que aquí solo hace falta un mapa por id.
+  const idsArticulosBingo = useMemo(() => {
+    return new Set(
+      articulosBingoCliente
+        .map((item) => normalizePromoValue(item.articulo_id))
+        .filter(Boolean)
+    );
+  }, [articulosBingoCliente]);
+
+  const cantidadesMinimasBingoPorArticulo = useMemo(() => {
+    const porId = new Map();
+    articulosBingoCliente.forEach((item) => {
+      const claveId = normalizePromoValue(item.articulo_id);
+      if (claveId) porId.set(claveId, Math.max(1, Number(item.cantidad_minima || 1)));
+    });
+    return porId;
+  }, [articulosBingoCliente]);
+
   const productos = useMemo(() => {
     return ordenarProductos(
       articulos
@@ -1402,6 +1482,8 @@ export default function App() {
           cantidadesMinimasRuletaPorArticulo.porCodigo.get(codigoArticulo) ||
           cantidadesMinimasRuletaPorArticulo.porNombre.get(nombreArticulo) ||
           1;
+        const participaBingo = idsArticulosBingo.has(articuloId);
+        const cantidadMinimaBingo = cantidadesMinimasBingoPorArticulo.get(articuloId) || 1;
 
         return {
           id: String(articulo.id),
@@ -1421,6 +1503,8 @@ export default function App() {
           ofertas: articulo.ofertas || [],
           participaRuleta,
           cantidadMinimaRuleta,
+          participaBingo,
+          cantidadMinimaBingo,
         };
       })
     );
@@ -1430,6 +1514,8 @@ export default function App() {
     idsArticulosRuleta,
     nombresArticulosRuleta,
     cantidadesMinimasRuletaPorArticulo,
+    idsArticulosBingo,
+    cantidadesMinimasBingoPorArticulo,
   ]);
 
   const productosVisibles = useMemo(
@@ -3101,10 +3187,14 @@ export default function App() {
                           </div>
 
                           <div style={styles.productTopActions}>
-                            {product.participaRuleta && (
-                              <MiniRuletaPromocion
-                                cantidadMinima={product.cantidadMinimaRuleta}
-                                permiteUnidades={product.permite_unidades}
+                            {(product.participaRuleta || product.participaBingo) && (
+                              <MiniPromocionesBadge
+                                participaRuleta={product.participaRuleta}
+                                cantidadMinimaRuleta={product.cantidadMinimaRuleta}
+                                permiteUnidadesRuleta={product.permite_unidades}
+                                participaBingo={product.participaBingo}
+                                cantidadMinimaBingo={product.cantidadMinimaBingo}
+                                permiteUnidadesBingo={product.permite_unidades}
                               />
                             )}
 
@@ -4235,6 +4325,72 @@ const styles = {
     overflow: "visible",
     textOverflow: "clip",
     letterSpacing: "-0.2px",
+  },
+
+  bingoPromoEmoji: {
+    width: "36px",
+    height: "36px",
+    fontSize: "28px",
+    lineHeight: "36px",
+    textAlign: "center",
+    display: "block",
+    flexShrink: 0,
+  },
+
+  promoBadgeDoble: {
+    width: "132px",
+    minWidth: "132px",
+    maxWidth: "132px",
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+    gap: "3px",
+    flexShrink: 0,
+    padding: "4px 5px",
+    borderRadius: "8px",
+    background: "#fff7fb",
+    border: "1px solid #f3c6dd",
+  },
+
+  promoBadgeDobleFila: {
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+  },
+
+  promoBadgeDobleIcono: {
+    width: "16px",
+    height: "16px",
+    objectFit: "contain",
+    flexShrink: 0,
+  },
+
+  promoBadgeDobleIconoEmoji: {
+    width: "16px",
+    fontSize: "13px",
+    lineHeight: "16px",
+    textAlign: "center",
+    flexShrink: 0,
+  },
+
+  promoBadgeDobleTexto: {
+    fontSize: "8px",
+    fontWeight: "800",
+    color: "#be185d",
+    whiteSpace: "nowrap",
+  },
+
+  promoBadgeDobleMinimo: {
+    fontSize: "10px",
+    fontWeight: "1000",
+    color: "#0b1185",
+    whiteSpace: "nowrap",
+    marginLeft: "auto",
+  },
+
+  promoBadgeDobleDivisor: {
+    height: "1px",
+    background: "#f3c6dd",
   },
 
   productName: {
