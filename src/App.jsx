@@ -490,7 +490,7 @@ export default function App() {
     () => localStorage.getItem(LANGUAGE_STORAGE_KEY) || "es"
   );
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
-  const estabaEditandoCantidadRef = useRef(false);
+  const bloqueColapsoCabeceraRef = useRef(false);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [mostrarAyudaInstalacion, setMostrarAyudaInstalacion] = useState(false);
   const [appInstalada, setAppInstalada] = useState(() => {
@@ -1089,49 +1089,43 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Mientras se edita una cantidad (y justo después, al cerrarse el
+    // teclado) NO dejamos que la cabecera cambie de tamaño sola. Antes
+    // reactivábamos el colapso automático a los pocos milisegundos, pero
+    // ese tiempo fijo no siempre bastaba: si el teléfono tardaba un poco
+    // más en cerrar el teclado, el reajuste de scroll del propio teléfono
+    // competía con nuestro cambio de tamaño de cabecera y el artículo de
+    // al lado se perdía igual que antes.
+    //
+    // Ahora dejamos la cabecera "congelada" en el tamaño que tuviera hasta
+    // que el cliente hace un gesto de scroll de verdad con el dedo
+    // (touchmove). A partir de ahí, vuelve a comportarse con normalidad.
+    // Se congela tanto al EMPEZAR a editar como al TERMINAR (justo cuando
+    // se cierra el teclado y el teléfono reajusta el scroll por su cuenta).
+    bloqueColapsoCabeceraRef.current = true;
+  }, [campoCantidadActivo]);
+
+  useEffect(() => {
     const handleScroll = () => {
-      // No cambiamos el tamaño de la cabecera mientras se está editando una
-      // cantidad. Antes, si el campo activo era el del primer artículo,
-      // el propio scroll que el teléfono hace para enseñar ese campo por
-      // encima del teclado ya cruzaba estos 90px: la cabecera se encogía
-      // de golpe en ese instante, cambiaba de tamaño, y ese cambio de
-      // tamaño era lo que hacía "saltar" al artículo hacia arriba hasta
-      // perderse detrás de la cabecera. Los demás artículos no lo sufrían
-      // porque, al estar más abajo, la cabecera ya estaba encogida de
-      // antes de tocarlos.
-      if (campoCantidadActivo || estabaEditandoCantidadRef.current) return;
+      if (bloqueColapsoCabeceraRef.current) return;
       setHeaderCollapsed(window.scrollY > 90);
     };
 
-    const terminandoDeEditar =
-      estabaEditandoCantidadRef.current && !campoCantidadActivo;
-    estabaEditandoCantidadRef.current = Boolean(campoCantidadActivo);
+    const handleTouchMove = () => {
+      // Gesto de scroll manual real del cliente: a partir de aquí la
+      // cabecera vuelve a poder colapsarse/expandirse con normalidad.
+      bloqueColapsoCabeceraRef.current = false;
+    };
 
-    let timer = null;
-    if (terminandoDeEditar) {
-      // Al aceptar la cantidad y cerrarse el teclado, el propio teléfono
-      // también reajusta el scroll para recuperar el espacio que ocupaba
-      // el teclado. Si en ese mismo instante dejamos que la cabecera
-      // cambie de tamaño otra vez, los dos ajustes compiten entre sí y el
-      // artículo siguiente al que se acaba de editar se pierde igual que
-      // le pasaba antes al primero. Esperamos a que el cierre del teclado
-      // se asiente antes de reactivar el colapso.
-      estabaEditandoCantidadRef.current = true;
-      timer = setTimeout(() => {
-        estabaEditandoCantidadRef.current = false;
-        handleScroll();
-      }, 350);
-    } else {
-      handleScroll();
-    }
-
+    handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("touchmove", handleTouchMove, { passive: true });
 
     return () => {
-      if (timer) clearTimeout(timer);
       window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("touchmove", handleTouchMove);
     };
-  }, [campoCantidadActivo]);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
