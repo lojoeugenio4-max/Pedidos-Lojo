@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../supabaseClient";
 
-export default function BingoDrum({ editionId, initialNumbers = [], onNumbersChange }) {
+export default function BingoDrum({ editionId, customerToken, initialNumbers = [], onNumbersChange }) {
   const [numbers, setNumbers] = useState(() => [...new Set(initialNumbers.map(Number).filter(Boolean))]);
   const [spinning, setSpinning] = useState(false);
   const onNumbersChangeRef = useRef(onNumbersChange);
@@ -35,7 +35,7 @@ export default function BingoDrum({ editionId, initialNumbers = [], onNumbersCha
   }, [initialNumbers, publishNumbers]);
 
   useEffect(() => {
-    if (!editionId) return undefined;
+    if (!editionId || !customerToken) return undefined;
     let active = true;
 
     const incorporateNumber = (value, animate = true) => {
@@ -44,14 +44,18 @@ export default function BingoDrum({ editionId, initialNumbers = [], onNumbersCha
       publishNumbers((current) => current.includes(number) ? current : [...current, number], animate);
     };
 
-    // Realtime es la vía principal. El efecto depende solo de la edición para no
-    // desmontar y volver a crear el canal cada vez que React actualiza el cartón.
+    // Realtime es la vía principal. El efecto depende de la edición y del
+    // cliente: cada cliente tiene su propio histórico de bolas, así que no
+    // basta con filtrar por edición (eso mezclaría bolas de otros clientes).
     const channel = supabase
-      .channel(`bingo-card-edition-${editionId}`)
+      .channel(`bingo-card-${editionId}-${customerToken}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "bingo_draws", filter: `edition_id=eq.${editionId}` },
-        (payload) => incorporateNumber(payload.new?.number, true)
+        { event: "INSERT", schema: "public", table: "bingo_draws", filter: `customer_token=eq.${customerToken}` },
+        (payload) => {
+          if (String(payload.new?.edition_id || "") !== String(editionId)) return;
+          incorporateNumber(payload.new?.number, true);
+        }
       )
       .subscribe();
 
@@ -63,6 +67,7 @@ export default function BingoDrum({ editionId, initialNumbers = [], onNumbersCha
         .from("bingo_draws")
         .select("number,drawn_at")
         .eq("edition_id", editionId)
+        .eq("customer_token", customerToken)
         .order("drawn_at", { ascending: true });
       if (!active || error) return;
       const latest = (data || []).map((row) => Number(row.number)).filter(Boolean);
@@ -83,7 +88,7 @@ export default function BingoDrum({ editionId, initialNumbers = [], onNumbersCha
       document.removeEventListener("visibilitychange", onVisibility);
       supabase.removeChannel(channel);
     };
-  }, [editionId, publishNumbers]);
+  }, [editionId, customerToken, publishNumbers]);
 
   const lastNumber = numbers.at(-1) || null;
   const recent = useMemo(() => numbers.slice(-8).reverse(), [numbers]);
