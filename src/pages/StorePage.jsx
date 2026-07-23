@@ -334,13 +334,22 @@ export default function StorePage() {
       const currentCode = normalizarCodigo(entitlement?.code || codigo);
       if (!eventCode || eventCode !== currentCode) return;
 
+      const restantes = Number(message.bingo_remaining || 0);
+
       setProcesandoBingo(false);
       setBolaBingo(Number(message.ball_number) || null);
       setEntitlement((current) => ({
         ...current,
-        bingo_available: false,
-        bingo_remaining: Number(message.bingo_remaining || 0),
+        bingo_available: restantes > 0,
+        bingo_remaining: restantes,
       }));
+
+      if (restantes > 0) {
+        setMensaje(`Bola ${message.ball_number} registrada. Quedan ${restantes} ${restantes === 1 ? "tirada" : "tiradas"} de Bingo.`);
+        setEstado("bingo-waiting");
+        return;
+      }
+
       setMensaje(`Bola ${message.ball_number} registrada correctamente.`);
       setEstado(entitlement?.roulette_available ? "game-choice" : "bingo-result");
     }
@@ -604,7 +613,11 @@ export default function StorePage() {
     // Televisor ya está abierta de forma permanente (lojo-ruleta-display) y
     // reacciona sola a este aviso, igual que ya hace con la ruleta. Se le
     // manda el mismo bombo (BingoDrumStage) y el mismo historial de bolas.
-    enviarEventoDisplay("bingo-waiting", { entrada: entitlement, numeros });
+    enviarEventoDisplay("bingo-waiting", {
+      entrada: entitlement,
+      numeros,
+      bingoRemaining: Number(entitlement?.bingo_remaining || 0),
+    });
   }
 
   async function girarBombo() {
@@ -674,20 +687,42 @@ export default function StorePage() {
         );
       }
 
+      const restantes = Number(result.bingo_remaining || 0);
+
       setBomboGirando(false);
       setBolaBingo(ballNumber);
       setEntitlement((current) =>
         current
           ? {
               ...current,
-              bingo_available: false,
-              bingo_remaining: Number(result.bingo_remaining || 0),
+              bingo_available: restantes > 0,
+              bingo_remaining: restantes,
             }
           : current
       );
+
+      if (restantes > 0) {
+        // Al cliente le quedan más bolas de este mismo pedido: nos
+        // quedamos en la pantalla del bombo (no se pide el QR otra vez)
+        // para que solo haga falta pulsar GIRAR BOMBO de nuevo.
+        setMensaje(`Bola ${ballNumber} registrada. Quedan ${restantes} ${restantes === 1 ? "tirada" : "tiradas"} de Bingo.`);
+        const numeros = await cargarNumerosBingo();
+        setBingoNumbers(numeros);
+        enviarEventoDisplay("bingo-waiting", {
+          entrada: entitlement,
+          numeros,
+          bingoRemaining: restantes,
+        });
+        return;
+      }
+
       setEstado(entitlement?.roulette_available ? "bingo-result-with-roulette" : "bingo-result");
 
-      enviarEventoDisplay("bingo-result", { entrada: entitlement, numero: ballNumber });
+      enviarEventoDisplay("bingo-result", {
+        entrada: entitlement,
+        numero: ballNumber,
+        bingoRemaining: restantes,
+      });
     } catch (finalizeFailure) {
       setBomboGirando(false);
       setMensaje(finalizeFailure?.message || "No se pudo publicar la bola.");
@@ -1021,6 +1056,8 @@ export default function StorePage() {
             }
             onGirar={girarBombo}
             error={estado === "error" ? mensaje : ""}
+            customerName={entitlement?.customer_name || ""}
+            bolasRestantes={Number.isFinite(Number(entitlement?.bingo_remaining)) ? Number(entitlement.bingo_remaining) : null}
           />
         </section>
       )}
