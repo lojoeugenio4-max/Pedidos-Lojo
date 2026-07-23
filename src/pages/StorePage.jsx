@@ -3,6 +3,7 @@ import { CheckCircle, RotateCcw, Search, XCircle } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import StoreWheel from "../components/StoreWheel";
 import BingoDrumStage from "../components/BingoDrumStage";
+import { calcularPremiosConseguidos } from "../utils/bingoWinLogic";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
 const BINGO_CONTROL_CHANNEL = "lojo-bingo-control";
@@ -306,6 +307,8 @@ export default function StorePage() {
   const [bomboGirando, setBomboGirando] = useState(false);
   const [bingoNumbers, setBingoNumbers] = useState([]);
   const [bingoTrigger, setBingoTrigger] = useState(null);
+  const [premioBingoGanado, setPremioBingoGanado] = useState(null);
+  const premiosYaCelebradosRef = useRef(new Set());
 
   useEffect(() => {
     const el = inputRef.current;
@@ -591,6 +594,45 @@ export default function StorePage() {
     }
   }
 
+  async function comprobarPremiosBingo(customerToken, { celebrar = true } = {}) {
+    if (!customerToken) return;
+    try {
+      const { data: raw, error } = await supabase.rpc("obtener_estado_carton_bingo", {
+        p_customer_token: customerToken,
+      });
+      const estadoCarton = Array.isArray(raw) ? raw[0] : raw;
+      if (error || !estadoCarton?.ok) return;
+
+      const premios = calcularPremiosConseguidos(
+        estadoCarton.card,
+        estadoCarton.drawn_numbers,
+        estadoCarton.promo
+      );
+      const promo = estadoCarton.promo || {};
+
+      const definiciones = [
+        { clave: "linea", conseguido: premios.linea, etiqueta: "¡LÍNEA!", nombre: promo.premio_linea_nombre },
+        { clave: "lineaEspecial", conseguido: premios.lineaEspecial, etiqueta: "¡LÍNEA ESPECIAL!", nombre: promo.premio_linea_especial_nombre },
+        { clave: "bingo", conseguido: premios.bingo, etiqueta: "¡BINGO!", nombre: promo.premio_bingo_nombre },
+        { clave: "bingoEspecial", conseguido: premios.bingoEspecial, etiqueta: "¡BINGO ESPECIAL!", nombre: promo.premio_especial_nombre },
+      ];
+
+      definiciones.forEach(({ clave, conseguido, etiqueta, nombre }) => {
+        const claveUnica = `${customerToken}:${clave}`;
+        if (!conseguido || premiosYaCelebradosRef.current.has(claveUnica)) return;
+        premiosYaCelebradosRef.current.add(claveUnica);
+        if (!celebrar) return;
+
+        const texto = nombre ? `${etiqueta} ${nombre}` : etiqueta;
+        const premio = { nombre: texto, key: `${claveUnica}-${Date.now()}` };
+        setPremioBingoGanado(premio);
+        enviarEventoDisplay("bingo-premio", { premio });
+      });
+    } catch (comprobarError) {
+      console.error("No se pudo comprobar los premios de Bingo:", comprobarError);
+    }
+  }
+
   async function consumirBingo() {
     if (!entitlement?.id) return;
 
@@ -605,9 +647,19 @@ export default function StorePage() {
     setBingoTrigger(null);
     pendingBingoReservaRef.current = null;
     setEstado("bingo-waiting");
+    setPremioBingoGanado(null);
+    premiosYaCelebradosRef.current = new Set();
 
     const numeros = await cargarNumerosBingo();
     setBingoNumbers(numeros);
+
+    // Antes de la primera tirada de esta sesión, comprobamos en silencio
+    // (sin aplausos) qué premios ya estuvieran conseguidos de antes, para
+    // no volver a "anunciarlos" si el cajero cierra y reabre el bombo del
+    // mismo cliente a mitad de partida.
+    if (entitlement?.customer_token) {
+      comprobarPremiosBingo(entitlement.customer_token, { celebrar: false });
+    }
 
     // Igual que la Ruleta: no se abre ninguna ventana nueva. La pantalla del
     // Televisor ya está abierta de forma permanente (lojo-ruleta-display) y
@@ -700,6 +752,10 @@ export default function StorePage() {
             }
           : current
       );
+
+      if (entitlement?.customer_token) {
+        comprobarPremiosBingo(entitlement.customer_token);
+      }
 
       if (restantes > 0) {
         // Al cliente le quedan más bolas de este mismo pedido: nos
@@ -1058,6 +1114,7 @@ export default function StorePage() {
             error={estado === "error" ? mensaje : ""}
             customerName={entitlement?.customer_name || ""}
             bolasRestantes={Number.isFinite(Number(entitlement?.bingo_remaining)) ? Number(entitlement.bingo_remaining) : null}
+            premioGanado={premioBingoGanado}
           />
         </section>
       )}
