@@ -10,12 +10,58 @@ const ACTIVO = "activo";
 const INACTIVO = "inactivo";
 const FORMULARIO_VACIO = { nombre: "", telefono: "", estado: ACTIVO };
 const PLANTILLA_WHATSAPP_KEY = "lojo_admin_plantilla_whatsapp_clientes";
-const PLANTILLA_WHATSAPP_POR_DEFECTO = `Hola {nombre} 👋
+const PLANTILLA_WHATSAPP_ANTERIOR = `Hola 👋
 
 Ya tienes tu enlace personal para hacer tus pedidos en Cash Lojo:
 {enlace}
 
 Guárdalo, es siempre el mismo enlace y es solo tuyo.`;
+const PLANTILLA_WHATSAPP_ANTERIOR_V2 = `Hola 👋
+
+Hemos añadido las siguientes mejoras:
+✅ Puedes crear tu lista de artículos favoritos
+✅ Puedes participar en nuestro Bingo mensual con regalos espectaculares !!
+
+Ya tienes tu enlace personal para hacer tus pedidos en Cash Lojo:
+{enlace}
+
+Guárdalo, es siempre el mismo enlace y es solo tuyo.`;
+const PLANTILLA_WHATSAPP_ANTERIOR_V3 = `¡Hola! 👋
+
+*Novedades en Cash Lojo* 🎉
+✅ Ya puedes crear tu lista de *artículos favoritos*
+🎱 Participa en nuestro *Bingo mensual* ¡con regalos espectaculares!
+
+🔗 *Tu enlace personal para hacer pedidos:*
+{enlace}
+_(es siempre el mismo, guárdalo)_
+
+📲 *Truco: añádelo a la pantalla de inicio y úsalo como una app*
+
+🍎 *iPhone (Safari)*
+1️⃣ Abre el enlace de arriba
+2️⃣ Toca el icono compartir ⬆️
+3️⃣ Elige "Añadir a pantalla de inicio"
+
+🤖 *Android (Chrome)*
+1️⃣ Abre el enlace de arriba
+2️⃣ Toca los tres puntos ⋮
+3️⃣ Elige "Añadir a pantalla de inicio"
+
+¡Gracias por confiar en nosotros! 🙌`;
+const PLANTILLA_WHATSAPP_POR_DEFECTO = `¡Hola! 👋
+
+*Novedades en Cash Lojo* 🎉
+✅ Ya puedes crear tu lista de *artículos favoritos*
+🎱 Participa en nuestro *Bingo mensual* ¡con regalos espectaculares!
+
+🔗 *Tu enlace personal para hacer pedidos:*
+{enlace}
+_(es siempre el mismo, guárdalo)_
+
+📲 Sigue las instrucciones para añadirlo a tu pantalla de inicio _(vienen dentro al abrir el enlace)_
+
+¡Gracias por confiar en nosotros! 🙌`;
 
 function generarToken() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -48,7 +94,21 @@ export default function Clientes() {
   const [plantillaAbierta, setPlantillaAbierta] = useState(false);
   const [plantillaWhatsApp, setPlantillaWhatsApp] = useState(() => {
     try {
-      return localStorage.getItem(PLANTILLA_WHATSAPP_KEY) || PLANTILLA_WHATSAPP_POR_DEFECTO;
+      const guardada = localStorage.getItem(PLANTILLA_WHATSAPP_KEY);
+      if (!guardada) return PLANTILLA_WHATSAPP_POR_DEFECTO;
+      // Si lo guardado es alguna de las plantillas automáticas anteriores
+      // (con "Hola {nombre}" o la versión sin nombre pero sin el aviso de
+      // mejoras), se actualiza sola a la nueva por defecto; si el negocio
+      // la había personalizado con otro texto propio, se respeta tal cual.
+      const esPlantillaAntigua =
+        guardada.trim().startsWith("Hola {nombre}") ||
+        guardada.trim() === PLANTILLA_WHATSAPP_ANTERIOR.trim() ||
+        guardada.trim() === PLANTILLA_WHATSAPP_ANTERIOR_V2.trim() ||
+        guardada.trim() === PLANTILLA_WHATSAPP_ANTERIOR_V3.trim();
+      if (esPlantillaAntigua) {
+        return PLANTILLA_WHATSAPP_POR_DEFECTO;
+      }
+      return guardada;
     } catch {
       return PLANTILLA_WHATSAPP_POR_DEFECTO;
     }
