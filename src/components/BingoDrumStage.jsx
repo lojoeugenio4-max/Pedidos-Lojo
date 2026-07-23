@@ -49,6 +49,7 @@ function audioCue(kind) {
     master.connect(ctx.destination);
 
     if (kind === "motor") {
+      // Ronroneo grave de fondo: da sensación de que el bombo gira.
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       const filter = ctx.createBiquadFilter();
@@ -60,50 +61,98 @@ function audioCue(kind) {
       filter.type = "lowpass";
       filter.frequency.value = 240;
       gain.gain.setValueAtTime(0.001, t);
-      gain.gain.exponentialRampToValueAtTime(0.16, t + 0.18);
-      gain.gain.setValueAtTime(0.16, t + 4.25);
+      gain.gain.exponentialRampToValueAtTime(0.13, t + 0.18);
+      gain.gain.setValueAtTime(0.13, t + 4.25);
       gain.gain.exponentialRampToValueAtTime(0.001, t + 5.05);
       osc.connect(filter).connect(gain).connect(master);
       osc.start(t);
       osc.stop(t + 5.1);
-      for (let i = 0; i < 14; i += 1) {
-        const click = ctx.createOscillator();
-        const clickGain = ctx.createGain();
-        click.type = "triangle";
-        click.frequency.value = 145 + (i % 4) * 30;
-        const at = t + 0.48 + i * 0.29;
-        clickGain.gain.setValueAtTime(0.09, at);
-        clickGain.gain.exponentialRampToValueAtTime(0.001, at + 0.055);
-        click.connect(clickGain).connect(master);
-        click.start(at);
-        click.stop(at + 0.06);
+
+      // Choques de bolas: muchos golpecitos cortos, brillantes y con
+      // resonancia (mezcla de un "clack" de impacto + un breve tono
+      // agudo), repartidos de forma irregular durante todo el mezclado
+      // — así suena a bolas de verdad entrechocando, no a un motor.
+      const totalGolpes = 58;
+      for (let i = 0; i < totalGolpes; i += 1) {
+        const at = t + 0.15 + Math.random() * 4.7;
+        const intensidad = 0.55 + Math.random() * 0.45;
+
+        const bufferSize = Math.floor(ctx.sampleRate * 0.03);
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let s = 0; s < bufferSize; s += 1) data[s] = (Math.random() * 2 - 1) * (1 - s / bufferSize);
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+        const noiseFilter = ctx.createBiquadFilter();
+        noiseFilter.type = "bandpass";
+        noiseFilter.frequency.value = 1400 + Math.random() * 2200;
+        noiseFilter.Q.value = 1.1;
+        const noiseGain = ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.001, at);
+        noiseGain.gain.exponentialRampToValueAtTime(0.16 * intensidad, at + 0.004);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, at + 0.05);
+        noise.connect(noiseFilter).connect(noiseGain).connect(master);
+        noise.start(at);
+
+        const ring = ctx.createOscillator();
+        const ringGain = ctx.createGain();
+        ring.type = "triangle";
+        ring.frequency.value = 900 + Math.random() * 1400;
+        ringGain.gain.setValueAtTime(0.001, at);
+        ringGain.gain.exponentialRampToValueAtTime(0.05 * intensidad, at + 0.006);
+        ringGain.gain.exponentialRampToValueAtTime(0.001, at + 0.09);
+        ring.connect(ringGain).connect(master);
+        ring.start(at);
+        ring.stop(at + 0.1);
       }
     } else if (kind === "drop") {
-      // Golpe seco de la bola cayendo por el tubo y llegando a la bandeja:
-      // un "clonc" grave seguido de un repique metálico corto.
+      // Bola golpeando contra cristal: un "tink" agudo y brillante al
+      // primer contacto, seguido de un tañido de cristal que se apaga
+      // poco a poco (dos armónicos ligeramente desafinados para que
+      // suene a vidrio y no a metal).
+      const impactoSize = Math.floor(ctx.sampleRate * 0.02);
+      const impactoBuffer = ctx.createBuffer(1, impactoSize, ctx.sampleRate);
+      const impactoData = impactoBuffer.getChannelData(0);
+      for (let s = 0; s < impactoSize; s += 1) impactoData[s] = (Math.random() * 2 - 1) * (1 - s / impactoSize);
+      const impacto = ctx.createBufferSource();
+      impacto.buffer = impactoBuffer;
+      const impactoFiltro = ctx.createBiquadFilter();
+      impactoFiltro.type = "highpass";
+      impactoFiltro.frequency.value = 3200;
+      const impactoGain = ctx.createGain();
+      impactoGain.gain.setValueAtTime(0.001, t);
+      impactoGain.gain.exponentialRampToValueAtTime(0.3, t + 0.003);
+      impactoGain.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
+      impacto.connect(impactoFiltro).connect(impactoGain).connect(master);
+      impacto.start(t);
+
+      [2400, 3620].forEach((frequency, index) => {
+        const tañido = ctx.createOscillator();
+        const tañidoGain = ctx.createGain();
+        tañido.type = "sine";
+        tañido.frequency.setValueAtTime(frequency, t);
+        tañido.frequency.exponentialRampToValueAtTime(frequency * 0.92, t + 0.5);
+        tañidoGain.gain.setValueAtTime(0.001, t);
+        tañidoGain.gain.exponentialRampToValueAtTime(index === 0 ? 0.15 : 0.09, t + 0.012);
+        tañidoGain.gain.exponentialRampToValueAtTime(0.001, t + (index === 0 ? 0.55 : 0.4));
+        tañido.connect(tañidoGain).connect(master);
+        tañido.start(t);
+        tañido.stop(t + 0.6);
+      });
+
+      // Golpe grave de fondo (la bola llegando a la bandeja), más discreto
+      // que antes para dejar protagonismo al cristal.
       const thud = ctx.createOscillator();
       const thudGain = ctx.createGain();
       thud.type = "sine";
-      thud.frequency.setValueAtTime(210, t);
-      thud.frequency.exponentialRampToValueAtTime(70, t + 0.22);
+      thud.frequency.setValueAtTime(180, t);
+      thud.frequency.exponentialRampToValueAtTime(70, t + 0.18);
       thudGain.gain.setValueAtTime(0.001, t);
-      thudGain.gain.exponentialRampToValueAtTime(0.32, t + 0.015);
-      thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+      thudGain.gain.exponentialRampToValueAtTime(0.14, t + 0.012);
+      thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
       thud.connect(thudGain).connect(master);
       thud.start(t);
-      thud.stop(t + 0.3);
-
-      const clink = ctx.createOscillator();
-      const clinkGain = ctx.createGain();
-      clink.type = "triangle";
-      clink.frequency.setValueAtTime(1400, t + 0.05);
-      clink.frequency.exponentialRampToValueAtTime(820, t + 0.16);
-      clinkGain.gain.setValueAtTime(0.001, t + 0.05);
-      clinkGain.gain.exponentialRampToValueAtTime(0.14, t + 0.065);
-      clinkGain.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
-      clink.connect(clinkGain).connect(master);
-      clink.start(t + 0.05);
-      clink.stop(t + 0.26);
+      thud.stop(t + 0.22);
     } else if (kind === "applause") {
       // Aplausos sintetizados: muchas "palmadas" de ruido blanco filtrado,
       // repartidas de forma aleatoria a lo largo de un par de segundos.
