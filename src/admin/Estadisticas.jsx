@@ -372,6 +372,30 @@ export default function Estadisticas() {
     cargarEstadisticas(desde, hasta, "manual");
   }
 
+  // Declarado antes que "resumen" a propósito: resumen ya usa este mapa, y
+  // en JavaScript un const no se puede leer antes de la línea donde se
+  // declara (aunque esté más abajo en el mismo componente). Tenerlo después
+  // de resumen es justo lo que provocaba el "Cannot access before
+  // initialization" en la consola.
+  const bingoDrawsPorToken = useMemo(() => {
+    const mapa = new Map();
+
+    bingoDraws.forEach((draw) => {
+      const token = String(draw.customer_token || "").trim();
+      if (!token) return;
+
+      const actual = mapa.get(token) || [];
+      actual.push(draw);
+      mapa.set(token, actual);
+    });
+
+    mapa.forEach((lista) => {
+      lista.sort((a, b) => new Date(a.drawn_at || 0) - new Date(b.drawn_at || 0));
+    });
+
+    return mapa;
+  }, [bingoDraws]);
+
   const resumen = useMemo(() => {
     const pedidosUnicos = new Set(
       movimientos.map((fila) => String(fila.pedido_id || fila.id || ""))
@@ -456,25 +480,6 @@ export default function Estadisticas() {
   const topCajas = useMemo(() => agruparArticulos(movimientos, "cajas").slice(0, 20), [movimientos]);
   const topUnidades = useMemo(() => agruparArticulos(movimientos, "unidades").slice(0, 20), [movimientos]);
   const topVecesPedido = useMemo(() => agruparArticulos(movimientos, "veces_pedido").slice(0, 20), [movimientos]);
-
-  const bingoDrawsPorToken = useMemo(() => {
-    const mapa = new Map();
-
-    bingoDraws.forEach((draw) => {
-      const token = String(draw.customer_token || "").trim();
-      if (!token) return;
-
-      const actual = mapa.get(token) || [];
-      actual.push(draw);
-      mapa.set(token, actual);
-    });
-
-    mapa.forEach((lista) => {
-      lista.sort((a, b) => new Date(a.drawn_at || 0) - new Date(b.drawn_at || 0));
-    });
-
-    return mapa;
-  }, [bingoDraws]);
 
   const entitlementsPorPedido = useMemo(() => {
     const mapa = new Map();
