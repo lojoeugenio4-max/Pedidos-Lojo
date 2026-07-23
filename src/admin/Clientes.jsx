@@ -1,9 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
+import {
+  construirMensajeClienteWhatsApp,
+  construirUrlWhatsApp,
+  formatearTelefonoWhatsApp,
+} from "../utils/whatsappClientes";
 
 const ACTIVO = "activo";
 const INACTIVO = "inactivo";
 const FORMULARIO_VACIO = { nombre: "", telefono: "", estado: ACTIVO };
+const PLANTILLA_WHATSAPP_KEY = "lojo_admin_plantilla_whatsapp_clientes";
+const PLANTILLA_WHATSAPP_POR_DEFECTO = `Hola {nombre} 👋
+
+Ya tienes tu enlace personal para hacer tus pedidos en Cash Lojo:
+{enlace}
+
+Guárdalo, es siempre el mismo enlace y es solo tuyo.`;
 
 function generarToken() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -32,6 +44,16 @@ export default function Clientes() {
   const [formulario, setFormulario] = useState(FORMULARIO_VACIO);
   const [errores, setErrores] = useState({});
   const [aviso, setAviso] = useState(null);
+  const [seleccionados, setSeleccionados] = useState(() => new Set());
+  const [plantillaAbierta, setPlantillaAbierta] = useState(false);
+  const [plantillaWhatsApp, setPlantillaWhatsApp] = useState(() => {
+    try {
+      return localStorage.getItem(PLANTILLA_WHATSAPP_KEY) || PLANTILLA_WHATSAPP_POR_DEFECTO;
+    } catch {
+      return PLANTILLA_WHATSAPP_POR_DEFECTO;
+    }
+  });
+  const [colaWhatsApp, setColaWhatsApp] = useState(null);
 
   const mostrarAviso = useCallback((tipo, texto) => {
     setAviso({ tipo, texto });
@@ -219,6 +241,79 @@ export default function Clientes() {
     }
   }
 
+  function cambiarPlantillaWhatsApp(valor) {
+    setPlantillaWhatsApp(valor);
+    try {
+      localStorage.setItem(PLANTILLA_WHATSAPP_KEY, valor);
+    } catch {
+      // Si el navegador bloquea localStorage no pasa nada grave, solo no se recuerda la plantilla.
+    }
+  }
+
+  // Solo se pueden seleccionar/enviar clientes con un teléfono utilizable.
+  const seleccionablesFiltrados = useMemo(
+    () => clientesFiltrados.filter((cliente) => formatearTelefonoWhatsApp(cliente.telefono)),
+    [clientesFiltrados]
+  );
+  const todosSeleccionados =
+    seleccionablesFiltrados.length > 0 &&
+    seleccionablesFiltrados.every((cliente) => seleccionados.has(cliente.id));
+
+  function alternarSeleccion(id) {
+    setSeleccionados((actual) => {
+      const nuevo = new Set(actual);
+      if (nuevo.has(id)) nuevo.delete(id);
+      else nuevo.add(id);
+      return nuevo;
+    });
+  }
+
+  function alternarSeleccionTodos() {
+    setSeleccionados((actual) => {
+      const nuevo = new Set(actual);
+      if (todosSeleccionados) {
+        seleccionablesFiltrados.forEach((cliente) => nuevo.delete(cliente.id));
+      } else {
+        seleccionablesFiltrados.forEach((cliente) => nuevo.add(cliente.id));
+      }
+      return nuevo;
+    });
+  }
+
+  function enviarWhatsAppIndividual(cliente) {
+    const enlace = cliente.enlace_personal || (cliente.token ? crearEnlace(cliente.token) : "");
+    const texto = construirMensajeClienteWhatsApp({
+      plantilla: plantillaWhatsApp,
+      nombre: cliente.nombre,
+      enlace,
+    });
+    const url = construirUrlWhatsApp({ telefono: cliente.telefono, texto });
+
+    if (!url) {
+      mostrarAviso("error", `${cliente.nombre} no tiene un teléfono válido para WhatsApp.`);
+      return;
+    }
+
+    window.open(url, "_blank", "noopener");
+  }
+
+  function abrirColaWhatsApp() {
+    const cola = clientesFiltrados.filter(
+      (cliente) => seleccionados.has(cliente.id) && formatearTelefonoWhatsApp(cliente.telefono)
+    );
+
+    if (cola.length === 0) {
+      mostrarAviso("error", "Selecciona al menos un cliente con teléfono válido.");
+      return;
+    }
+
+    setColaWhatsApp(cola);
+  }
+
+  function cerrarColaWhatsApp() {
+    setColaWhatsApp(null);
+  }
+
   async function eliminarCliente() {
     if (!clienteAEliminar) return;
 
@@ -274,7 +369,39 @@ export default function Clientes() {
         <button type="button" style={styles.botonSecundario} onClick={cargarClientes}>
           Actualizar
         </button>
+        <button
+          type="button"
+          style={styles.botonSecundario}
+          onClick={() => setPlantillaAbierta((actual) => !actual)}
+        >
+          {plantillaAbierta ? "Ocultar mensaje WhatsApp" : "Editar mensaje WhatsApp"}
+        </button>
       </div>
+
+      {plantillaAbierta && (
+        <div style={styles.plantillaCaja}>
+          <label style={styles.label}>Mensaje que se enviará por WhatsApp</label>
+          <textarea
+            style={styles.textareaPlantilla}
+            value={plantillaWhatsApp}
+            onChange={(e) => cambiarPlantillaWhatsApp(e.target.value)}
+            rows={5}
+          />
+          <p style={styles.info}>
+            Usa <strong>{"{nombre}"}</strong> y <strong>{"{enlace}"}</strong> donde quieras que se
+            sustituyan por los datos de cada cliente. Se guarda en este navegador para la próxima vez.
+          </p>
+        </div>
+      )}
+
+      {seleccionados.size > 0 && (
+        <div style={styles.barraSeleccion}>
+          <span>{seleccionados.size} cliente(s) seleccionado(s)</span>
+          <button type="button" style={styles.botonWhatsApp} onClick={abrirColaWhatsApp}>
+            Enviar enlace por WhatsApp
+          </button>
+        </div>
+      )}
 
       {aviso && (
         <div style={{ ...styles.aviso, ...(aviso.tipo === "error" ? styles.error : styles.exito) }}>
@@ -294,6 +421,15 @@ export default function Clientes() {
             <table style={styles.tabla}>
               <thead>
                 <tr>
+                  <th style={styles.th}>
+                    <input
+                      type="checkbox"
+                      checked={todosSeleccionados}
+                      onChange={alternarSeleccionTodos}
+                      disabled={seleccionablesFiltrados.length === 0}
+                      title="Seleccionar todos los que tienen teléfono válido"
+                    />
+                  </th>
                   <th style={styles.th}>Nombre</th>
                   <th style={styles.th}>Teléfono</th>
                   <th style={styles.th}>Copiar enlace</th>
@@ -306,8 +442,19 @@ export default function Clientes() {
                   const activo = cliente.estado === ACTIVO;
                   const procesando = procesandoId === cliente.id;
 
+                  const tieneWhatsApp = Boolean(formatearTelefonoWhatsApp(cliente.telefono));
+
                   return (
                     <tr key={cliente.id}>
+                      <td style={styles.td}>
+                        <input
+                          type="checkbox"
+                          checked={seleccionados.has(cliente.id)}
+                          onChange={() => alternarSeleccion(cliente.id)}
+                          disabled={!tieneWhatsApp}
+                          title={tieneWhatsApp ? "" : "Sin teléfono válido"}
+                        />
+                      </td>
                       <td style={styles.td}><strong>{cliente.nombre}</strong></td>
                       <td style={styles.td}>{cliente.telefono || "—"}</td>
                       <td style={styles.td}>
@@ -322,6 +469,15 @@ export default function Clientes() {
                       </td>
                       <td style={{ ...styles.td, textAlign: "right" }}>
                         <div style={styles.acciones}>
+                          <button
+                            type="button"
+                            style={styles.botonWhatsAppFila}
+                            disabled={procesando || !tieneWhatsApp}
+                            title={tieneWhatsApp ? "Enviar enlace por WhatsApp" : "Sin teléfono válido"}
+                            onClick={() => enviarWhatsAppIndividual(cliente)}
+                          >
+                            WhatsApp
+                          </button>
                           <button type="button" style={styles.botonAccion} disabled={procesando} onClick={() => abrirEditar(cliente)}>
                             Editar
                           </button>
@@ -378,7 +534,79 @@ export default function Clientes() {
           </div>
         </Modal>
       )}
+
+      {colaWhatsApp && (
+        <ColaEnvioWhatsApp
+          clientes={colaWhatsApp}
+          plantilla={plantillaWhatsApp}
+          crearEnlace={crearEnlace}
+          cerrar={cerrarColaWhatsApp}
+        />
+      )}
     </div>
+  );
+}
+
+function ColaEnvioWhatsApp({ clientes, plantilla, crearEnlace, cerrar }) {
+  const [indice, setIndice] = useState(0);
+  const [enviados, setEnviados] = useState(() => new Set());
+
+  const actual = clientes[indice];
+  const terminado = indice >= clientes.length;
+
+  function enviarActual() {
+    if (!actual) return;
+
+    const enlace = actual.enlace_personal || (actual.token ? crearEnlace(actual.token) : "");
+    const texto = construirMensajeClienteWhatsApp({ plantilla, nombre: actual.nombre, enlace });
+    const url = construirUrlWhatsApp({ telefono: actual.telefono, texto });
+
+    if (url) {
+      window.open(url, "_blank", "noopener");
+      setEnviados((prev) => new Set(prev).add(actual.id));
+    }
+
+    setIndice((i) => i + 1);
+  }
+
+  function saltarActual() {
+    setIndice((i) => i + 1);
+  }
+
+  return (
+    <Modal cerrar={cerrar}>
+      <h3 style={styles.modalTitulo}>Enviar enlaces por WhatsApp</h3>
+
+      {!terminado ? (
+        <>
+          <p style={styles.info}>
+            Cliente {indice + 1} de {clientes.length}. Al pulsar, se abre WhatsApp en una pestaña
+            nueva con el mensaje ya escrito para este cliente — solo falta darle a enviar allí.
+          </p>
+          <div style={styles.filaColaActual}>
+            <strong>{actual.nombre}</strong>
+            <span style={{ color: "#6b7280" }}>{actual.telefono}</span>
+          </div>
+          <div style={styles.modalAcciones}>
+            <button type="button" style={styles.botonSecundario} onClick={saltarActual}>
+              Saltar
+            </button>
+            <button type="button" style={styles.botonWhatsApp} onClick={enviarActual}>
+              Abrir WhatsApp y pasar al siguiente
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p>Enviado a {enviados.size} de {clientes.length} clientes.</p>
+          <div style={styles.modalAcciones}>
+            <button type="button" style={styles.botonPrincipal} onClick={cerrar}>
+              Cerrar
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }
 
@@ -412,7 +640,7 @@ const styles = {
   exito: { background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0" },
   tablaCaja: { border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" },
   tablaScroll: { overflowX: "auto" },
-  tabla: { width: "100%", minWidth: 760, borderCollapse: "collapse" },
+  tabla: { width: "100%", minWidth: 800, borderCollapse: "collapse" },
   th: { padding: "12px 14px", textAlign: "left", background: "#f9fafb", color: "#6b7280", fontSize: 12, borderBottom: "1px solid #e5e7eb" },
   td: { padding: "13px 14px", borderBottom: "1px solid #eef2f7", fontSize: 14 },
   vacio: { padding: 36, textAlign: "center", color: "#6b7280" },
@@ -433,4 +661,10 @@ const styles = {
   errorCampo: { display: "block", marginTop: 5, color: "#b91c1c", fontSize: 12, fontWeight: 700 },
   info: { background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 10, padding: 10 },
   modalAcciones: { display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap", marginTop: 20 },
+  plantillaCaja: { border: "1px solid #e5e7eb", borderRadius: 12, padding: 14, marginBottom: 14, background: "#f9fafb" },
+  textareaPlantilla: { width: "100%", boxSizing: "border-box", border: "1px solid #d1d5db", borderRadius: 10, padding: "11px 12px", fontSize: 14, fontFamily: "inherit", resize: "vertical" },
+  barraSeleccion: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", border: "1px solid #bbf7d0", background: "#f0fdf4", borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontWeight: 700, color: "#166534" },
+  botonWhatsApp: { border: 0, borderRadius: 10, background: "#22c55e", color: "white", padding: "11px 15px", fontWeight: 800, cursor: "pointer" },
+  botonWhatsAppFila: { border: "1px solid #86efac", borderRadius: 8, background: "#f0fdf4", color: "#166534", padding: "7px 9px", cursor: "pointer", fontWeight: 700 },
+  filaColaActual: { display: "flex", flexDirection: "column", gap: 4, border: "1px solid #e5e7eb", borderRadius: 10, padding: 14, marginBottom: 16 },
 };
