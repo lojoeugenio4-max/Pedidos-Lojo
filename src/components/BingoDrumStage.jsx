@@ -67,44 +67,6 @@ function audioCue(kind) {
       osc.connect(filter).connect(gain).connect(master);
       osc.start(t);
       osc.stop(t + 5.1);
-
-      // Choques de bolas: muchos golpecitos cortos, brillantes y con
-      // resonancia (mezcla de un "clack" de impacto + un breve tono
-      // agudo), repartidos de forma irregular durante todo el mezclado
-      // — así suena a bolas de verdad entrechocando, no a un motor.
-      const totalGolpes = 58;
-      for (let i = 0; i < totalGolpes; i += 1) {
-        const at = t + 0.15 + Math.random() * 4.7;
-        const intensidad = 0.55 + Math.random() * 0.45;
-
-        const bufferSize = Math.floor(ctx.sampleRate * 0.03);
-        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-        const data = buffer.getChannelData(0);
-        for (let s = 0; s < bufferSize; s += 1) data[s] = (Math.random() * 2 - 1) * (1 - s / bufferSize);
-        const noise = ctx.createBufferSource();
-        noise.buffer = buffer;
-        const noiseFilter = ctx.createBiquadFilter();
-        noiseFilter.type = "bandpass";
-        noiseFilter.frequency.value = 1400 + Math.random() * 2200;
-        noiseFilter.Q.value = 1.1;
-        const noiseGain = ctx.createGain();
-        noiseGain.gain.setValueAtTime(0.001, at);
-        noiseGain.gain.exponentialRampToValueAtTime(0.16 * intensidad, at + 0.004);
-        noiseGain.gain.exponentialRampToValueAtTime(0.001, at + 0.05);
-        noise.connect(noiseFilter).connect(noiseGain).connect(master);
-        noise.start(at);
-
-        const ring = ctx.createOscillator();
-        const ringGain = ctx.createGain();
-        ring.type = "triangle";
-        ring.frequency.value = 900 + Math.random() * 1400;
-        ringGain.gain.setValueAtTime(0.001, at);
-        ringGain.gain.exponentialRampToValueAtTime(0.05 * intensidad, at + 0.006);
-        ringGain.gain.exponentialRampToValueAtTime(0.001, at + 0.09);
-        ring.connect(ringGain).connect(master);
-        ring.start(at);
-        ring.stop(at + 0.1);
-      }
     } else if (kind === "drop") {
       // Bola golpeando contra cristal: un "tink" agudo y brillante al
       // primer contacto, seguido de un tañido de cristal que se apaga
