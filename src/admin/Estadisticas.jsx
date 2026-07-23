@@ -102,6 +102,9 @@ function construirTextoPedido(pedido) {
     : "Fecha no disponible";
   const cliente = pedido.customer_name ? `Cliente: ${pedido.customer_name}\n` : "";
   const telefono = pedido.customer_phone ? `Teléfono: ${pedido.customer_phone}\n` : "";
+  const bingo = pedido.bingoParticipa
+    ? `Bingo: ${pedido.bingoBolas?.length ? `${pedido.bingoBolas.length} bola(s) cantada(s) (${pedido.bingoBolas.map((b) => b.number).join(", ")})` : "disponible, sin bolas todavía"}\n`
+    : "";
   const lineas = pedido.lineas.map((linea) => {
     const cantidades = [];
     if (Number(linea.cajas || 0) > 0) cantidades.push(`${formatearNumero(linea.cajas)} cajas`);
@@ -119,6 +122,7 @@ function construirTextoPedido(pedido) {
     `Fecha: ${fecha}`,
     cliente.trimEnd(),
     telefono.trimEnd(),
+    bingo.trimEnd(),
     "",
     ...lineas,
     "",
@@ -172,6 +176,8 @@ export default function Estadisticas() {
   const [movimientos, setMovimientos] = useState([]);
   const [participacionesRuleta, setParticipacionesRuleta] = useState([]);
   const [promocionesRuletaPorId, setPromocionesRuletaPorId] = useState(new Map());
+  const [entitlements, setEntitlements] = useState([]);
+  const [bingoDraws, setBingoDraws] = useState([]);
   const [desde, setDesde] = useState(hoyEstadistico);
   const [hasta, setHasta] = useState(hoyEstadistico);
   const [periodoActivo, setPeriodoActivo] = useState("hoy");
@@ -214,6 +220,48 @@ export default function Estadisticas() {
       if (participacionesError) throw participacionesError;
 
       setParticipacionesRuleta(participacionesData || []);
+
+      // Nombre del cliente y disponibilidad de Bingo por pedido: viene de
+      // game_entitlements, la tabla común a Ruleta y Bingo (antes solo se
+      // miraba promotion_participations, que es exclusiva de Ruleta y por
+      // eso los pedidos de Bingo no salían con nombre de cliente).
+      // Se consulta con try/catch propio para que, si esta tabla no existe
+      // o cambia de nombre, el resto de las estadísticas no se rompa.
+      try {
+        const { data: entitlementsData, error: entitlementsError } = await supabase
+          .from("game_entitlements")
+          .select("*")
+          .gte("created_at", inicio)
+          .lt("created_at", fin)
+          .order("created_at", { ascending: false });
+
+        if (entitlementsError) throw entitlementsError;
+        setEntitlements(entitlementsData || []);
+
+        const tokens = Array.from(
+          new Set(
+            (entitlementsData || [])
+              .map((fila) => String(fila.customer_token || "").trim())
+              .filter(Boolean)
+          )
+        );
+
+        if (tokens.length === 0) {
+          setBingoDraws([]);
+        } else {
+          const { data: drawsData, error: drawsError } = await supabase
+            .from("bingo_draws")
+            .select("number,drawn_at,customer_token,edition_id")
+            .in("customer_token", tokens);
+
+          if (drawsError) throw drawsError;
+          setBingoDraws(drawsData || []);
+        }
+      } catch (entitlementsCatchError) {
+        console.error("Error cargando datos de Bingo/clientes:", entitlementsCatchError);
+        setEntitlements([]);
+        setBingoDraws([]);
+      }
 
       // El informe debe utilizar la promoción asociada a cada participación,
       // no la promoción activa hoy. Además, la tienda identifica los artículos
@@ -335,6 +383,12 @@ export default function Estadisticas() {
       movimientos.map((fila) => String(fila.codigo_articulo || fila.nombre_articulo || ""))
     ).size;
 
+    const pedidosConBingo = entitlements.filter((fila) => {
+      const token = String(fila.customer_token || "").trim();
+      const tieneBolas = token && (bingoDrawsPorToken.get(token) || []).length > 0;
+      return Boolean(fila.bingo_available) || tieneBolas;
+    }).length;
+
     return {
       totalPedidos: pedidosUnicos.size,
       totalLineas: movimientos.length,
@@ -344,8 +398,10 @@ export default function Estadisticas() {
       codigosRuleta: participacionesRuleta.length,
       tiradasRuleta: participacionesRuleta.reduce((total, fila) => total + Math.max(1, Number(fila.spins_total || 1)), 0),
       codigosPendientes: participacionesRuleta.filter((fila) => String(fila.status || "").toLowerCase() === "pending").length,
+      pedidosConBingo,
+      bolasBingoCantadas: bingoDraws.length,
     };
-  }, [movimientos, participacionesRuleta]);
+  }, [movimientos, participacionesRuleta, entitlements, bingoDraws, bingoDrawsPorToken]);
 
   const pedidosPorDia = useMemo(() => {
     const mapa = new Map();
@@ -400,6 +456,39 @@ export default function Estadisticas() {
   const topUnidades = useMemo(() => agruparArticulos(movimientos, "unidades").slice(0, 20), [movimientos]);
   const topVecesPedido = useMemo(() => agruparArticulos(movimientos, "veces_pedido").slice(0, 20), [movimientos]);
 
+  const bingoDrawsPorToken = useMemo(() => {
+    const mapa = new Map();
+
+    bingoDraws.forEach((draw) => {
+      const token = String(draw.customer_token || "").trim();
+      if (!token) return;
+
+      const actual = mapa.get(token) || [];
+      actual.push(draw);
+      mapa.set(token, actual);
+    });
+
+    mapa.forEach((lista) => {
+      lista.sort((a, b) => new Date(a.drawn_at || 0) - new Date(b.drawn_at || 0));
+    });
+
+    return mapa;
+  }, [bingoDraws]);
+
+  const entitlementsPorPedido = useMemo(() => {
+    const mapa = new Map();
+
+    entitlements.forEach((fila) => {
+      const pedidoId = String(fila.order_id || "").trim();
+      if (!pedidoId) return;
+      // Si un pedido llegara a tener más de un entitlement, nos quedamos
+      // con el más reciente (la lista ya viene ordenada por created_at desc).
+      if (!mapa.has(pedidoId)) mapa.set(pedidoId, fila);
+    });
+
+    return mapa;
+  }, [entitlements]);
+
   const codigosRuletaPorPedido = useMemo(() => {
     const mapa = new Map();
 
@@ -415,7 +504,7 @@ export default function Estadisticas() {
     return mapa;
   }, [participacionesRuleta]);
 
-  const pedidosConRuleta = useMemo(() => {
+  const pedidosConJuegos = useMemo(() => {
     const mapa = new Map();
 
     movimientos.forEach((fila) => {
@@ -440,10 +529,41 @@ export default function Estadisticas() {
       });
     });
 
-    return Array.from(mapa.values()).sort(
-      (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
-    );
-  }, [movimientos, participacionesRuleta, codigosRuletaPorPedido]);
+    entitlements.forEach((entitlement) => {
+      const pedidoId = String(entitlement.order_id || "").trim();
+      if (!pedidoId || mapa.has(pedidoId)) return;
+
+      mapa.set(pedidoId, {
+        pedido_id: pedidoId,
+        created_at: entitlement.created_at,
+        codigos: codigosRuletaPorPedido.get(pedidoId) || [],
+      });
+    });
+
+    return Array.from(mapa.values())
+      .map((pedido) => {
+        const entitlement = entitlementsPorPedido.get(pedido.pedido_id) || null;
+        const bolas = entitlement?.customer_token
+          ? bingoDrawsPorToken.get(String(entitlement.customer_token)) || []
+          : [];
+
+        return {
+          ...pedido,
+          customer_name: entitlement?.customer_name || pedido.codigos?.[0]?.customer_name || null,
+          customer_phone: entitlement?.customer_phone || pedido.codigos?.[0]?.customer_phone || null,
+          bingoParticipa: Boolean(entitlement?.bingo_available || bolas.length > 0),
+          bingoBolas: bolas,
+        };
+      })
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  }, [
+    movimientos,
+    participacionesRuleta,
+    codigosRuletaPorPedido,
+    entitlements,
+    entitlementsPorPedido,
+    bingoDrawsPorToken,
+  ]);
 
 
   const detallePedidoSeleccionado = useMemo(() => {
@@ -452,6 +572,8 @@ export default function Estadisticas() {
     const participacion = pedidoSeleccionado.codigos?.find(
       (codigo) => codigo?.customer_phone || codigo?.customer_name
     ) || pedidoSeleccionado.codigos?.[0] || null;
+
+    const entitlement = entitlementsPorPedido.get(pedidoSeleccionado.pedido_id) || null;
 
     const promocionId = String(participacion?.promotion_id || "").trim();
     const configuracionPedido = promocionesRuletaPorId.get(promocionId) || null;
@@ -489,10 +611,14 @@ export default function Estadisticas() {
         );
       });
 
+    const bingoBolas = entitlement?.customer_token
+      ? bingoDrawsPorToken.get(String(entitlement.customer_token)) || []
+      : [];
+
     return {
       ...pedidoSeleccionado,
-      customer_name: participacion?.customer_name || null,
-      customer_phone: participacion?.customer_phone || null,
+      customer_name: entitlement?.customer_name || participacion?.customer_name || null,
+      customer_phone: entitlement?.customer_phone || participacion?.customer_phone || null,
       lineas,
       totalLineas: lineas.length,
       totalCajas: lineas.reduce((total, fila) => total + Number(fila.cajas || 0), 0),
@@ -503,8 +629,17 @@ export default function Estadisticas() {
       articulosRuleta: lineas.filter((fila) => fila.ruleta?.incluido),
       articulosRuletaValidos: lineas.filter((fila) => fila.ruleta?.incluido && fila.ruleta?.cumple),
       promocionRuleta: configuracionPedido?.promocion || null,
+      bingoParticipa: Boolean(entitlement?.bingo_available || bingoBolas.length > 0),
+      bingoBolas,
     };
-  }, [pedidoSeleccionado, movimientos, promocionesRuletaPorId]);
+  }, [
+    pedidoSeleccionado,
+    movimientos,
+    promocionesRuletaPorId,
+    entitlementsPorPedido,
+    bingoDrawsPorToken,
+  ]);
+
 
   const departamentos = useMemo(() => {
     const mapa = new Map();
@@ -597,64 +732,91 @@ export default function Estadisticas() {
         <div style={loadingBox}>Cargando estadísticas...</div>
       ) : (
         <>
-          <section style={statsGrid}>
-            <StatCard label="Pedidos" value={formatearNumero(resumen.totalPedidos)} />
-            <StatCard label="Códigos ruleta" value={formatearNumero(resumen.codigosRuleta)} />
-            <StatCard label="Tiradas ruleta" value={formatearNumero(resumen.tiradasRuleta)} />
-            <StatCard label="Pendientes ruleta" value={formatearNumero(resumen.codigosPendientes)} />
-            <StatCard label="Cajas" value={formatearNumero(resumen.totalCajas)} />
-            <StatCard label="Unidades" value={formatearNumero(resumen.totalUnidades)} />
-            <StatCard label="Artículos distintos" value={formatearNumero(resumen.articulosDistintos)} />
-            <StatCard label="Líneas" value={formatearNumero(resumen.totalLineas)} />
+          <section style={statsGroups}>
+            <div style={statsGroup}>
+              <div style={statsGroupLabel}>Pedidos</div>
+              <div style={statsGroupCards}>
+                <StatCard label="Pedidos" value={formatearNumero(resumen.totalPedidos)} />
+                <StatCard label="Cajas" value={formatearNumero(resumen.totalCajas)} />
+                <StatCard label="Unidades" value={formatearNumero(resumen.totalUnidades)} />
+                <StatCard label="Artículos distintos" value={formatearNumero(resumen.articulosDistintos)} />
+              </div>
+            </div>
+
+            <div style={statsGroup}>
+              <div style={{ ...statsGroupLabel, ...statsGroupLabelRuleta }}>🎡 Ruleta</div>
+              <div style={statsGroupCards}>
+                <StatCard label="Códigos ruleta" value={formatearNumero(resumen.codigosRuleta)} accent="#7c3aed" />
+                <StatCard label="Tiradas ruleta" value={formatearNumero(resumen.tiradasRuleta)} accent="#7c3aed" />
+                <StatCard label="Pendientes ruleta" value={formatearNumero(resumen.codigosPendientes)} accent="#7c3aed" />
+              </div>
+            </div>
+
+            <div style={statsGroup}>
+              <div style={{ ...statsGroupLabel, ...statsGroupLabelBingo }}>🎱 Bingo</div>
+              <div style={statsGroupCards}>
+                <StatCard label="Pedidos con Bingo" value={formatearNumero(resumen.pedidosConBingo)} accent="#b45309" />
+                <StatCard label="Bolas cantadas" value={formatearNumero(resumen.bolasBingoCantadas)} accent="#b45309" />
+              </div>
+            </div>
           </section>
 
           <section style={noticeBox}>
             <strong>Importante:</strong> desde ahora se cuentan pedidos reales usando pedido_id. Las estadísticas anteriores a este cambio pueden aparecer como líneas si no tenían pedido_id.
           </section>
 
-          <Panel title="Códigos de ruleta por pedido" subtitle="Muestra si cada pedido del periodo generó código para jugar">
+          <Panel title="Pedidos y juegos" subtitle="Cliente, Ruleta y Bingo de cada pedido del periodo — pulsa un pedido para ver el detalle completo">
             <div style={tableWrap}>
               <table style={table}>
                 <thead>
                   <tr>
                     <th style={th}>Fecha</th>
                     <th style={th}>Pedido</th>
-                    <th style={th}>Código ruleta</th>
-                    <th style={thRight}>Tiradas</th>
-                    <th style={thRight}>Usadas</th>
-                    <th style={th}>Estado</th>
+                    <th style={th}>Cliente</th>
+                    <th style={th}>🎡 Ruleta</th>
+                    <th style={th}>🎱 Bingo</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {pedidosConRuleta.length === 0 ? (
-                    <FilaVacia columnas={6} />
+                  {pedidosConJuegos.length === 0 ? (
+                    <FilaVacia columnas={5} />
                   ) : (
-                    pedidosConRuleta.map((pedido) => {
+                    pedidosConJuegos.map((pedido) => {
                       const codigos = pedido.codigos || [];
+                      const bolas = pedido.bingoBolas || [];
 
-                      if (!codigos.length) {
-                        return (
-                          <tr key={pedido.pedido_id}>
-                            <td style={td}>{new Date(pedido.created_at).toLocaleString("es-ES")}</td>
-                            <td style={td}><button type="button" style={orderButton} onClick={() => setPedidoSeleccionado(pedido)} title="Ver contenido del pedido">{pedido.pedido_id}</button></td>
-                            <td style={td}>No emitido</td>
-                            <td style={tdRight}>—</td>
-                            <td style={tdRight}>—</td>
-                            <td style={td}>—</td>
-                          </tr>
-                        );
-                      }
-
-                      return codigos.map((codigo, index) => (
-                        <tr key={`${pedido.pedido_id}-${codigo.id || codigo.code || index}`}>
-                          <td style={td}>{new Date(codigo.created_at || pedido.created_at).toLocaleString("es-ES")}</td>
-                          <td style={td}><button type="button" style={orderButton} onClick={() => setPedidoSeleccionado(pedido)} title="Ver contenido del pedido">{pedido.pedido_id}</button></td>
-                          <td style={tdRightStrong}>{codigo.code || codigo.codigo || "—"}</td>
-                          <td style={tdRight}>{formatearNumero(Math.max(1, Number(codigo.spins_total || 1)))}</td>
-                          <td style={tdRight}>{formatearNumero(Number(codigo.spins_used || 0))}</td>
-                          <td style={td}>{codigo.status || "—"}</td>
+                      return (
+                        <tr key={pedido.pedido_id}>
+                          <td style={td}>{new Date(pedido.created_at).toLocaleString("es-ES")}</td>
+                          <td style={td}>
+                            <button type="button" style={orderButton} onClick={() => setPedidoSeleccionado(pedido)} title="Ver contenido del pedido">
+                              {pedido.pedido_id}
+                            </button>
+                          </td>
+                          <td style={td}>{pedido.customer_name || <span style={ruletaNoIncluido}>Sin nombre</span>}</td>
+                          <td style={td}>
+                            {codigos.length === 0 ? (
+                              <span style={ruletaNoIncluido}>No participa</span>
+                            ) : (
+                              codigos.map((codigo, index) => (
+                                <div key={codigo.id || codigo.code || index} style={juegoLineaRuleta}>
+                                  <strong>{codigo.code || codigo.codigo || "—"}</strong>
+                                  <span style={smallText}>
+                                    {formatearNumero(Number(codigo.spins_used || 0))}/{formatearNumero(Math.max(1, Number(codigo.spins_total || 1)))} tiradas · {codigo.status || "—"}
+                                  </span>
+                                </div>
+                              ))
+                            )}
+                          </td>
+                          <td style={td}>
+                            {!pedido.bingoParticipa ? (
+                              <span style={ruletaNoIncluido}>No participa</span>
+                            ) : (
+                              <span style={bingoBadge}>🎱 {formatearNumero(bolas.length)} {bolas.length === 1 ? "bola" : "bolas"}</span>
+                            )}
+                          </td>
                         </tr>
-                      ));
+                      );
                     })
                   )}
                 </tbody>
@@ -928,9 +1090,30 @@ function DetallePedidoModal({ pedido, onClose }) {
           <StatCard label="Líneas" value={formatearNumero(pedido.totalLineas)} />
           <StatCard label="Cajas" value={formatearNumero(pedido.totalCajas)} />
           <StatCard label="Unidades" value={formatearNumero(pedido.totalUnidades)} />
-          <StatCard label="En promoción ruleta" value={formatearNumero(pedido.articulosRuleta.length)} />
-          <StatCard label="Válidos para ruleta" value={formatearNumero(pedido.articulosRuletaValidos.length)} />
+          <StatCard label="En promoción ruleta" value={formatearNumero(pedido.articulosRuleta.length)} accent="#7c3aed" />
+          <StatCard label="Válidos para ruleta" value={formatearNumero(pedido.articulosRuletaValidos.length)} accent="#7c3aed" />
+          <StatCard label="Bolas de Bingo" value={formatearNumero(pedido.bingoBolas?.length || 0)} accent="#b45309" />
         </div>
+
+        {pedido.bingoParticipa && (
+          <div style={bingoSummary}>
+            <div>
+              <strong>🎱 Bingo</strong>
+              <div style={smallText}>
+                {pedido.bingoBolas?.length
+                  ? "Bolas cantadas para este cliente, en el orden en que salieron:"
+                  : "Este pedido tiene Bingo disponible, pero todavía no se ha extraído ninguna bola."}
+              </div>
+            </div>
+            {pedido.bingoBolas?.length > 0 && (
+              <div style={bingoBolasList}>
+                {pedido.bingoBolas.map((bola, index) => (
+                  <span key={`${bola.number}-${index}`} style={bingoBolaChip}>{bola.number}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={ruletaSummary}>
           <div>
@@ -1036,10 +1219,10 @@ function agruparArticulos(filas, campoOrden) {
   });
 }
 
-function StatCard({ label, value }) {
+function StatCard({ label, value, accent }) {
   return (
     <div style={statCard}>
-      <div style={statValue}>{value}</div>
+      <div style={accent ? { ...statValue, color: accent } : statValue}>{value}</div>
       <div style={statLabel}>{label}</div>
     </div>
   );
@@ -1153,6 +1336,14 @@ const activeFilterButton = { ...periodButton, background: "#22c55e", color: "#ff
 const applyButton = { background: "#111827", color: "#ffffff", border: "none", borderRadius: "13px", padding: "12px 14px", fontWeight: "950", cursor: "pointer" };
 const activeApplyButton = { ...applyButton, background: "#2563eb" };
 const statsGrid = { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "12px", marginBottom: "18px" };
+const statsGroups = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "14px", marginBottom: "18px" };
+const statsGroup = { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "20px", padding: "14px", boxShadow: "0 10px 28px rgba(15,23,42,0.06)" };
+const statsGroupLabel = { fontSize: "13px", fontWeight: "950", color: "#334155", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.03em" };
+const statsGroupLabelRuleta = { color: "#6d28d9" };
+const statsGroupLabelBingo = { color: "#b45309" };
+const statsGroupCards = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "10px" };
+const juegoLineaRuleta = { display: "flex", flexDirection: "column", marginBottom: "4px" };
+const bingoBadge = { display: "inline-flex", alignItems: "center", padding: "5px 9px", borderRadius: "999px", background: "#fff7ed", color: "#9a3412", fontSize: "12px", fontWeight: "900", whiteSpace: "nowrap" };
 const statCard = { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "18px", padding: "16px", boxShadow: "0 10px 28px rgba(15,23,42,0.06)" };
 const statValue = { fontSize: "28px", fontWeight: "950", color: "#111827", lineHeight: "1" };
 const statLabel = { marginTop: "8px", fontSize: "12px", fontWeight: "850", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" };
@@ -1192,6 +1383,9 @@ const modalCustomer = { margin: "8px 0 0", color: "#ffffff", fontSize: "14px", f
 const closeButton = { width: "42px", height: "42px", flex: "0 0 auto", borderRadius: "50%", border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.12)", color: "#ffffff", fontSize: "28px", lineHeight: 1, cursor: "pointer" };
 const modalStats = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: "10px", padding: "16px 20px", background: "#f8fafc", borderBottom: "1px solid #e5e7eb" };
 const ruletaSummary = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "18px", margin: "16px 20px 0", padding: "14px 16px", borderRadius: "16px", border: "1px solid #c4b5fd", background: "#f5f3ff", color: "#4c1d95", flexWrap: "wrap" };
+const bingoSummary = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "18px", margin: "12px 20px 0", padding: "14px 16px", borderRadius: "16px", border: "1px solid #fed7aa", background: "#fff7ed", color: "#9a3412", flexWrap: "wrap" };
+const bingoBolasList = { display: "flex", flexWrap: "wrap", gap: "6px", maxWidth: "420px" };
+const bingoBolaChip = { display: "inline-flex", alignItems: "center", justifyContent: "center", width: "30px", height: "30px", borderRadius: "50%", background: "#fff", border: "2px solid #f4cf62", color: "#9a3412", fontWeight: "950", fontSize: "13px" };
 const ruletaValido = { display: "inline-flex", alignItems: "center", padding: "5px 9px", borderRadius: "999px", background: "#dcfce7", color: "#166534", fontSize: "12px", fontWeight: "900", whiteSpace: "nowrap" };
 const ruletaPendiente = { display: "inline-flex", alignItems: "center", padding: "5px 9px", borderRadius: "999px", background: "#fef3c7", color: "#92400e", fontSize: "12px", fontWeight: "900", whiteSpace: "nowrap" };
 const ruletaNoIncluido = { color: "#94a3b8", fontSize: "12px", fontWeight: "750" };
