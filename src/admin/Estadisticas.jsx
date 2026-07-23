@@ -385,8 +385,9 @@ export default function Estadisticas() {
 
     const pedidosConBingo = entitlements.filter((fila) => {
       const token = String(fila.customer_token || "").trim();
-      const tieneBolas = token && (bingoDrawsPorToken.get(token) || []).length > 0;
-      return Boolean(fila.bingo_available) || tieneBolas;
+      const bolasDesdeDraws = token ? (bingoDrawsPorToken.get(token) || []).length : 0;
+      const bolasCount = Math.max(bolasDesdeDraws, Number(fila.bingo_plays_used || 0));
+      return Boolean(fila.bingo_eligible) || bolasCount > 0;
     }).length;
 
     return {
@@ -546,13 +547,18 @@ export default function Estadisticas() {
         const bolas = entitlement?.customer_token
           ? bingoDrawsPorToken.get(String(entitlement.customer_token)) || []
           : [];
+        // Respaldo: si por lo que sea no hay filas en bingo_draws pero el
+        // propio entitlement indica bolas usadas, se muestra ese número
+        // igualmente (aunque sin el detalle de qué números salieron).
+        const bolasCount = Math.max(bolas.length, Number(entitlement?.bingo_plays_used || 0));
 
         return {
           ...pedido,
           customer_name: entitlement?.customer_name || pedido.codigos?.[0]?.customer_name || null,
-          customer_phone: entitlement?.customer_phone || pedido.codigos?.[0]?.customer_phone || null,
-          bingoParticipa: Boolean(entitlement?.bingo_available || bolas.length > 0),
+          customer_phone: pedido.codigos?.[0]?.customer_phone || null,
+          bingoParticipa: Boolean(entitlement?.bingo_eligible || bolasCount > 0),
           bingoBolas: bolas,
+          bingoBolasCount: bolasCount,
         };
       })
       .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
@@ -614,11 +620,12 @@ export default function Estadisticas() {
     const bingoBolas = entitlement?.customer_token
       ? bingoDrawsPorToken.get(String(entitlement.customer_token)) || []
       : [];
+    const bingoBolasCount = Math.max(bingoBolas.length, Number(entitlement?.bingo_plays_used || 0));
 
     return {
       ...pedidoSeleccionado,
       customer_name: entitlement?.customer_name || participacion?.customer_name || null,
-      customer_phone: entitlement?.customer_phone || participacion?.customer_phone || null,
+      customer_phone: participacion?.customer_phone || null,
       lineas,
       totalLineas: lineas.length,
       totalCajas: lineas.reduce((total, fila) => total + Number(fila.cajas || 0), 0),
@@ -629,8 +636,9 @@ export default function Estadisticas() {
       articulosRuleta: lineas.filter((fila) => fila.ruleta?.incluido),
       articulosRuletaValidos: lineas.filter((fila) => fila.ruleta?.incluido && fila.ruleta?.cumple),
       promocionRuleta: configuracionPedido?.promocion || null,
-      bingoParticipa: Boolean(entitlement?.bingo_available || bingoBolas.length > 0),
+      bingoParticipa: Boolean(entitlement?.bingo_eligible || bingoBolasCount > 0),
       bingoBolas,
+      bingoBolasCount,
     };
   }, [
     pedidoSeleccionado,
@@ -783,7 +791,6 @@ export default function Estadisticas() {
                   ) : (
                     pedidosConJuegos.map((pedido) => {
                       const codigos = pedido.codigos || [];
-                      const bolas = pedido.bingoBolas || [];
 
                       return (
                         <tr key={pedido.pedido_id}>
@@ -812,7 +819,7 @@ export default function Estadisticas() {
                             {!pedido.bingoParticipa ? (
                               <span style={ruletaNoIncluido}>No participa</span>
                             ) : (
-                              <span style={bingoBadge}>🎱 {formatearNumero(bolas.length)} {bolas.length === 1 ? "bola" : "bolas"}</span>
+                              <span style={bingoBadge}>🎱 {formatearNumero(pedido.bingoBolasCount)} {pedido.bingoBolasCount === 1 ? "bola" : "bolas"}</span>
                             )}
                           </td>
                         </tr>
@@ -1092,7 +1099,7 @@ function DetallePedidoModal({ pedido, onClose }) {
           <StatCard label="Unidades" value={formatearNumero(pedido.totalUnidades)} />
           <StatCard label="En promoción ruleta" value={formatearNumero(pedido.articulosRuleta.length)} accent="#7c3aed" />
           <StatCard label="Válidos para ruleta" value={formatearNumero(pedido.articulosRuletaValidos.length)} accent="#7c3aed" />
-          <StatCard label="Bolas de Bingo" value={formatearNumero(pedido.bingoBolas?.length || 0)} accent="#b45309" />
+          <StatCard label="Bolas de Bingo" value={formatearNumero(pedido.bingoBolasCount || 0)} accent="#b45309" />
         </div>
 
         {pedido.bingoParticipa && (
