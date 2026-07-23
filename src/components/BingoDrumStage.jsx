@@ -509,6 +509,11 @@ export default function BingoDrumStage({
   customerName = "",
   bolasRestantes = null,
   premioGanado = null,
+  drawFinished = false,
+  onExit,
+  exitLabel = "SALIR",
+  subtitle = "LOJO PRESENTA",
+  onToggleFullscreen,
 }) {
   const [phase, setPhase] = useState("idle");
   const [pendingNumber, setPendingNumber] = useState(null);
@@ -587,7 +592,7 @@ export default function BingoDrumStage({
       )}
 
       <header className="pro-header">
-        <div className="pro-logo"><span><img src={logoLojo} alt="Lojo" /></span><div><small>LOJO PRESENTA</small><h1>Bingo Cash Lojo</h1></div></div>
+        <div className="pro-logo"><span><img src={logoLojo} alt="Lojo" /></span><div><small>{subtitle}</small><h1>Bingo Cash Lojo</h1></div></div>
         <div className="pro-header__right">
           {customerName && <span className="pro-customer-name">{customerName}</span>}
           {Number.isFinite(bolasRestantes) && (
@@ -596,6 +601,9 @@ export default function BingoDrumStage({
             </span>
           )}
           <span className="pro-live"><i/> EN DIRECTO</span>
+          {onToggleFullscreen && (
+            <button type="button" onClick={onToggleFullscreen}>⛶ <b>Pantalla completa</b></button>
+          )}
         </div>
       </header>
 
@@ -628,9 +636,15 @@ export default function BingoDrumStage({
           </div>
           {mostrarControles && (
             <div className="pro-draw-control">
-              <button type="button" onClick={onGirar} disabled={drawing || phase !== "idle"}>
-                {drawing || phase !== "idle" ? "BOMBO EN MARCHA…" : "GIRAR BOMBO"}
-              </button>
+              {!drawFinished ? (
+                <button type="button" onClick={onGirar} disabled={drawing || phase !== "idle"}>
+                  {drawing || phase !== "idle" ? "BOMBO EN MARCHA…" : "GIRAR BOMBO"}
+                </button>
+              ) : (
+                <button type="button" className="pro-exit-button" onClick={onExit}>
+                  {exitLabel}
+                </button>
+              )}
               <span>{drawMessage || "Pulsa para extraer la bola. Se verá a la vez en la pantalla grande."}</span>
             </div>
           )}
