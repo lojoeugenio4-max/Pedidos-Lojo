@@ -139,6 +139,7 @@ export default function DisplayPage() {
   const [bingoTrigger, setBingoTrigger] = useState(null);
   const [bingoRemaining, setBingoRemaining] = useState(null);
   const [premiosBingoTV, setPremiosBingoTV] = useState([]);
+  const [premioBingoGanado, setPremioBingoGanado] = useState(null);
 
   useEffect(() => {
     cargarPremios();
@@ -256,6 +257,10 @@ export default function DisplayPage() {
       setPremioFinal(null);
       setPremioObjetivo(null);
       setGirando(false);
+      setBingoNumbers([]);
+      setBingoTrigger(null);
+      setBingoRemaining(null);
+      setPremioBingoGanado(null);
       return;
     }
 
@@ -322,6 +327,10 @@ export default function DisplayPage() {
       // nuevo del TPV. Antes volvía sola a la Ruleta a los 12s aunque el
       // Bingo siguiera siendo el juego activo.
     }
+
+    if (event.type === "bingo-premio") {
+      setPremioBingoGanado(payload.premio || null);
+    }
   }
 
   function escucharEventos() {
@@ -369,6 +378,7 @@ export default function DisplayPage() {
         premios={premiosBingoTV}
         customerName={entrada?.customer_name || ""}
         bolasRestantes={bingoRemaining}
+        premioGanado={premioBingoGanado}
       />
     );
   }
