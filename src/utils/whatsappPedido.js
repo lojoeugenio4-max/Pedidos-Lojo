@@ -170,10 +170,23 @@ export function construirTextoPedidoWhatsApp({
         )
       : Math.max(0, Number(tiradasRuleta || 0));
 
+    const numeroBolasBingo = Math.max(
+      1,
+      Number(
+        participacionJuegosNormalizada?.bingo_plays_total ??
+          participacionJuegosNormalizada?.bingoPlaysTotal ??
+          1
+      )
+    );
+
     lines.push("🎁 *PARTICIPACIÓN CONSEGUIDA*");
     lines.push("");
     if (numeroTiradas > 0) lines.push(`🎡 Ruleta: *${numeroTiradas} tirada${numeroTiradas === 1 ? "" : "s"}*`);
-    if (bingoConseguido) lines.push("🎱 Bingo: *1 bola disponible* (máximo una al día)");
+    if (bingoConseguido) {
+      lines.push(
+        `🟠 Bingo: *${numeroBolasBingo} ${numeroBolasBingo === 1 ? "bola disponible" : "bolas disponibles"}* (hoy no se generarán más códigos de Bingo)`
+      );
+    }
     lines.push(`Código manual: *${codigoJuegos}*`);
     lines.push("");
 
@@ -193,7 +206,7 @@ export function construirTextoPedidoWhatsApp({
     lines.push("En caja aparecerán los juegos disponibles para este pedido.");
     lines.push("");
   } else if (bingoConseguido) {
-    lines.push("🎱 *PARTICIPACIÓN DE BINGO CONSEGUIDA*");
+    lines.push("🟠 *PARTICIPACIÓN DE BINGO CONSEGUIDA*");
     lines.push("");
     lines.push("Tu pedido cumple las condiciones del Bingo, pero no se pudo generar el código común.");
     lines.push("Contacta con Cash Lojo antes de presentar el pedido en caja.");
