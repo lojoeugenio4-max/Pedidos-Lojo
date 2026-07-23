@@ -451,6 +451,7 @@ export default function BingoShow() {
   const [premiosTV, setPremiosTV] = useState([]);
   const [customerToken, setCustomerToken] = useState("");
   const [esPruebas, setEsPruebas] = useState(false);
+  const [bolasRestantes, setBolasRestantes] = useState(0);
   const timers = useRef([]);
   const locallyStartedDraws = useRef(new Set());
   const finalizingDrawRef = useRef(false);
@@ -497,6 +498,7 @@ export default function BingoShow() {
       const validated = Array.isArray(rawValidate) ? rawValidate[0] : rawValidate;
       token = String(validated?.customer_token || "").trim();
       setEsPruebas(Boolean(validated?.es_pruebas));
+      setBolasRestantes(Number(validated?.bingo_remaining || 0));
     }
     setCustomerToken(token);
     if (!token) {
@@ -667,22 +669,25 @@ export default function BingoShow() {
           schedule(() => {
             setDrawing(false);
             setDrawMessage("");
-            // Para el cliente de pruebas dejamos el botón activo para poder
-            // seguir sacando bolas sin salir de esta pantalla. Para un
-            // pedido real, se congela como hasta ahora.
-            setDrawFinished(!esPruebas);
+            const restantes = Number(result.bingo_remaining || 0);
+            setBolasRestantes(restantes);
+            // El botón se mantiene activo mientras al cliente le queden
+            // bolas por sacar de su pedido (bingo_remaining > 0), no solo
+            // para el cliente de pruebas. Antes se congelaba siempre tras
+            // la primera bola aunque el cliente tuviera más pendientes.
+            setDrawFinished(!esPruebas && restantes <= 0);
             sendBingoControlEvent({
               type: "bingo-complete",
               code: qrCode,
               ball_number: ballNumber,
-              bingo_remaining: Number(result.bingo_remaining || 0),
+              bingo_remaining: restantes,
             });
             try {
               window.opener?.postMessage({
                 type: "bingo-complete",
                 code: qrCode,
                 ball_number: ballNumber,
-                bingo_remaining: Number(result.bingo_remaining || 0),
+                bingo_remaining: restantes,
               }, window.location.origin);
             } catch {}
           }, 3900);
@@ -774,7 +779,15 @@ export default function BingoShow() {
                   SALIR DEL BINGO
                 </button>
               )}
-              <span>{drawFinished ? `Bola ${pendingNumber} registrada. Puedes volver a la pantalla de caja.` : (drawMessage || "El bombo está en espera. La bola solo saldrá al pulsar el botón.")}</span>
+              <span>
+                {drawFinished
+                  ? `Bola ${pendingNumber} registrada. Puedes volver a la pantalla de caja.`
+                  : drawMessage
+                  ? drawMessage
+                  : bolasRestantes > 0 && pendingNumber
+                  ? `Bola ${pendingNumber} registrada. Te quedan ${bolasRestantes} ${bolasRestantes === 1 ? "bola" : "bolas"} por sacar.`
+                  : "El bombo está en espera. La bola solo saldrá al pulsar el botón."}
+              </span>
             </div>
           )}
           <div className="pro-counter"><div><strong>{numbers.length}</strong><span>Bolas cantadas</span></div><div className="pro-counter__track"><i style={{ width: `${(numbers.length / BALL_COUNT) * 100}%` }}/></div><div><strong>{BALL_COUNT - numbers.length}</strong><span>Por salir</span></div></div>
