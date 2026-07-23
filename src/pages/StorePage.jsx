@@ -924,7 +924,13 @@ export default function StorePage() {
     setBingoTrigger(null);
     setBingoNumbers([]);
     pendingBingoReservaRef.current = null;
-    enviarEventoDisplay("waiting");
+    // Ojo: aquí NO se avisa a la pantalla grande. Antes se le mandaba
+    // "waiting" (la pantalla de Ruleta en reposo) cada vez que el cajero
+    // terminaba con un cliente, así que en cuanto se pulsaba "Finalizar"
+    // la TV "saltaba" a la Ruleta aunque el último juego jugado hubiera
+    // sido el Bingo. La pantalla grande debe quedarse con el último juego
+    // jugado hasta que el cliente siguiente haga algo de verdad (escanear
+    // su código, girar la ruleta o el bombo).
 
     window.setTimeout(() => {
       inputRef.current?.focus();
