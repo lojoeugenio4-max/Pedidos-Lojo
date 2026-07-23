@@ -137,6 +137,7 @@ export default function DisplayPage() {
   const [girando, setGirando] = useState(false);
   const [bingoNumbers, setBingoNumbers] = useState([]);
   const [bingoTrigger, setBingoTrigger] = useState(null);
+  const [bingoRemaining, setBingoRemaining] = useState(null);
   const [premiosBingoTV, setPremiosBingoTV] = useState([]);
 
   useEffect(() => {
@@ -285,14 +286,9 @@ export default function DisplayPage() {
       setPremioFinal(payload.premio || null);
       setPremioObjetivo(null);
       setGirando(false);
-
-      window.setTimeout(() => {
-        setEstado("waiting");
-        setEntrada(null);
-        setPremioFinal(null);
-        setPremioObjetivo(null);
-        setGirando(false);
-      }, 12000);
+      // No se revierte sola a "waiting": la pantalla grande se queda en el
+      // último juego jugado (Ruleta o Bingo) hasta que llegue un evento
+      // nuevo del TPV.
       return;
     }
 
@@ -300,7 +296,11 @@ export default function DisplayPage() {
     // Televisor, ya abierta de forma permanente), solo cambia lo que se pinta.
     if (event.type === "bingo-waiting") {
       setEstado("bingo-waiting");
+      setEntrada(payload.entrada || null);
       setBingoNumbers(payload.numeros || bingoNumbers);
+      if (Number.isFinite(Number(payload.bingoRemaining))) {
+        setBingoRemaining(Number(payload.bingoRemaining));
+      }
       return;
     }
 
@@ -314,12 +314,13 @@ export default function DisplayPage() {
 
     if (event.type === "bingo-result") {
       setEstado("bingo-result");
-
-      window.setTimeout(() => {
-        setEstado("waiting");
-        setBingoNumbers([]);
-        setBingoTrigger(null);
-      }, 12000);
+      if (Number.isFinite(Number(payload.bingoRemaining))) {
+        setBingoRemaining(Number(payload.bingoRemaining));
+      }
+      // No se revierte sola a "waiting": la pantalla grande se queda en el
+      // último juego jugado (Bingo o Ruleta) hasta que llegue un evento
+      // nuevo del TPV. Antes volvía sola a la Ruleta a los 12s aunque el
+      // Bingo siguiera siendo el juego activo.
     }
   }
 
@@ -366,6 +367,8 @@ export default function DisplayPage() {
         pendingTrigger={bingoTrigger}
         mostrarControles={false}
         premios={premiosBingoTV}
+        customerName={entrada?.customer_name || ""}
+        bolasRestantes={bingoRemaining}
       />
     );
   }
