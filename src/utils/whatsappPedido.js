@@ -145,13 +145,22 @@ export function construirTextoPedidoWhatsApp({
     participacionRuleta?.codigo ||
     null;
 
-  const bingoConseguido = Boolean(
+  const cumpleVariedadBingo = Boolean(
     participacionBingoNormalizada?.qualified ??
       participacionBingoNormalizada?.clasificado ??
       participacionBingoNormalizada?.eligible ??
       participacionBingoNormalizada?.cumple ??
       participacionBingoNormalizada?.bingo_eligible
   );
+
+  // El pedido puede cumplir la variedad mínima y aun así no recibir Bingo
+  // de verdad, si el cliente ya lo consiguió hoy con otro pedido (regla de
+  // "1 pedido de Bingo al día"). bingo_eligible es el estado que de verdad
+  // quedó guardado tras esa comprobación; sin él, el mensaje podía decir
+  // "tienes bolas" aunque ese pedido en concreto no tuviera ninguna.
+  const bingoConcedido = Boolean(participacionJuegosNormalizada?.bingo_eligible);
+  const bingoConseguido = cumpleVariedadBingo && bingoConcedido;
+  const bingoBloqueadoPorLimiteDiario = cumpleVariedadBingo && !bingoConcedido;
 
   if (codigoJuegos) {
     const urlQr = construirUrlQr(codigoJuegos);
@@ -186,6 +195,8 @@ export function construirTextoPedidoWhatsApp({
       lines.push(
         `🟠 Bingo: *${numeroBolasBingo} ${numeroBolasBingo === 1 ? "bola disponible" : "bolas disponibles"}* (hoy no se generarán más códigos de Bingo)`
       );
+    } else if (bingoBloqueadoPorLimiteDiario) {
+      lines.push("🟠 Bingo: hoy ya conseguiste Bingo con otro pedido, así que este no suma bolas nuevas.");
     }
     lines.push(`Código manual: *${codigoJuegos}*`);
     lines.push("");
