@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, Clock3, Gift, UserRound, Volume2, VolumeX } from "lucide-react";
 import logoBingo from "../../assets/logo-bingo.png";
+import { normalizarFilas, normalizarNumeros, tieneBingo, tieneLinea } from "../../utils/bingoWinLogic";
 
 let bingoAudioContext = null;
 
@@ -48,30 +49,6 @@ function reproducirCelebracion(tipo = "numero") {
   (secuencias[tipo] || secuencias.numero).forEach((frequency, index) => {
     reproducirTono(frequency, index * 0.12, tipo === "bingo" ? 0.24 : 0.18, tipo === "bingo" ? 0.12 : 0.09);
   });
-}
-
-function normalizarNumeros(numbers) {
-  return new Set(Array.isArray(numbers) ? numbers.map(Number).filter(Number.isFinite) : []);
-}
-
-function normalizarFilas(card) {
-  if (!Array.isArray(card)) return [];
-  return card.slice(0, 3).map((row) => {
-    const fila = Array.isArray(row) ? row.slice(0, 9) : [];
-    return [...fila, ...Array(Math.max(0, 9 - fila.length)).fill(null)].slice(0, 9);
-  });
-}
-
-function tieneLinea(rows, markedNumbers) {
-  return rows.some((row) => {
-    const nums = row.map(Number).filter(Number.isFinite);
-    return nums.length > 0 && nums.every((number) => markedNumbers.has(number));
-  });
-}
-
-function tieneBingo(rows, markedNumbers) {
-  const nums = rows.flat().map(Number).filter(Number.isFinite);
-  return nums.length > 0 && nums.every((number) => markedNumbers.has(number));
 }
 
 function PrizePanel({ title, prize, won, special = false }) {
