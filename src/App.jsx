@@ -2228,7 +2228,11 @@ export default function App() {
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
-  async function guardarEstadisticasPedido(itemsPedido = orderedItems, pedidoId = crearPedidoId()) {
+  async function guardarEstadisticasPedido(
+    itemsPedido = orderedItems,
+    pedidoId = crearPedidoId(),
+    customerNamePedido = ""
+  ) {
     try {
       const movimientos = itemsPedido
         .map((item) => {
@@ -2245,6 +2249,13 @@ export default function App() {
             departamento: product.department || product.departamento || "",
             cajas,
             unidades,
+            // Se guardan en TODOS los pedidos, ganen o no premio de Ruleta o
+            // Bingo (a diferencia de game_entitlements, que solo se crea
+            // cuando hay premio) — así Estadísticas puede mostrar el
+            // nombre del cliente y saber si vino por su enlace personal
+            // en cualquier pedido.
+            customer_name: customerNamePedido || null,
+            cliente_token: clienteToken || null,
           };
         })
         .filter(Boolean);
@@ -2570,7 +2581,7 @@ export default function App() {
     limpiarPedidoDespuesEnvio();
 
     // Guardamos estadísticas en segundo plano, sin bloquear WhatsApp.
-    guardarEstadisticasPedido(itemsPedido, pedidoId);
+    guardarEstadisticasPedido(itemsPedido, pedidoId, customerNamePedido);
 
     // Abrir en la misma pestaña es lo más fiable en móviles.
     abrirPedidoEnWhatsApp({
