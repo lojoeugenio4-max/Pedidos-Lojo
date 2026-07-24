@@ -11,6 +11,7 @@ import {
   Grid3X3,
   Download,
   Share,
+  ArrowUp,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { supabaseStorage } from "./supabaseStorageClient";
@@ -2083,17 +2084,20 @@ export default function App() {
   // inputs, botones y enlaces también quedan excluidos porque ya
   // gestionan su propio toque (incluida "Unid.", que activa su propio
   // campo en vez de redirigir a "Cajas").
+  //
+  // IMPORTANTE: se dispara en onClick (no en onPointerDown/touchstart).
+  // En iOS Safari, un focus() lanzado sobre un elemento DISTINTO al que
+  // se ha tocado solo abre el teclado si ocurre en el evento "click"
+  // (tras soltar el dedo); en "pointerdown"/"touchstart" Safari lo
+  // ignora aunque el elemento quede técnicamente enfocado. Por eso tocar
+  // directamente el cuadro de Cajas siempre funcionó (ahí el propio
+  // Safari lo enfoca de forma nativa al tocar), pero tocar el resto de
+  // la tarjeta no abría el teclado.
   const manejarToqueTarjetaArticulo = (event, productId) => {
     if (event.target.closest("img, input, button, a")) {
       return;
     }
 
-    // IMPORTANTE: el foco se pide ANTES de tocar el estado. Si primero
-    // actualizamos articuloDestacado/campoCantidadActivo, React vuelve a
-    // renderizar en mitad del mismo toque y en iPhone eso puede anular el
-    // focus() aunque el nodo del input sea el mismo. Por eso antes solo
-    // funcionaba cuando el artículo ya estaba resaltado de antes (no había
-    // cambio de estado de por medio).
     const input = cajasInputRefs.current[productId];
     if (input) {
       input.focus();
@@ -3258,7 +3262,7 @@ export default function App() {
                       ref={(element) => {
                         rowRefs.current[product.id] = element;
                       }}
-                      onPointerDown={(event) =>
+                      onClick={(event) =>
                         manejarToqueTarjetaArticulo(event, product.id)
                       }
                       style={{
@@ -3549,6 +3553,16 @@ export default function App() {
             </section>
           ))}
       </main>
+
+      <button
+        type="button"
+        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        style={styles.scrollTopButton}
+        aria-label="Volver al inicio"
+        title="Volver al inicio"
+      >
+        <ArrowUp size={22} strokeWidth={3} />
+      </button>
 
       <div ref={stickyCardRef} style={styles.stickySummary}>
         <div>
@@ -5210,6 +5224,23 @@ const styles = {
     fontSize: "16px",
     fontWeight: "1000",
     boxShadow: "0 14px 28px rgba(14,165,233,0.35)",
+  },
+
+  scrollTopButton: {
+    position: "fixed",
+    right: "14px",
+    bottom: "calc(84px + env(safe-area-inset-bottom))",
+    zIndex: 40,
+    width: "46px",
+    height: "46px",
+    borderRadius: "50%",
+    border: "none",
+    background: "#1e293b",
+    color: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 10px 22px rgba(15,23,42,0.35)",
   },
 
   bingoSummaryOk: {
