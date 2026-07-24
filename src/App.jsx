@@ -459,6 +459,7 @@ export default function App() {
   }
 
   const rowRefs = useRef({});
+  const cajasInputRefs = useRef({});
   const departmentDropdownRef = useRef(null);
   const stickyCardRef = useRef(null);
 
@@ -2016,11 +2017,37 @@ export default function App() {
     const cajas = Number(quantity.boxes || 0);
     const unidades = Number(quantity.units || 0);
 
-    const completo = product.permite_unidades
-      ? cajas > 0 || unidades >= minimo
-      : cajas >= minimo;
+    if (product.permite_unidades) {
+      if (cajas > 0 || unidades >= minimo) {
+        return {
+          completo: true,
+          texto: "✓ Este artículo ya cuenta para el Bingo",
+        };
+      }
 
-    return { completo };
+      return {
+        completo: false,
+        texto:
+          unidades > 0
+            ? `Te faltan ${Math.max(0, minimo - unidades)} unidades para que cuente en el Bingo`
+            : `Pide 1 caja o ${minimo} unidades para que cuente en el Bingo`,
+      };
+    }
+
+    if (cajas >= minimo) {
+      return {
+        completo: true,
+        texto: "✓ Este artículo ya cuenta para el Bingo",
+      };
+    }
+
+    return {
+      completo: false,
+      texto:
+        cajas > 0
+          ? `Te faltan ${Math.max(0, minimo - cajas)} cajas para que cuente en el Bingo`
+          : `Pide ${minimo} ${minimo === 1 ? "caja" : "cajas"} para que cuente en el Bingo`,
+    };
   };
 
   const activarCampoCantidad = (productId, field) => {
@@ -2047,6 +2074,27 @@ export default function App() {
     // por encima del teclado, así que dejamos que lo haga él.
     input.focus();
     input.select?.();
+  };
+
+  // Toque en CUALQUIER parte de la tarjeta del artículo (fuera de sus
+  // controles propios) manda el foco directamente al campo "Cajas",
+  // listo para escribir la cantidad. La foto queda excluida a propósito:
+  // debe poder ampliarse en vez de activar el campo de cantidad. Los
+  // inputs, botones y enlaces también quedan excluidos porque ya
+  // gestionan su propio toque (incluida "Unid.", que activa su propio
+  // campo en vez de redirigir a "Cajas").
+  const manejarToqueTarjetaArticulo = (event, productId) => {
+    if (event.target.closest("img, input, button, a")) {
+      return;
+    }
+
+    activarCampoCantidad(productId, "boxes");
+
+    const input = cajasInputRefs.current[productId];
+    if (input) {
+      input.focus();
+      input.select?.();
+    }
   };
 
   const updateQuantity = (productId, field, value) => {
@@ -3204,6 +3252,9 @@ export default function App() {
                       ref={(element) => {
                         rowRefs.current[product.id] = element;
                       }}
+                      onPointerDown={(event) =>
+                        manejarToqueTarjetaArticulo(event, product.id)
+                      }
                       style={{
                         ...styles.productCard,
                         ...(articuloDestacado === product.id
@@ -3307,6 +3358,9 @@ export default function App() {
                               min="0"
                               step="1"
                               autoComplete="off"
+                              ref={(element) => {
+                                cajasInputRefs.current[product.id] = element;
+                              }}
                               value={quantity.boxes || ""}
                               onPointerDown={(event) =>
                                 prepararCampoCantidad(event, product.id, "boxes")
@@ -3428,26 +3482,49 @@ export default function App() {
                             : null;
                           const estadoBingo = obtenerEstadoArticuloBingo(product, quantity);
 
+                          if (!estadoRuleta && !estadoBingo) return null;
+
                           const rouletteOk = Boolean(estadoRuleta?.completo);
                           const bingoOk = Boolean(estadoBingo?.completo);
 
-                          // Solo se muestra la confirmación de que YA cuenta.
-                          // El aviso de "te faltan X" se ha quitado: el badge
-                          // con el mínimo, junto al nombre del artículo, ya
-                          // deja claro cuánto hace falta.
-                          if (!rouletteOk && !bingoOk) return null;
+                          // Si ambas promos ya están completas, un único
+                          // mensaje combinado (igual que antes).
+                          if (rouletteOk && bingoOk) {
+                            return (
+                              <div style={styles.ruletaProductStatusOk}>
+                                ✓ Este artículo ya cuenta para Ruleta y Bingo
+                              </div>
+                            );
+                          }
 
-                          const texto =
-                            rouletteOk && bingoOk
-                              ? "✓ Este artículo ya cuenta para Ruleta y Bingo"
-                              : rouletteOk
-                              ? "✓ Este artículo ya cuenta para la Ruleta"
-                              : "✓ Este artículo ya cuenta para el Bingo";
-
+                          // En cualquier otro caso, una línea por cada promo
+                          // en la que participa el artículo: si ya cuenta,
+                          // la confirmación en verde; si no, cuánto falta.
                           return (
-                            <div style={styles.ruletaProductStatusOk}>
-                              {texto}
-                            </div>
+                            <>
+                              {estadoRuleta && (
+                                <div
+                                  style={
+                                    rouletteOk
+                                      ? styles.ruletaProductStatusOk
+                                      : styles.ruletaProductStatusPending
+                                  }
+                                >
+                                  {estadoRuleta.texto}
+                                </div>
+                              )}
+                              {estadoBingo && (
+                                <div
+                                  style={
+                                    bingoOk
+                                      ? styles.ruletaProductStatusOk
+                                      : styles.ruletaProductStatusPending
+                                  }
+                                >
+                                  {estadoBingo.texto}
+                                </div>
+                              )}
+                            </>
                           );
                         })()}
 
