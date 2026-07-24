@@ -201,7 +201,7 @@ export default function Estadisticas() {
 
       const { data, error: movimientosError } = await supabase
         .from("estadisticas_movimientos")
-        .select("id, pedido_id, created_at, codigo_articulo, nombre_articulo, departamento, cajas, unidades")
+        .select("id, pedido_id, created_at, codigo_articulo, nombre_articulo, departamento, cajas, unidades, customer_name, cliente_token")
         .gte("created_at", inicio)
         .lt("created_at", fin)
         .order("created_at", { ascending: true });
@@ -421,6 +421,12 @@ export default function Estadisticas() {
       return Boolean(fila.bingo_eligible) || bolasCount > 0;
     }).length;
 
+    const pedidosConEnlacePersonalIds = new Set(
+      movimientos
+        .filter((fila) => fila.cliente_token)
+        .map((fila) => String(fila.pedido_id || fila.id || ""))
+    );
+
     return {
       totalPedidos: pedidosUnicos.size,
       totalLineas: movimientos.length,
@@ -432,6 +438,7 @@ export default function Estadisticas() {
       codigosPendientes: participacionesRuleta.filter((fila) => String(fila.status || "").toLowerCase() === "pending").length,
       pedidosConBingo,
       bolasBingoCantadas: bingoDraws.length,
+      pedidosConEnlacePersonal: pedidosConEnlacePersonalIds.size,
     };
   }, [movimientos, participacionesRuleta, entitlements, bingoDraws, bingoDrawsPorToken]);
 
@@ -528,6 +535,8 @@ export default function Estadisticas() {
         pedido_id: pedidoId,
         created_at: fila.created_at,
         codigos: codigosRuletaPorPedido.get(pedidoId) || [],
+        customer_name_pedido: fila.customer_name || null,
+        cliente_token_pedido: fila.cliente_token || null,
       });
     });
 
@@ -563,11 +572,17 @@ export default function Estadisticas() {
         // propio entitlement indica bolas usadas, se muestra ese número
         // igualmente (aunque sin el detalle de qué números salieron).
         const bolasCount = Math.max(bolas.length, Number(entitlement?.bingo_plays_used || 0));
+        // El nombre y el token del enlace personal ahora se guardan en
+        // TODOS los pedidos (estadisticas_movimientos), gane o no premio.
+        // El de game_entitlements se deja como respaldo para pedidos
+        // guardados antes de este cambio.
+        const clienteToken = pedido.cliente_token_pedido || entitlement?.customer_token || null;
 
         return {
           ...pedido,
-          customer_name: entitlement?.customer_name || pedido.codigos?.[0]?.customer_name || null,
+          customer_name: pedido.customer_name_pedido || entitlement?.customer_name || pedido.codigos?.[0]?.customer_name || null,
           customer_phone: pedido.codigos?.[0]?.customer_phone || null,
+          enlacePersonal: Boolean(clienteToken),
           bingoParticipa: Boolean(entitlement?.bingo_eligible || bolasCount > 0),
           bingoBolas: bolas,
           bingoBolasCount: bolasCount,
@@ -636,7 +651,7 @@ export default function Estadisticas() {
 
     return {
       ...pedidoSeleccionado,
-      customer_name: entitlement?.customer_name || participacion?.customer_name || null,
+      customer_name: pedidoSeleccionado.customer_name || entitlement?.customer_name || participacion?.customer_name || null,
       customer_phone: participacion?.customer_phone || null,
       lineas,
       totalLineas: lineas.length,
@@ -760,6 +775,7 @@ export default function Estadisticas() {
                 <StatCard label="Cajas" value={formatearNumero(resumen.totalCajas)} />
                 <StatCard label="Unidades" value={formatearNumero(resumen.totalUnidades)} />
                 <StatCard label="Artículos distintos" value={formatearNumero(resumen.articulosDistintos)} />
+                <StatCard label="Con enlace personal" value={formatearNumero(resumen.pedidosConEnlacePersonal)} accent="#047857" />
               </div>
             </div>
 
@@ -812,7 +828,12 @@ export default function Estadisticas() {
                               {pedido.pedido_id}
                             </button>
                           </td>
-                          <td style={td}>{pedido.customer_name || <span style={ruletaNoIncluido}>Sin nombre</span>}</td>
+                          <td style={td}>
+                            {pedido.customer_name || <span style={ruletaNoIncluido}>Sin nombre</span>}
+                            {pedido.enlacePersonal && (
+                              <span style={enlacePersonalBadge} title="Este pedido se hizo con el enlace personal del cliente">🔗 enlace</span>
+                            )}
+                          </td>
                           <td style={td}>
                             {codigos.length === 0 ? (
                               <span style={ruletaNoIncluido}>No participa</span>
@@ -1098,6 +1119,9 @@ function DetallePedidoModal({ pedido, onClose }) {
               <p style={modalCustomer}>
                 {pedido.customer_name || "Cliente sin nombre"}
                 {pedido.customer_phone ? ` · ${pedido.customer_phone}` : ""}
+                {pedido.enlacePersonal && (
+                  <span style={enlacePersonalBadge} title="Este pedido se hizo con el enlace personal del cliente">🔗 enlace</span>
+                )}
               </p>
             )}
           </div>
@@ -1363,6 +1387,7 @@ const statsGroupLabelBingo = { color: "#b45309" };
 const statsGroupCards = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "10px" };
 const juegoLineaRuleta = { display: "flex", flexDirection: "column", marginBottom: "4px" };
 const bingoBadge = { display: "inline-flex", alignItems: "center", padding: "5px 9px", borderRadius: "999px", background: "#fff7ed", color: "#9a3412", fontSize: "12px", fontWeight: "900", whiteSpace: "nowrap" };
+const enlacePersonalBadge = { display: "inline-flex", alignItems: "center", marginLeft: "8px", padding: "3px 8px", borderRadius: "999px", background: "#ecfdf5", color: "#047857", fontSize: "11px", fontWeight: "900", whiteSpace: "nowrap" };
 const statCard = { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "18px", padding: "16px", boxShadow: "0 10px 28px rgba(15,23,42,0.06)" };
 const statValue = { fontSize: "28px", fontWeight: "950", color: "#111827", lineHeight: "1" };
 const statLabel = { marginTop: "8px", fontSize: "12px", fontWeight: "850", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" };
