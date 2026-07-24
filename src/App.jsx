@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   ShoppingCart,
   Trash2,
@@ -2086,19 +2087,10 @@ export default function App() {
   };
 
   const activarCampoCantidad = (productId, field) => {
-    // Marca el artículo y el campo activo. No cambia el departamento ni
-    // busca el artículo.
-    //
-    // IMPORTANTE: además recoge la cabecera (saludo, favoritos, Mi Bingo,
-    // nombre de cliente) de inmediato, esté donde esté el scroll. Antes
-    // solo se "congelaba" en el estado que tuviera en ese momento — si el
-    // cliente aún no había hecho scroll (cabecera todavía expandida, p.ej.
-    // al tocar el primer artículo de la lista), esa cabecera grande se
-    // quedaba fija así durante toda la edición y, sumada al teclado, no
-    // dejaba ni un hueco en pantalla para ver el artículo. Al recogerla
-    // siempre que se abre el teclado, queda sitio de sobra sea cual sea el
-    // artículo tocado.
-    setHeaderCollapsed(true);
+    // Usado como respaldo por el onFocus nativo de los inputs (por si el
+    // campo recibe el foco por una vía que no pase por
+    // posicionarYFijarArticulo). Solo marca estado, sin tocar scroll ni
+    // cabecera, para no interferir con un posicionamiento ya en marcha.
     setArticuloDestacado(productId);
     setCampoCantidadActivo(`${productId}:${field}`);
   };
@@ -2108,7 +2100,7 @@ export default function App() {
   // teclado — esto ocurre a nivel del propio Safari/WKWebView, NO es el
   // comportamiento de scrollIntoView del navegador, así que
   // focus({preventScroll:true}) no basta para evitarlo. Activamos
-  // scrollFijoRef con la posición actual: a partir de aquí, tanto esta
+  // scrollFijoRef con la posición objetivo: a partir de aquí, tanto esta
   // ráfaga inicial de reintentos como el listener de visualViewport (más
   // abajo) van a devolver la página a este punto cada vez que iOS intente
   // moverla, hasta que el cliente cierre el teclado o haga scroll manual.
@@ -2133,17 +2125,53 @@ export default function App() {
     scrollFijoRef.current.activo = false;
   };
 
+  // Punto único que gestiona TODO lo que pasa al empezar a editar la
+  // cantidad de un artículo (se llame desde el toque directo en Cajas/Unid.
+  // o desde el toque en cualquier otra parte de la tarjeta). Orden exacto,
+  // todo dentro del mismo toque:
+  //   1) Enfocar YA, lo PRIMERO de todo, sin nada antes. En iOS, si se
+  //      intercala cualquier otra cosa (nuestro propio scroll, un
+  //      flushSync...) antes del focus(), Safari deja de contarlo como
+  //      parte del mismo toque y no llega a abrir el teclado ni a mostrar
+  //      el cursor — esto es justo lo que rompió el foco en el intento
+  //      anterior, al meter el scrollTo() antes del focus().
+  //   2) Colapsar la cabecera y marcar el campo activo con flushSync
+  //      (para que el DOM quede en su tamaño final antes de medir).
+  //   3) Medir la cabecera YA colapsada y calcular cuánto hay que
+  //      desplazar para dejar el artículo pegado justo debajo de ella
+  //      (arriba del todo, lejos del teclado/pie de página).
+  //   4) Aplicar ese scroll al instante (sin animación).
+  //   5) Mantener esa posición mientras dure la apertura del teclado.
+  const posicionarYFijarArticulo = (productId, field, input) => {
+    if (input) {
+      input.focus({ preventScroll: true });
+      input.select?.();
+    }
+
+    flushSync(() => {
+      setHeaderCollapsed(true);
+      setArticuloDestacado(productId);
+      setCampoCantidadActivo(`${productId}:${field}`);
+    });
+
+    const elemento = rowRefs.current[productId];
+    const topArea = document.querySelector("[data-top-area='true']");
+    const alturaTop = topArea ? topArea.getBoundingClientRect().height : 0;
+    const margen = 8;
+
+    let objetivo = window.scrollY;
+    if (elemento) {
+      const rect = elemento.getBoundingClientRect();
+      objetivo = Math.max(0, window.scrollY + rect.top - alturaTop - margen);
+    }
+
+    window.scrollTo(0, objetivo);
+
+    mantenerScrollFijo(objetivo);
+  };
+
   const prepararCampoCantidad = (event, productId, field) => {
-    const input = event.currentTarget;
-    const scrollActual = window.scrollY;
-
-    activarCampoCantidad(productId, field);
-
-    // El foco se obtiene SINCRÓNICAMENTE durante el primer toque. Así el
-    // teclado se abre en ese mismo toque.
-    input.focus({ preventScroll: true });
-    input.select?.();
-    mantenerScrollFijo(scrollActual);
+    posicionarYFijarArticulo(productId, field, event.currentTarget);
   };
 
   // Toque en CUALQUIER parte de la tarjeta del artículo (fuera de sus
@@ -2167,15 +2195,7 @@ export default function App() {
       return;
     }
 
-    const scrollActual = window.scrollY;
-    const input = cajasInputRefs.current[productId];
-    if (input) {
-      input.focus({ preventScroll: true });
-      input.select?.();
-    }
-
-    activarCampoCantidad(productId, "boxes");
-    mantenerScrollFijo(scrollActual);
+    posicionarYFijarArticulo(productId, "boxes", cajasInputRefs.current[productId]);
   };
 
   const updateQuantity = (productId, field, value) => {
@@ -5258,23 +5278,24 @@ const styles = {
 
   favoritesFilterButton: {
     marginTop: "6px",
-    border: "1px solid #cbd5e1",
+    border: "1px solid #d97706",
     borderRadius: "9px",
-    background: "#ffffff",
-    color: "#334155",
-    padding: "7px 10px",
-    fontWeight: "800",
+    background: "#f59e0b",
+    color: "#ffffff",
+    padding: "8px 12px",
+    fontWeight: "900",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     gap: "6px",
     cursor: "pointer",
+    boxShadow: "0 3px 10px rgba(245,158,11,0.35)",
   },
 
   favoritesFilterButtonActive: {
-    background: "#fffbeb",
-    borderColor: "#f59e0b",
-    color: "#b45309",
+    background: "#b45309",
+    borderColor: "#92400e",
+    color: "#ffffff",
   },
 
   favoritesError: {
