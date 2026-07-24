@@ -493,6 +493,7 @@ export default function App() {
   );
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const bloqueColapsoCabeceraRef = useRef(false);
+  const scrollFijoRef = useRef({ activo: false, objetivo: 0 });
   const [installPrompt, setInstallPrompt] = useState(null);
   const [mostrarAyudaInstalacion, setMostrarAyudaInstalacion] = useState(false);
   const [appInstalada, setAppInstalada] = useState(() => {
@@ -1115,8 +1116,11 @@ export default function App() {
 
     const handleTouchMove = () => {
       // Gesto de scroll manual real del cliente: a partir de aquí la
-      // cabecera vuelve a poder colapsarse/expandirse con normalidad.
+      // cabecera vuelve a poder colapsarse/expandirse con normalidad, y
+      // dejamos de forzar la posición de scroll (el cliente quiere moverse
+      // por su cuenta, no seguimos "peleando" contra su dedo).
       bloqueColapsoCabeceraRef.current = false;
+      scrollFijoRef.current.activo = false;
     };
 
     handleScroll();
@@ -1126,6 +1130,36 @@ export default function App() {
     return () => {
       window.removeEventListener("scroll", handleScroll);
       window.removeEventListener("touchmove", handleTouchMove);
+    };
+  }, []);
+
+  useEffect(() => {
+    // iOS desplaza la página por su cuenta al abrir/cerrar el teclado, y lo
+    // hace en varios "empujones" (no un único salto), a veces bastante
+    // después del toque inicial. window.visualViewport es el evento real
+    // que iOS dispara en cada uno de esos ajustes, así que en vez de
+    // adivinar cuánto puede tardar con temporizadores fijos, corregimos la
+    // posición cada vez que iOS intenta moverla, mientras el campo de
+    // cantidad siga activo (scrollFijoRef.current.activo). En cuanto el
+    // cliente hace un scroll manual real (touchmove, arriba), se deja de
+    // corregir para no pelear contra su propio dedo.
+    const vv = window.visualViewport;
+    if (!vv) return undefined;
+
+    const reforzarScrollFijo = () => {
+      if (!scrollFijoRef.current.activo) return;
+      const objetivo = scrollFijoRef.current.objetivo;
+      if (Math.abs(window.scrollY - objetivo) > 1) {
+        window.scrollTo(0, objetivo);
+      }
+    };
+
+    vv.addEventListener("resize", reforzarScrollFijo);
+    vv.addEventListener("scroll", reforzarScrollFijo);
+
+    return () => {
+      vv.removeEventListener("resize", reforzarScrollFijo);
+      vv.removeEventListener("scroll", reforzarScrollFijo);
     };
   }, []);
 
@@ -2058,22 +2092,47 @@ export default function App() {
     setCampoCantidadActivo(`${productId}:${field}`);
   };
 
+  // En iPhone, cuando se abre el teclado, iOS desplaza la página por su
+  // cuenta para "ayudar" a que el campo enfocado quede por encima del
+  // teclado — esto ocurre a nivel del propio Safari/WKWebView, NO es el
+  // comportamiento de scrollIntoView del navegador, así que
+  // focus({preventScroll:true}) no basta para evitarlo. Activamos
+  // scrollFijoRef con la posición actual: a partir de aquí, tanto esta
+  // ráfaga inicial de reintentos como el listener de visualViewport (más
+  // abajo) van a devolver la página a este punto cada vez que iOS intente
+  // moverla, hasta que el cliente cierre el teclado o haga scroll manual.
+  const mantenerScrollFijo = (scrollObjetivo) => {
+    scrollFijoRef.current = { activo: true, objetivo: scrollObjetivo };
+
+    const restaurar = () => {
+      if (!scrollFijoRef.current.activo) return;
+      if (Math.abs(window.scrollY - scrollObjetivo) > 1) {
+        window.scrollTo(0, scrollObjetivo);
+      }
+    };
+
+    restaurar();
+    requestAnimationFrame(restaurar);
+    [16, 32, 60, 100, 150, 220, 300, 400, 500, 700, 1000].forEach((ms) =>
+      setTimeout(restaurar, ms)
+    );
+  };
+
+  const detenerScrollFijo = () => {
+    scrollFijoRef.current.activo = false;
+  };
+
   const prepararCampoCantidad = (event, productId, field) => {
     const input = event.currentTarget;
+    const scrollActual = window.scrollY;
 
     activarCampoCantidad(productId, field);
 
     // El foco se obtiene SINCRÓNICAMENTE durante el primer toque. Así el
     // teclado se abre en ese mismo toque.
-    //
-    // preventScroll: true evita que Safari desplace la página al enfocar.
-    // Antes dejábamos que Safari decidiera el scroll, pero eso es
-    // precisamente lo que hacía que la tarjeta (sobre todo la primera de
-    // cada departamento) saltara y desapareciera detrás de la cabecera.
-    // El artículo tocado ya es visible (si no, no se habría podido tocar),
-    // así que no hace falta que la pantalla se mueva en absoluto.
     input.focus({ preventScroll: true });
     input.select?.();
+    mantenerScrollFijo(scrollActual);
   };
 
   // Toque en CUALQUIER parte de la tarjeta del artículo (fuera de sus
@@ -2092,16 +2151,12 @@ export default function App() {
   // directamente el cuadro de Cajas siempre funcionó (ahí el propio
   // Safari lo enfoca de forma nativa al tocar), pero tocar el resto de
   // la tarjeta no abría el teclado.
-  //
-  // preventScroll: true además impide que la página se mueva sola al
-  // enfocar: el artículo tocado ya está visible en pantalla, así que la
-  // vista debe quedarse completamente fija, con el cursor esperando en
-  // Cajas, sin ningún salto ni desplazamiento.
   const manejarToqueTarjetaArticulo = (event, productId) => {
     if (event.target.closest("img, input, button, a")) {
       return;
     }
 
+    const scrollActual = window.scrollY;
     const input = cajasInputRefs.current[productId];
     if (input) {
       input.focus({ preventScroll: true });
@@ -2109,6 +2164,7 @@ export default function App() {
     }
 
     activarCampoCantidad(productId, "boxes");
+    mantenerScrollFijo(scrollActual);
   };
 
   const updateQuantity = (productId, field, value) => {
@@ -2230,6 +2286,8 @@ export default function App() {
     // “Aceptar” únicamente cierra el teclado. Antes se desplazaba al artículo
     // siguiente y podía saltar incluso al departamento siguiente.
     // Ese desplazamiento automático queda eliminado por completo.
+    detenerScrollFijo();
+
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
@@ -3381,7 +3439,10 @@ export default function App() {
                               }
                               onFocus={() => activarCampoCantidad(product.id, "boxes")}
                               onKeyDown={(event) => manejarEnterCantidad(event, product.id)}
-                              onBlur={() => setCampoCantidadActivo(null)}
+                              onBlur={() => {
+                                detenerScrollFijo();
+                                setCampoCantidadActivo(null);
+                              }}
                               onChange={(event) =>
                                 updateQuantity(
                                   product.id,
@@ -3428,7 +3489,10 @@ export default function App() {
                                 }
                               }}
                               onKeyDown={(event) => manejarEnterCantidad(event, product.id)}
-                              onBlur={() => setCampoCantidadActivo(null)}
+                              onBlur={() => {
+                                detenerScrollFijo();
+                                setCampoCantidadActivo(null);
+                              }}
                               onChange={(event) =>
                                 updateQuantity(
                                   product.id,
