@@ -2088,13 +2088,19 @@ export default function App() {
       return;
     }
 
-    activarCampoCantidad(productId, "boxes");
-
+    // IMPORTANTE: el foco se pide ANTES de tocar el estado. Si primero
+    // actualizamos articuloDestacado/campoCantidadActivo, React vuelve a
+    // renderizar en mitad del mismo toque y en iPhone eso puede anular el
+    // focus() aunque el nodo del input sea el mismo. Por eso antes solo
+    // funcionaba cuando el artículo ya estaba resaltado de antes (no había
+    // cambio de estado de por medio).
     const input = cajasInputRefs.current[productId];
     if (input) {
       input.focus();
       input.select?.();
     }
+
+    activarCampoCantidad(productId, "boxes");
   };
 
   const updateQuantity = (productId, field, value) => {
