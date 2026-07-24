@@ -2066,14 +2066,13 @@ export default function App() {
     // El foco se obtiene SINCRÓNICAMENTE durante el primer toque. Así el
     // teclado se abre en ese mismo toque.
     //
-    // NOTA: aquí antes había código propio que recalculaba la posición de
-    // scroll para dejar la tarjeta justo debajo de la cabecera. Se quitó
-    // porque en iPhone provocaba que la tarjeta subiera cada vez más hasta
-    // perderse detrás de la cabecera (dos intentos de arreglarlo no
-    // funcionaron, el segundo incluso empeoró el problema). El propio
-    // Safari ya desplaza la página para dejar visible el campo enfocado
-    // por encima del teclado, así que dejamos que lo haga él.
-    input.focus();
+    // preventScroll: true evita que Safari desplace la página al enfocar.
+    // Antes dejábamos que Safari decidiera el scroll, pero eso es
+    // precisamente lo que hacía que la tarjeta (sobre todo la primera de
+    // cada departamento) saltara y desapareciera detrás de la cabecera.
+    // El artículo tocado ya es visible (si no, no se habría podido tocar),
+    // así que no hace falta que la pantalla se mueva en absoluto.
+    input.focus({ preventScroll: true });
     input.select?.();
   };
 
@@ -2093,6 +2092,11 @@ export default function App() {
   // directamente el cuadro de Cajas siempre funcionó (ahí el propio
   // Safari lo enfoca de forma nativa al tocar), pero tocar el resto de
   // la tarjeta no abría el teclado.
+  //
+  // preventScroll: true además impide que la página se mueva sola al
+  // enfocar: el artículo tocado ya está visible en pantalla, así que la
+  // vista debe quedarse completamente fija, con el cursor esperando en
+  // Cajas, sin ningún salto ni desplazamiento.
   const manejarToqueTarjetaArticulo = (event, productId) => {
     if (event.target.closest("img, input, button, a")) {
       return;
@@ -2100,7 +2104,7 @@ export default function App() {
 
     const input = cajasInputRefs.current[productId];
     if (input) {
-      input.focus();
+      input.focus({ preventScroll: true });
       input.select?.();
     }
 
@@ -3561,7 +3565,7 @@ export default function App() {
         aria-label="Volver al inicio"
         title="Volver al inicio"
       >
-        <ArrowUp size={22} strokeWidth={3} />
+        <ArrowUp size={18} strokeWidth={3} />
       </button>
 
       <div ref={stickyCardRef} style={styles.stickySummary}>
@@ -5228,11 +5232,11 @@ const styles = {
 
   scrollTopButton: {
     position: "fixed",
-    right: "14px",
-    bottom: "calc(84px + env(safe-area-inset-bottom))",
-    zIndex: 40,
-    width: "46px",
-    height: "46px",
+    right: "10px",
+    top: "calc(8px + env(safe-area-inset-top))",
+    zIndex: 60,
+    width: "40px",
+    height: "40px",
     borderRadius: "50%",
     border: "none",
     background: "#1e293b",
@@ -5240,7 +5244,8 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    boxShadow: "0 10px 22px rgba(15,23,42,0.35)",
+    boxShadow: "0 6px 16px rgba(15,23,42,0.35)",
+    opacity: 0.9,
   },
 
   bingoSummaryOk: {
