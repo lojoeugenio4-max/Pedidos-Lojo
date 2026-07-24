@@ -225,15 +225,22 @@ export default function Estadisticas() {
       // game_entitlements, la tabla común a Ruleta y Bingo (antes solo se
       // miraba promotion_participations, que es exclusiva de Ruleta y por
       // eso los pedidos de Bingo no salían con nombre de cliente).
-      // Se consulta con try/catch propio para que, si esta tabla no existe
-      // o cambia de nombre, el resto de las estadísticas no se rompa.
+      //
+      // IMPORTANTE: game_entitlements y bingo_draws tienen RLS y no se
+      // pueden leer con un select directo desde el cliente público (Supabase
+      // no da error en ese caso, simplemente devuelve la lista vacía en
+      // silencio — por eso antes fallaba sin ningún aviso). Se leen a
+      // través de dos funciones RPC (admin_listar_game_entitlements y
+      // admin_listar_bingo_draws) que sí tienen permiso para saltarse esa
+      // protección, igual que ya hace el resto de la app con validate_game_qr
+      // y compañía. Sigue con su propio try/catch para que, si estas
+      // funciones no existieran todavía en Supabase, el resto de las
+      // estadísticas no se rompa.
       try {
-        const { data: entitlementsData, error: entitlementsError } = await supabase
-          .from("game_entitlements")
-          .select("*")
-          .gte("created_at", inicio)
-          .lt("created_at", fin)
-          .order("created_at", { ascending: false });
+        const { data: entitlementsData, error: entitlementsError } = await supabase.rpc(
+          "admin_listar_game_entitlements",
+          { p_desde: inicio, p_hasta: fin }
+        );
 
         if (entitlementsError) throw entitlementsError;
         setEntitlements(entitlementsData || []);
@@ -249,10 +256,10 @@ export default function Estadisticas() {
         if (tokens.length === 0) {
           setBingoDraws([]);
         } else {
-          const { data: drawsData, error: drawsError } = await supabase
-            .from("bingo_draws")
-            .select("number,drawn_at,customer_token,edition_id")
-            .in("customer_token", tokens);
+          const { data: drawsData, error: drawsError } = await supabase.rpc(
+            "admin_listar_bingo_draws",
+            { p_tokens: tokens }
+          );
 
           if (drawsError) throw drawsError;
           setBingoDraws(drawsData || []);
