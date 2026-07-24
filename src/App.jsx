@@ -2018,12 +2018,13 @@ export default function App() {
         };
       }
 
+      // Sin nada de cantidad metida todavía no mostramos aviso: el badge
+      // de Ruleta junto al nombre del artículo ya indica el mínimo.
+      if (unidades === 0) return null;
+
       return {
         completo: false,
-        texto:
-          unidades > 0
-            ? `Te faltan ${Math.max(0, minimo - unidades)} unidades para que cuente`
-            : `Pide 1 caja o ${minimo} unidades para que cuente`,
+        texto: `Te faltan ${Math.max(0, minimo - unidades)} unidades para que cuente`,
       };
     }
 
@@ -2034,12 +2035,11 @@ export default function App() {
       };
     }
 
+    if (cajas === 0) return null;
+
     return {
       completo: false,
-      texto:
-        cajas > 0
-          ? `Te faltan ${Math.max(0, minimo - cajas)} cajas para que cuente`
-          : `Pide ${minimo} ${minimo === 1 ? "caja" : "cajas"} para que cuente`,
+      texto: `Te faltan ${Math.max(0, minimo - cajas)} cajas para que cuente`,
     };
   };
 
@@ -2061,12 +2061,13 @@ export default function App() {
         };
       }
 
+      // Sin nada de cantidad metida todavía no mostramos aviso: el badge
+      // de Bingo junto al nombre del artículo ya indica el mínimo.
+      if (unidades === 0) return null;
+
       return {
         completo: false,
-        texto:
-          unidades > 0
-            ? `Te faltan ${Math.max(0, minimo - unidades)} unidades para que cuente en el Bingo`
-            : `Pide 1 caja o ${minimo} unidades para que cuente en el Bingo`,
+        texto: `Te faltan ${Math.max(0, minimo - unidades)} unidades para que cuente en el Bingo`,
       };
     }
 
@@ -2077,12 +2078,11 @@ export default function App() {
       };
     }
 
+    if (cajas === 0) return null;
+
     return {
       completo: false,
-      texto:
-        cajas > 0
-          ? `Te faltan ${Math.max(0, minimo - cajas)} cajas para que cuente en el Bingo`
-          : `Pide ${minimo} ${minimo === 1 ? "caja" : "cajas"} para que cuente en el Bingo`,
+      texto: `Te faltan ${Math.max(0, minimo - cajas)} cajas para que cuente en el Bingo`,
     };
   };
 
