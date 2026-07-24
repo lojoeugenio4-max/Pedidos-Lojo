@@ -2086,8 +2086,19 @@ export default function App() {
   };
 
   const activarCampoCantidad = (productId, field) => {
-    // Solo marca el artículo y el campo activo. No cambia el departamento,
-    // no busca el artículo y no modifica el scroll.
+    // Marca el artículo y el campo activo. No cambia el departamento ni
+    // busca el artículo.
+    //
+    // IMPORTANTE: además recoge la cabecera (saludo, favoritos, Mi Bingo,
+    // nombre de cliente) de inmediato, esté donde esté el scroll. Antes
+    // solo se "congelaba" en el estado que tuviera en ese momento — si el
+    // cliente aún no había hecho scroll (cabecera todavía expandida, p.ej.
+    // al tocar el primer artículo de la lista), esa cabecera grande se
+    // quedaba fija así durante toda la edición y, sumada al teclado, no
+    // dejaba ni un hueco en pantalla para ver el artículo. Al recogerla
+    // siempre que se abre el teclado, queda sitio de sobra sea cual sea el
+    // artículo tocado.
+    setHeaderCollapsed(true);
     setArticuloDestacado(productId);
     setCampoCantidadActivo(`${productId}:${field}`);
   };
