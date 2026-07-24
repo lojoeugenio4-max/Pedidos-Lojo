@@ -130,7 +130,7 @@ function DisplayWheel({ premios = [], girando, premioFinal }) {
 
 export default function DisplayPage() {
   const [premios, setPremios] = useState([]);
-  const [estado, setEstado] = useState("waiting");
+  const [estado, setEstado] = useState("bingo-waiting");
   const [entrada, setEntrada] = useState(null);
   const [premioFinal, setPremioFinal] = useState(null);
   const [premioObjetivo, setPremioObjetivo] = useState(null);
@@ -252,7 +252,13 @@ export default function DisplayPage() {
     const payload = event.payload || {};
 
     if (event.type === "waiting") {
-      setEstado("waiting");
+      // El TPV manda este aviso cuando vuelve a estar listo para leer el
+      // siguiente código (botón "reiniciar", o tras un error). Antes esto
+      // dejaba la TV en el reposo de la Ruleta; ahora el reposo por
+      // defecto de la pantalla grande es siempre el Bingo, gane lo que
+      // gane el cliente anterior. La Ruleta solo aparece mientras se está
+      // jugando de verdad (eventos "ready"/"spin"/"result").
+      setEstado("bingo-waiting");
       setEntrada(null);
       setPremioFinal(null);
       setPremioObjetivo(null);
