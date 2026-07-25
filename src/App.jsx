@@ -524,6 +524,7 @@ export default function App() {
   const [premiosBingo, setPremiosBingo] = useState({ line: null, lineSpecial: null, bingo: null, special: null });
   const [configuracionBingoCliente, setConfiguracionBingoCliente] = useState(null);
   const [articulosBingoCliente, setArticulosBingoCliente] = useState([]);
+  const [fechaLimiteBingoPropia, setFechaLimiteBingoPropia] = useState(null);
 
   const [premiosRuleta, setPremiosRuleta] = useState([]);
   const [configuracionRuleta, setConfiguracionRuleta] = useState(null);
@@ -754,6 +755,28 @@ export default function App() {
 
   useEffect(() => {
     let activo = true;
+    async function cargarFechaLimitePropia() {
+      if (!clienteToken || !configuracionBingoCliente?.id) {
+        setFechaLimiteBingoPropia(null);
+        return;
+      }
+      const { data, error } = await supabase.rpc("obtener_estado_carton_bingo", {
+        p_customer_token: clienteToken,
+      });
+      if (!activo) return;
+      const respuesta = Array.isArray(data) ? data[0] : data;
+      if (error || !respuesta?.ok) {
+        setFechaLimiteBingoPropia(null);
+        return;
+      }
+      setFechaLimiteBingoPropia(respuesta.fecha_limite || null);
+    }
+    cargarFechaLimitePropia();
+    return () => { activo = false; };
+  }, [clienteToken, configuracionBingoCliente?.id]);
+
+  useEffect(() => {
+    let activo = true;
 
     async function cargarArticulosBingo() {
       const promocionId = configuracionBingoCliente?.id;
@@ -854,6 +877,7 @@ export default function App() {
         edition_id: editionId,
         fecha_limite: resultado.fecha_limite || respuesta.fecha_limite || null,
       });
+      setFechaLimiteBingoPropia(resultado.fecha_limite || respuesta.fecha_limite || null);
 
       const hoy = getTodayISO();
       const { data: promocionesBingo, error: premiosError } = await supabase
@@ -3166,10 +3190,10 @@ export default function App() {
                       type="button"
                       onClick={abrirMiBingo}
                       style={styles.bingoButton}
-                      title={configuracionBingoCliente.fecha_fin ? `Disponible hasta el ${new Date(`${configuracionBingoCliente.fecha_fin}T12:00:00`).toLocaleDateString("es-ES")}` : "Bingo activo"}
+                      title={fechaLimiteBingoPropia ? `Disponible hasta el ${new Date(fechaLimiteBingoPropia).toLocaleDateString("es-ES")}` : "Bingo activo"}
                     >
                       <Grid3X3 size={17} />
-                      Mi Bingo{configuracionBingoCliente.fecha_fin ? ` · hasta ${new Date(`${configuracionBingoCliente.fecha_fin}T12:00:00`).toLocaleDateString("es-ES")}` : ""}
+                      Mi Bingo{fechaLimiteBingoPropia ? ` · hasta ${new Date(fechaLimiteBingoPropia).toLocaleDateString("es-ES")}` : ""}
                     </button>
                   )}
                   {cargandoFavoritos && <small>Cargando favoritos...</small>}
