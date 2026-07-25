@@ -852,6 +852,7 @@ export default function App() {
         drawn_numbers: resultado.numeros_marcados || resultado.drawn_numbers || [],
         status: resultado.estado || resultado.status || "activo",
         edition_id: editionId,
+        fecha_limite: resultado.fecha_limite || respuesta.fecha_limite || null,
       });
 
       const hoy = getTodayISO();
@@ -3070,7 +3071,7 @@ export default function App() {
                     lineSpecialPrize={premiosBingo.lineSpecial}
                     bingoPrize={premiosBingo.bingo}
                     specialPrize={premiosBingo.special}
-                    endDate={configuracionBingoCliente.fecha_fin}
+                    endDate={cartonBingo.fecha_limite ? cartonBingo.fecha_limite.slice(0, 10) : ""}
                   />
 
                 </>
