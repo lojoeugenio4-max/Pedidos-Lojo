@@ -1182,6 +1182,19 @@ export default function App() {
       if (Math.abs(window.scrollY - objetivo) > 1) {
         window.scrollTo(0, objetivo);
       }
+
+      // Misma corrección mínima por teclado que en mantenerScrollFijo:
+      // solo entra en juego si el artículo activo queda tapado por el
+      // teclado, y solo añade lo justo para dejarlo visible encima de él.
+      const elementoActivo = scrollFijoRef.current.elemento;
+      if (elementoActivo && vv) {
+        const rect = elementoActivo.getBoundingClientRect();
+        const margenTeclado = 12;
+        const exceso = rect.bottom - (vv.height - margenTeclado);
+        if (exceso > 1) {
+          window.scrollTo(0, window.scrollY + exceso);
+        }
+      }
     };
 
     vv.addEventListener("resize", reforzarScrollFijo);
@@ -2134,7 +2147,7 @@ export default function App() {
   // ráfaga inicial de reintentos como el listener de visualViewport (más
   // abajo) van a devolver la página a este punto cada vez que iOS intente
   // moverla, hasta que el cliente cierre el teclado o haga scroll manual.
-  const mantenerScrollFijo = (scrollObjetivo) => {
+  const mantenerScrollFijo = (scrollObjetivo, elemento = null) => {
     // Si el cliente toca un artículo distinto antes de que termine la
     // ráfaga de reintentos del toque anterior, esos timeouts seguían
     // vivos y corregían el scroll hacia el objetivo VIEJO (cerraban sobre
@@ -2145,13 +2158,31 @@ export default function App() {
     scrollFijoTimeoutsRef.current.forEach((id) => clearTimeout(id));
     scrollFijoTimeoutsRef.current = [];
 
-    scrollFijoRef.current = { activo: true, objetivo: scrollObjetivo };
+    scrollFijoRef.current = { activo: true, objetivo: scrollObjetivo, elemento };
 
     const restaurar = () => {
       if (!scrollFijoRef.current.activo) return;
       const objetivoActual = scrollFijoRef.current.objetivo;
       if (Math.abs(window.scrollY - objetivoActual) > 1) {
         window.scrollTo(0, objetivoActual);
+      }
+
+      // El objetivo de arriba mantiene al artículo en el MISMO sitio de la
+      // pantalla donde se tocó (eso no se toca). Pero si ese sitio queda
+      // por debajo de donde termina el teclado al abrirse, el campo se
+      // pierde de vista igualmente. Aquí, y SOLO en ese caso, añadimos el
+      // mínimo extra de scroll para dejarlo justo por encima del teclado
+      // — nunca lo movemos si ya es visible, y nunca lo mandamos arriba
+      // del todo como hacía la versión antigua.
+      const elementoActivo = scrollFijoRef.current.elemento;
+      const vv = window.visualViewport;
+      if (elementoActivo && vv) {
+        const rect = elementoActivo.getBoundingClientRect();
+        const margenTeclado = 12;
+        const exceso = rect.bottom - (vv.height - margenTeclado);
+        if (exceso > 1) {
+          window.scrollTo(0, window.scrollY + exceso);
+        }
       }
     };
 
@@ -2216,7 +2247,7 @@ export default function App() {
 
     window.scrollTo(0, objetivo);
 
-    mantenerScrollFijo(objetivo);
+    mantenerScrollFijo(objetivo, elemento);
   };
 
   const prepararCampoCantidad = (event, productId, field) => {
