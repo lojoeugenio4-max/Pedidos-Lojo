@@ -1,7 +1,19 @@
 import { useState } from "react";
 import { supabase } from "../supabaseClient";
+import { supabaseStorage } from "../supabaseStorageClient";
 import appSource from "../App.jsx?raw";
 import hiddenSource from "../hiddenProducts.js?raw";
+
+const BUCKETS_A_MEDIR = ["productos"];
+
+const GB = 1024 * 1024 * 1024;
+
+// Límites orientativos de Supabase (ajusta si tu plan cambia).
+const PLANES = {
+  free: { etiqueta: "Free", limiteBD: 0.5 * GB, limiteStorage: 1 * GB },
+  pro: { etiqueta: "Pro (incluido)", limiteBD: 8 * GB, limiteStorage: 100 * GB },
+  personalizado: { etiqueta: "Personalizado", limiteBD: 0.5 * GB, limiteStorage: 1 * GB },
+};
 
 const imagenesProductos = import.meta.glob(
   "../assets/productos/*.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP}",
@@ -15,6 +27,104 @@ const imagenesProductos = import.meta.glob(
 export default function Configuracion() {
   const [importando, setImportando] = useState(false);
   const [resultado, setResultado] = useState("");
+  const [midiendo, setMidiendo] = useState(false);
+  const [usoInfo, setUsoInfo] = useState(null);
+  const [usoError, setUsoError] = useState("");
+  const [mostrarDetalle, setMostrarDetalle] = useState(false);
+
+  const [plan, setPlan] = useState(
+    () => localStorage.getItem("lojo_plan_supabase") || "free"
+  );
+  const [limiteBDGB, setLimiteBDGB] = useState(
+    () => Number(localStorage.getItem("lojo_limite_bd_gb")) || 0.5
+  );
+  const [limiteStorageGB, setLimiteStorageGB] = useState(
+    () => Number(localStorage.getItem("lojo_limite_storage_gb")) || 1
+  );
+
+  function cambiarPlan(nuevoPlan) {
+    setPlan(nuevoPlan);
+    localStorage.setItem("lojo_plan_supabase", nuevoPlan);
+
+    if (nuevoPlan !== "personalizado") {
+      const preset = PLANES[nuevoPlan];
+      setLimiteBDGB(preset.limiteBD / GB);
+      setLimiteStorageGB(preset.limiteStorage / GB);
+    }
+  }
+
+  function actualizarLimiteBD(valor) {
+    setLimiteBDGB(valor);
+    localStorage.setItem("lojo_limite_bd_gb", String(valor));
+  }
+
+  function actualizarLimiteStorage(valor) {
+    setLimiteStorageGB(valor);
+    localStorage.setItem("lojo_limite_storage_gb", String(valor));
+  }
+
+  async function comprobarUso() {
+    setMidiendo(true);
+    setUsoError("");
+    setUsoInfo(null);
+
+    try {
+      const { data: bdBytes, error: errorTotal } = await supabase.rpc(
+        "obtener_tamano_total_bd"
+      );
+      if (errorTotal) throw errorTotal;
+
+      const { data: tablas, error: errorTablas } = await supabase.rpc(
+        "obtener_uso_tablas"
+      );
+      if (errorTablas) throw errorTablas;
+
+      let storageBytes = 0;
+      for (const nombreBucket of BUCKETS_A_MEDIR) {
+        storageBytes += await medirBucket(nombreBucket);
+      }
+
+      setUsoInfo({
+        bdBytes: Number(bdBytes) || 0,
+        storageBytes,
+        tablas: tablas || [],
+      });
+    } catch (error) {
+      console.error("Error midiendo uso de Supabase", error);
+      setUsoError(
+        "No se pudo consultar el uso. ¿Has ejecutado supabase_uso_memoria.sql en el SQL Editor de Supabase?"
+      );
+    }
+
+    setMidiendo(false);
+  }
+
+  async function medirBucket(nombreBucket) {
+    let total = 0;
+    let offset = 0;
+    const limite = 100;
+
+    while (true) {
+      const { data, error } = await supabaseStorage.storage
+        .from(nombreBucket)
+        .list("", { limit: limite, offset });
+
+      if (error) {
+        console.error("Error listando bucket", nombreBucket, error);
+        break;
+      }
+      if (!data || data.length === 0) break;
+
+      for (const archivo of data) {
+        total += archivo.metadata?.size || 0;
+      }
+
+      if (data.length < limite) break;
+      offset += limite;
+    }
+
+    return total;
+  }
 
   async function importarCatalogo() {
     const confirmar = confirm(
@@ -302,8 +412,153 @@ export default function Configuracion() {
       </div>
 
       {resultado && <p style={resultadoStyle}>{resultado}</p>}
+
+      <div style={{ ...card, marginTop: "20px" }}>
+        <h2>Espacio usado / libre en Supabase</h2>
+
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "14px" }}>
+          {Object.entries(PLANES).map(([clave, info]) => (
+            <button
+              key={clave}
+              onClick={() => cambiarPlan(clave)}
+              style={{
+                ...secondaryButton,
+                background: plan === clave ? "#2563eb" : "#9ca3af",
+                padding: "8px 14px",
+              }}
+            >
+              {info.etiqueta}
+            </button>
+          ))}
+        </div>
+
+        {plan === "personalizado" && (
+          <div style={{ display: "flex", gap: "16px", marginBottom: "14px", flexWrap: "wrap" }}>
+            <label>
+              Límite base de datos (GB):{" "}
+              <input
+                type="number"
+                step="0.1"
+                value={limiteBDGB}
+                onChange={(e) => actualizarLimiteBD(Number(e.target.value))}
+                style={{ width: "80px" }}
+              />
+            </label>
+            <label>
+              Límite storage (GB):{" "}
+              <input
+                type="number"
+                step="0.1"
+                value={limiteStorageGB}
+                onChange={(e) => actualizarLimiteStorage(Number(e.target.value))}
+                style={{ width: "80px" }}
+              />
+            </label>
+          </div>
+        )}
+
+        <button onClick={comprobarUso} disabled={midiendo} style={button}>
+          {midiendo ? "Consultando..." : "Actualizar uso actual"}
+        </button>
+
+        {usoError && (
+          <p style={{ ...resultadoStyle, color: "#b91c1c" }}>{usoError}</p>
+        )}
+
+        {usoInfo && (
+          <div style={{ marginTop: "18px" }}>
+            <BarraUso
+              titulo="Base de datos"
+              usadoBytes={usoInfo.bdBytes}
+              limiteBytes={limiteBDGB * GB}
+            />
+            <BarraUso
+              titulo="Storage (fotos)"
+              usadoBytes={usoInfo.storageBytes}
+              limiteBytes={limiteStorageGB * GB}
+            />
+
+            <button
+              onClick={() => setMostrarDetalle((v) => !v)}
+              style={{ ...secondaryButton, marginTop: "12px", background: "#6b7280" }}
+            >
+              {mostrarDetalle ? "Ocultar detalle por tabla" : "Ver detalle por tabla"}
+            </button>
+
+            {mostrarDetalle && (
+              <table style={{ width: "100%", marginTop: "12px" }}>
+                <thead>
+                  <tr>
+                    <th style={celda}>Tabla</th>
+                    <th style={celda}>Tamaño</th>
+                    <th style={celda}>Filas aprox.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usoInfo.tablas.map((t) => (
+                    <tr key={t.tabla}>
+                      <td style={celda}>{t.tabla}</td>
+                      <td style={celda}>{t.tamano_total}</td>
+                      <td style={celda}>{t.filas_aprox}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
+}
+
+function BarraUso({ titulo, usadoBytes, limiteBytes }) {
+  const porcentaje = limiteBytes > 0 ? Math.min(100, (usadoBytes / limiteBytes) * 100) : 0;
+  const libre = Math.max(0, limiteBytes - usadoBytes);
+
+  let color = "#22c55e";
+  if (porcentaje >= 90) color = "#dc2626";
+  else if (porcentaje >= 70) color = "#f59e0b";
+
+  return (
+    <div style={{ marginBottom: "16px" }}>
+      <p style={{ margin: "0 0 6px 0" }}>
+        <strong>{titulo}:</strong> {formatearBytes(usadoBytes)} usados de{" "}
+        {formatearBytes(limiteBytes)} · libre {formatearBytes(libre)} (
+        {porcentaje.toFixed(1)}%)
+      </p>
+      <div
+        style={{
+          width: "100%",
+          height: "14px",
+          background: "#e5e7eb",
+          borderRadius: "8px",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${porcentaje}%`,
+            height: "100%",
+            background: color,
+            transition: "width 0.3s",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function formatearBytes(bytes) {
+  if (!bytes) return "0 B";
+  const unidades = ["B", "KB", "MB", "GB"];
+  let valor = bytes;
+  let i = 0;
+  while (valor >= 1024 && i < unidades.length - 1) {
+    valor /= 1024;
+    i++;
+  }
+  return `${valor.toFixed(1)} ${unidades[i]}`;
 }
 
 async function importarDepartamentos(departamentos) {
@@ -554,4 +809,11 @@ const resultadoStyle = {
   background: "#f3f4f6",
   borderRadius: "10px",
   maxWidth: "700px",
+};
+
+const celda = {
+  border: "1px solid #e5e7eb",
+  padding: "6px 10px",
+  textAlign: "left",
+  fontSize: "14px",
 };
