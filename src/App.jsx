@@ -2183,10 +2183,6 @@ export default function App() {
     }
   };
 
-  const prepararCampoCantidad = (event, productId, field) => {
-    posicionarYFijarArticulo(productId, field, event.currentTarget);
-  };
-
   // Toque en CUALQUIER parte de la tarjeta del artículo (fuera de sus
   // controles propios) manda el foco directamente al campo "Cajas",
   // listo para escribir la cantidad. La foto queda excluida a propósito:
@@ -3507,9 +3503,17 @@ export default function App() {
                                 cajasInputRefs.current[product.id] = element;
                               }}
                               value={quantity.boxes || ""}
-                              onPointerDown={(event) =>
-                                prepararCampoCantidad(event, product.id, "boxes")
-                              }
+                              // Tocar Cajas/Unid. DIRECTAMENTE ya no dispara
+                              // posicionarYFijarArticulo (scroll + colapso de
+                              // cabecera): ese camino seguía dando problemas
+                              // de vez en cuando pese a los ajustes previos.
+                              // Ahora ese posicionamiento solo se hace al
+                              // tocar el resto de la tarjeta (que ya redirige
+                              // aquí y funciona de forma fiable); tocando
+                              // este recuadro directamente basta con el
+                              // enfoque nativo del navegador — es lo que ya
+                              // funcionaba sin fallos para corregir
+                              // cantidades existentes.
                               onFocus={() => activarCampoCantidad(product.id, "boxes")}
                               onKeyDown={(event) => manejarEnterCantidad(event, product.id)}
                               onBlur={() => {
@@ -3544,11 +3548,9 @@ export default function App() {
                               readOnly={!product.permite_unidades}
                               value={product.permite_unidades ? quantity.units || "" : ""}
                               placeholder={product.permite_unidades ? "" : "—"}
-                              onPointerDown={(event) => {
-                                if (product.permite_unidades) {
-                                  prepararCampoCantidad(event, product.id, "units");
-                                }
-                              }}
+                              // Mismo motivo que en el input de Cajas: tocar
+                              // Unid. directamente ya no dispara scroll ni
+                              // colapso de cabecera, solo el enfoque nativo.
                               onFocus={() => {
                                 activarCampoCantidad(product.id, "units");
                                 if (!product.permite_unidades) {
