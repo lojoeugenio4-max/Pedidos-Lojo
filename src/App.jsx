@@ -2120,9 +2120,18 @@ export default function App() {
     if (elemento) {
       // Anclamos a la tarjeta ANTERIOR (si existe) en vez de a la tocada,
       // para que la tocada quede en el segundo hueco, no en el primero
-      // pegado a la cabecera. Si es la primera tarjeta de la lista, no hay
-      // anterior y se ancla a ella misma.
-      const referencia = elemento.previousElementSibling || elemento;
+      // pegado a la cabecera. Si es la primera tarjeta de su departamento,
+      // el "elemento anterior" en el DOM NO es otra tarjeta: es el <h2>
+      // con el nombre del departamento (cada departamento es una <section>
+      // que empieza con su título y luego sus artículos). Anclar ahí por
+      // error era la causa de que, al tocar el primer artículo de un
+      // departamento, pareciera "saltar" a ese departamento (el título
+      // quedaba destacado arriba del todo) y el artículo tocado no
+      // quedara donde debía. Por eso solo se usa el anterior si es
+      // realmente OTRA TARJETA (<article>); si no, se ancla a sí misma.
+      const anterior = elemento.previousElementSibling;
+      const referencia =
+        anterior && anterior.tagName === "ARTICLE" ? anterior : elemento;
       const rect = referencia.getBoundingClientRect();
       objetivo = Math.max(0, window.scrollY + rect.top - alturaTop - margen);
     }
