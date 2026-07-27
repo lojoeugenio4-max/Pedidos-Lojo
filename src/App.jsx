@@ -2110,6 +2110,25 @@ export default function App() {
   // definido en la propia tarjeta (ver styles.productCard) sin depender de
   // medir la cabecera ni de la estructura de hermanos en el DOM.
   const posicionarYFijarArticulo = (productId, field, input) => {
+    // IMPORTANTE: esto tiene que fijarse AQUÍ, de forma síncrona, antes de
+    // cualquier scroll. Hay un listener de scroll (más arriba en el
+    // archivo) que recalcula solo por su cuenta si la cabecera debe estar
+    // colapsada o no, según window.scrollY > 90 — y ese cálculo se
+    // desactiva mientras bloqueColapsoCabeceraRef.current sea true. Antes,
+    // ese ref solo se ponía a true dentro de un useEffect ligado a
+    // campoCantidadActivo, que se ejecuta DESPUÉS del scrollIntoView de
+    // aquí abajo. Para artículos que quedan cerca de arriba tras el
+    // scroll (scrollY final ≤ 90px) — típicamente el PRIMER artículo de
+    // cualquier departamento — el scroll del scrollIntoView disparaba el
+    // evento "scroll" ANTES de que el useEffect llegara a bloquear nada,
+    // así que el propio listener revertía setHeaderCollapsed(true) a
+    // false (window.scrollY ≤ 90), la cabecera grande volvía a
+    // expandirse, y el artículo tocado quedaba tapado/descolocado — dando
+    // la sensación de que se había activado "otro" artículo. Fijando el
+    // bloqueo aquí, síncronamente, antes de tocar el scroll, esa carrera
+    // desaparece.
+    bloqueColapsoCabeceraRef.current = true;
+
     if (input) {
       input.focus({ preventScroll: true });
       input.select?.();
