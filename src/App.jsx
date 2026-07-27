@@ -495,6 +495,10 @@ export default function App() {
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const bloqueColapsoCabeceraRef = useRef(false);
   const scrollFijoRef = useRef({ activo: false, objetivo: 0 });
+  // IDs de los setTimeout de la ráfaga de reintentos de mantenerScrollFijo,
+  // para poder cancelar los de un toque anterior en cuanto se toca un nuevo
+  // artículo (ver mantenerScrollFijo).
+  const scrollFijoTimeoutsRef = useRef([]);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [mostrarAyudaInstalacion, setMostrarAyudaInstalacion] = useState(false);
   const [appInstalada, setAppInstalada] = useState(() => {
@@ -2020,6 +2024,7 @@ export default function App() {
       variedadMinima,
       variedadRestante: Math.max(0, variedadMinima - variedadActual),
       bolasConseguidas: bloquesCumplidos * bolasPorBloque,
+      bolasPorBloque,
     };
   }, [
     orderedItems,
@@ -2130,24 +2135,37 @@ export default function App() {
   // abajo) van a devolver la página a este punto cada vez que iOS intente
   // moverla, hasta que el cliente cierre el teclado o haga scroll manual.
   const mantenerScrollFijo = (scrollObjetivo) => {
+    // Si el cliente toca un artículo distinto antes de que termine la
+    // ráfaga de reintentos del toque anterior, esos timeouts seguían
+    // vivos y corregían el scroll hacia el objetivo VIEJO (cerraban sobre
+    // scrollObjetivo del toque anterior), peleando contra los del toque
+    // nuevo durante hasta 1s y haciendo que la pantalla "botase" entre
+    // dos posiciones. Cancelamos aquí cualquier reintento pendiente antes
+    // de programar los nuevos.
+    scrollFijoTimeoutsRef.current.forEach((id) => clearTimeout(id));
+    scrollFijoTimeoutsRef.current = [];
+
     scrollFijoRef.current = { activo: true, objetivo: scrollObjetivo };
 
     const restaurar = () => {
       if (!scrollFijoRef.current.activo) return;
-      if (Math.abs(window.scrollY - scrollObjetivo) > 1) {
-        window.scrollTo(0, scrollObjetivo);
+      const objetivoActual = scrollFijoRef.current.objetivo;
+      if (Math.abs(window.scrollY - objetivoActual) > 1) {
+        window.scrollTo(0, objetivoActual);
       }
     };
 
     restaurar();
     requestAnimationFrame(restaurar);
-    [16, 32, 60, 100, 150, 220, 300, 400, 500, 700, 1000].forEach((ms) =>
-      setTimeout(restaurar, ms)
+    scrollFijoTimeoutsRef.current = [16, 32, 60, 100, 150, 220, 300, 400, 500, 700, 1000].map(
+      (ms) => setTimeout(restaurar, ms)
     );
   };
 
   const detenerScrollFijo = () => {
     scrollFijoRef.current.activo = false;
+    scrollFijoTimeoutsRef.current.forEach((id) => clearTimeout(id));
+    scrollFijoTimeoutsRef.current = [];
   };
 
   // Punto único que gestiona TODO lo que pasa al empezar a editar la
@@ -3774,7 +3792,7 @@ export default function App() {
                   </div>
                 ) : (
                   <div style={styles.bingoSummaryMessage}>
-                    Te faltan {resumenBingoPedido.variedadRestante} {resumenBingoPedido.variedadRestante === 1 ? "artículo distinto en cajas" : "artículos distintos en cajas"} para conseguir 1 bola.
+                    Te faltan {resumenBingoPedido.variedadRestante} {resumenBingoPedido.variedadRestante === 1 ? "artículo distinto en cajas" : "artículos distintos en cajas"} para conseguir {resumenBingoPedido.bolasPorBloque} {resumenBingoPedido.bolasPorBloque === 1 ? "bola" : "bolas"}.
                   </div>
                 )}
                 <div style={styles.bingoSummaryNote}>
