@@ -494,11 +494,18 @@ export default function App() {
   );
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const bloqueColapsoCabeceraRef = useRef(false);
-  const scrollFijoRef = useRef({ activo: false, objetivo: 0 });
-  // IDs de los setTimeout de la ráfaga de reintentos de mantenerScrollFijo,
-  // para poder cancelar los de un toque anterior en cuanto se toca un nuevo
-  // artículo (ver mantenerScrollFijo).
-  const scrollFijoTimeoutsRef = useRef([]);
+  // Congela visualmente el scroll de la página (con position:fixed en el
+  // body) mientras se edita la cantidad de un artículo y mientras se cierra
+  // el teclado justo después. Antes se intentaba con un simple "reintento"
+  // de window.scrollTo() cada pocos milisegundos, pero en iPhone el propio
+  // Safari puede desplazar el CONTENIDO dentro del visual viewport al
+  // abrir/cerrar el teclado sin llegar a tocar window.scrollY, así que ese
+  // reintento no siempre alcanzaba a corregirlo a tiempo (el artículo se
+  // perdía debajo/encima del teclado justo al aceptar la cantidad).
+  // Congelando el body por completo no hay nada que el teléfono pueda
+  // desplazar mientras dure la edición.
+  const scrollLockRef = useRef({ locked: false, scrollY: 0, elemento: null });
+  const scrollUnlockTimeoutRef = useRef(null);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [mostrarAyudaInstalacion, setMostrarAyudaInstalacion] = useState(false);
   const [appInstalada, setAppInstalada] = useState(() => {
@@ -1150,7 +1157,11 @@ export default function App() {
       // dejamos de forzar la posición de scroll (el cliente quiere moverse
       // por su cuenta, no seguimos "peleando" contra su dedo).
       bloqueColapsoCabeceraRef.current = false;
-      scrollFijoRef.current.activo = false;
+      if (scrollUnlockTimeoutRef.current) {
+        clearTimeout(scrollUnlockTimeoutRef.current);
+        scrollUnlockTimeoutRef.current = null;
+      }
+      desbloquearScrollPagina();
     };
 
     handleScroll();
@@ -1164,45 +1175,23 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // iOS desplaza la página por su cuenta al abrir/cerrar el teclado, y lo
-    // hace en varios "empujones" (no un único salto), a veces bastante
-    // después del toque inicial. window.visualViewport es el evento real
-    // que iOS dispara en cada uno de esos ajustes, así que en vez de
-    // adivinar cuánto puede tardar con temporizadores fijos, corregimos la
-    // posición cada vez que iOS intenta moverla, mientras el campo de
-    // cantidad siga activo (scrollFijoRef.current.activo). En cuanto el
-    // cliente hace un scroll manual real (touchmove, arriba), se deja de
-    // corregir para no pelear contra su propio dedo.
+    // iOS puede seguir ajustando el visual viewport en varios pasos al
+    // abrir el teclado (no de golpe), a veces bastante después del toque
+    // inicial. window.visualViewport es el evento real que iOS dispara en
+    // cada uno de esos ajustes. Mientras la página esté congelada
+    // (scrollLockRef.current.locked), aprovechamos cada aviso para
+    // comprobar si el artículo activo ha quedado tapado por el teclado y,
+    // si es así, subir un poco más el contenido congelado — nunca lo
+    // movemos si ya es visible.
     const vv = window.visualViewport;
     if (!vv) return undefined;
 
-    const reforzarScrollFijo = () => {
-      if (!scrollFijoRef.current.activo) return;
-      const objetivo = scrollFijoRef.current.objetivo;
-      if (Math.abs(window.scrollY - objetivo) > 1) {
-        window.scrollTo(0, objetivo);
-      }
-
-      // Misma corrección mínima por teclado que en mantenerScrollFijo:
-      // solo entra en juego si el artículo activo queda tapado por el
-      // teclado, y solo añade lo justo para dejarlo visible encima de él.
-      const elementoActivo = scrollFijoRef.current.elemento;
-      if (elementoActivo && vv) {
-        const rect = elementoActivo.getBoundingClientRect();
-        const margenTeclado = 12;
-        const exceso = rect.bottom - (vv.height - margenTeclado);
-        if (exceso > 1) {
-          window.scrollTo(0, window.scrollY + exceso);
-        }
-      }
-    };
-
-    vv.addEventListener("resize", reforzarScrollFijo);
-    vv.addEventListener("scroll", reforzarScrollFijo);
+    vv.addEventListener("resize", ajustarScrollBloqueadoPorTeclado);
+    vv.addEventListener("scroll", ajustarScrollBloqueadoPorTeclado);
 
     return () => {
-      vv.removeEventListener("resize", reforzarScrollFijo);
-      vv.removeEventListener("scroll", reforzarScrollFijo);
+      vv.removeEventListener("resize", ajustarScrollBloqueadoPorTeclado);
+      vv.removeEventListener("scroll", ajustarScrollBloqueadoPorTeclado);
     };
   }, []);
 
@@ -2142,61 +2131,85 @@ export default function App() {
   // cuenta para "ayudar" a que el campo enfocado quede por encima del
   // teclado — esto ocurre a nivel del propio Safari/WKWebView, NO es el
   // comportamiento de scrollIntoView del navegador, así que
-  // focus({preventScroll:true}) no basta para evitarlo. Activamos
-  // scrollFijoRef con la posición objetivo: a partir de aquí, tanto esta
-  // ráfaga inicial de reintentos como el listener de visualViewport (más
-  // abajo) van a devolver la página a este punto cada vez que iOS intente
-  // moverla, hasta que el cliente cierre el teclado o haga scroll manual.
-  const mantenerScrollFijo = (scrollObjetivo, elemento = null) => {
-    // Si el cliente toca un artículo distinto antes de que termine la
-    // ráfaga de reintentos del toque anterior, esos timeouts seguían
-    // vivos y corregían el scroll hacia el objetivo VIEJO (cerraban sobre
-    // scrollObjetivo del toque anterior), peleando contra los del toque
-    // nuevo durante hasta 1s y haciendo que la pantalla "botase" entre
-    // dos posiciones. Cancelamos aquí cualquier reintento pendiente antes
-    // de programar los nuevos.
-    scrollFijoTimeoutsRef.current.forEach((id) => clearTimeout(id));
-    scrollFijoTimeoutsRef.current = [];
+  // focus({preventScroll:true}) no basta para evitarlo, ni tampoco basta
+  // con "perseguir" el scroll con window.scrollTo() a intervalos: a veces
+  // el desplazamiento que hace iOS ocurre dentro del visual viewport sin
+  // llegar a tocar window.scrollY, así que ese reintento no lo detecta.
+  // En vez de perseguirlo, congelamos el body con position:fixed en la
+  // posición exacta donde debe quedar el artículo — así no hay scroll que
+  // el teléfono pueda mover, ni al abrir ni al cerrar el teclado.
+  const bloquearScrollPagina = (scrollObjetivo, elemento = null) => {
+    if (scrollUnlockTimeoutRef.current) {
+      clearTimeout(scrollUnlockTimeoutRef.current);
+      scrollUnlockTimeoutRef.current = null;
+    }
 
-    scrollFijoRef.current = { activo: true, objetivo: scrollObjetivo, elemento };
+    if (!scrollLockRef.current.locked) {
+      document.body.style.position = "fixed";
+      document.body.style.left = "0";
+      document.body.style.right = "0";
+      document.body.style.width = "100%";
+    }
 
-    const restaurar = () => {
-      if (!scrollFijoRef.current.activo) return;
-      const objetivoActual = scrollFijoRef.current.objetivo;
-      if (Math.abs(window.scrollY - objetivoActual) > 1) {
-        window.scrollTo(0, objetivoActual);
-      }
-
-      // El objetivo de arriba mantiene al artículo en el MISMO sitio de la
-      // pantalla donde se tocó (eso no se toca). Pero si ese sitio queda
-      // por debajo de donde termina el teclado al abrirse, el campo se
-      // pierde de vista igualmente. Aquí, y SOLO en ese caso, añadimos el
-      // mínimo extra de scroll para dejarlo justo por encima del teclado
-      // — nunca lo movemos si ya es visible, y nunca lo mandamos arriba
-      // del todo como hacía la versión antigua.
-      const elementoActivo = scrollFijoRef.current.elemento;
-      const vv = window.visualViewport;
-      if (elementoActivo && vv) {
-        const rect = elementoActivo.getBoundingClientRect();
-        const margenTeclado = 12;
-        const exceso = rect.bottom - (vv.height - margenTeclado);
-        if (exceso > 1) {
-          window.scrollTo(0, window.scrollY + exceso);
-        }
-      }
-    };
-
-    restaurar();
-    requestAnimationFrame(restaurar);
-    scrollFijoTimeoutsRef.current = [16, 32, 60, 100, 150, 220, 300, 400, 500, 700, 1000].map(
-      (ms) => setTimeout(restaurar, ms)
-    );
+    document.body.style.top = `-${scrollObjetivo}px`;
+    scrollLockRef.current = { locked: true, scrollY: scrollObjetivo, elemento };
   };
 
-  const detenerScrollFijo = () => {
-    scrollFijoRef.current.activo = false;
-    scrollFijoTimeoutsRef.current.forEach((id) => clearTimeout(id));
-    scrollFijoTimeoutsRef.current = [];
+  // Se llama en cada aviso de window.visualViewport mientras la página
+  // esté congelada (ver el useEffect de visualViewport, más arriba). Si el
+  // artículo activo queda tapado por el teclado al abrirse, sube un poco
+  // más el contenido congelado — nunca lo mueve si ya es visible, y nunca
+  // lo manda arriba del todo.
+  const ajustarScrollBloqueadoPorTeclado = () => {
+    if (!scrollLockRef.current.locked) return;
+
+    const elementoActivo = scrollLockRef.current.elemento;
+    const vv = window.visualViewport;
+    if (!elementoActivo || !vv) return;
+
+    const rect = elementoActivo.getBoundingClientRect();
+    const margenTeclado = 12;
+    const exceso = rect.bottom - (vv.height - margenTeclado);
+
+    if (exceso > 1) {
+      const nuevoObjetivo = scrollLockRef.current.scrollY + exceso;
+      document.body.style.top = `-${nuevoObjetivo}px`;
+      scrollLockRef.current.scrollY = nuevoObjetivo;
+    }
+  };
+
+  const desbloquearScrollPagina = () => {
+    if (!scrollLockRef.current.locked) return;
+
+    const scrollY = scrollLockRef.current.scrollY;
+
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    document.body.style.width = "";
+
+    scrollLockRef.current = { locked: false, scrollY: 0, elemento: null };
+    window.scrollTo(0, scrollY);
+  };
+
+  // Igual que desbloquearScrollPagina, pero esperando un poco antes de
+  // soltar el scroll. Al aceptar una cantidad o cerrar el teclado tocando
+  // fuera, iOS sigue reajustando el visual viewport unos cientos de
+  // milisegundos DESPUÉS del blur. Si soltáramos el scroll en ese
+  // instante, ese reajuste final del teléfono se aplicaría sin nada que
+  // lo compense y el artículo se perdería de vista otra vez — que es
+  // justo el fallo que se ve en el vídeo al pulsar "Aceptar cantidad".
+  // Mantenemos la página congelada durante esa animación y solo entonces
+  // la liberamos.
+  const desbloquearScrollPaginaConRetraso = (ms = 400) => {
+    if (scrollUnlockTimeoutRef.current) {
+      clearTimeout(scrollUnlockTimeoutRef.current);
+    }
+    scrollUnlockTimeoutRef.current = setTimeout(() => {
+      scrollUnlockTimeoutRef.current = null;
+      desbloquearScrollPagina();
+    }, ms);
   };
 
   // Punto único que gestiona TODO lo que pasa al empezar a editar la
@@ -2235,7 +2248,16 @@ export default function App() {
     const alturaTop = topArea ? topArea.getBoundingClientRect().height : 0;
     const margen = 8;
 
-    let objetivo = window.scrollY;
+    // Si la página ya estaba congelada por una edición anterior (el
+    // cliente pasó de tocar un artículo a tocar otro sin llegar a soltar
+    // el teclado), la posición "real" de scroll a usar como referencia es
+    // la que teníamos congelada, no window.scrollY (que con el body en
+    // position:fixed se queda clavado en 0).
+    const scrollActual = scrollLockRef.current.locked
+      ? scrollLockRef.current.scrollY
+      : window.scrollY;
+
+    let objetivo = scrollActual;
     if (elemento) {
       // Anclamos a la tarjeta ANTERIOR (si existe) en vez de a la tocada,
       // para que la tocada quede en el segundo hueco, no en el primero
@@ -2243,12 +2265,10 @@ export default function App() {
       // anterior y se ancla a ella misma.
       const referencia = elemento.previousElementSibling || elemento;
       const rect = referencia.getBoundingClientRect();
-      objetivo = Math.max(0, window.scrollY + rect.top - alturaTop - margen);
+      objetivo = Math.max(0, scrollActual + rect.top - alturaTop - margen);
     }
 
-    window.scrollTo(0, objetivo);
-
-    mantenerScrollFijo(objetivo, elemento);
+    bloquearScrollPagina(objetivo, elemento);
   };
 
   const prepararCampoCantidad = (event, productId, field) => {
@@ -2399,15 +2419,18 @@ export default function App() {
     // siguiente y podía saltar incluso al departamento siguiente.
     // Ese desplazamiento automático queda eliminado por completo.
     //
-    // IMPORTANTE: antes se llamaba aquí a detenerScrollFijo(), justo antes
-    // del blur() que cierra el teclado — es decir, se soltaba el control
-    // del scroll justo en el instante en que el teléfono hace su ajuste
-    // más brusco al cerrar el teclado, dejando ese salto sin nada que lo
-    // corrija. Ahora, en su lugar, fijamos el scroll en la posición actual
-    // y dejamos que la ráfaga de reintentos (igual que al abrir el
-    // teclado) mantenga la pantalla quieta mientras se cierra. Se libera
-    // solo con un scroll manual real (touchmove) o al tocar otro campo.
-    mantenerScrollFijo(window.scrollY);
+    // IMPORTANTE: si se suelta el control del scroll justo antes del
+    // blur() que cierra el teclado, el reajuste más brusco del teléfono
+    // (justo al cerrarse) se queda sin nada que lo corrija y el artículo
+    // se pierde de vista — que es el fallo que se ve en el vídeo. La
+    // página ya debería estar congelada desde que se empezó a editar,
+    // pero por seguridad la congelamos aquí también si no lo estuviera.
+    // Se libera con un pequeño retraso (desbloquearScrollPaginaConRetraso)
+    // para dar tiempo a que termine la animación de cierre del teclado,
+    // y antes de eso solo con un scroll manual real (touchmove).
+    if (!scrollLockRef.current.locked) {
+      bloquearScrollPagina(window.scrollY);
+    }
 
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
@@ -2415,6 +2438,8 @@ export default function App() {
 
     setArticuloDestacado(productId);
     setCampoCantidadActivo(null);
+
+    desbloquearScrollPaginaConRetraso();
   };
 
   const manejarEnterCantidad = (event, productId) => {
@@ -2444,6 +2469,16 @@ export default function App() {
   };
 
   const resetToInitialState = () => {
+    // Por seguridad: si quedara la página congelada de una edición de
+    // cantidad sin terminar, la soltamos ya mismo (sin retraso) antes de
+    // mandar el scroll arriba del todo — si no, con el body en
+    // position:fixed ese scrollTo no tendría ningún efecto visible.
+    if (scrollUnlockTimeoutRef.current) {
+      clearTimeout(scrollUnlockTimeoutRef.current);
+      scrollUnlockTimeoutRef.current = null;
+    }
+    desbloquearScrollPagina();
+
     setQuantities({});
     setCustomerName("");
     setCustomerNameFocused(false);
@@ -2517,6 +2552,12 @@ export default function App() {
   }
 
   function limpiarPedidoDespuesEnvio() {
+    if (scrollUnlockTimeoutRef.current) {
+      clearTimeout(scrollUnlockTimeoutRef.current);
+      scrollUnlockTimeoutRef.current = null;
+    }
+    desbloquearScrollPagina();
+
     localStorage.removeItem(ORDER_STORAGE_KEY);
     setQuantities({});
     setCustomerName("");
@@ -3564,10 +3605,14 @@ export default function App() {
                                 // Igual que en aceptarCantidad: no soltamos el
                                 // control del scroll justo antes de que el
                                 // teclado se cierre (blur), sino que lo
-                                // dejamos fijado en la posición actual
-                                // mientras dura ese cierre.
-                                mantenerScrollFijo(window.scrollY);
+                                // dejamos congelado y solo lo liberamos con
+                                // un pequeño retraso, cuando ya ha terminado
+                                // el cierre del teclado.
+                                if (!scrollLockRef.current.locked) {
+                                  bloquearScrollPagina(window.scrollY);
+                                }
                                 setCampoCantidadActivo(null);
+                                desbloquearScrollPaginaConRetraso();
                               }}
                               onChange={(event) =>
                                 updateQuantity(
@@ -3619,10 +3664,14 @@ export default function App() {
                                 // Igual que en aceptarCantidad: no soltamos el
                                 // control del scroll justo antes de que el
                                 // teclado se cierre (blur), sino que lo
-                                // dejamos fijado en la posición actual
-                                // mientras dura ese cierre.
-                                mantenerScrollFijo(window.scrollY);
+                                // dejamos congelado y solo lo liberamos con
+                                // un pequeño retraso, cuando ya ha terminado
+                                // el cierre del teclado.
+                                if (!scrollLockRef.current.locked) {
+                                  bloquearScrollPagina(window.scrollY);
+                                }
                                 setCampoCantidadActivo(null);
+                                desbloquearScrollPaginaConRetraso();
                               }}
                               onChange={(event) =>
                                 updateQuantity(
