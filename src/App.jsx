@@ -2096,9 +2096,19 @@ export default function App() {
   // se había tocado (activaba el vecino) y, si el toque era sobre el
   // campo "Cajas", a veces ni siquiera llegaba a abrir el teclado.
   //
-  // Así que aquí NO se toca la posición de ningún elemento del catálogo.
-  // Solo se hace un scroll real y sencillo para colocar el artículo en la
-  // segunda posición visible, y ya está — sin "clavar" nada por encima.
+  // También se probó calculando el scroll a mano (con getBoundingClientRect
+  // y restando la altura de la cabecera), pero esa altura se mide justo en
+  // el mismo instante en que la cabecera se está colapsando con una
+  // animación CSS (headerWrap tiene transition en max-height): medirla en
+  // ese momento da un valor inestable/a medio camino según el instante
+  // exacto, lo que hacía que a veces el cálculo se pasara de largo y el
+  // artículo tocado (sobre todo el primero de cada departamento) acabase
+  // desapareciendo por arriba en vez de quedar visible.
+  //
+  // Por eso aquí NO se calcula nada a mano: se usa el scrollIntoView()
+  // nativo del navegador, que ya tiene en cuenta el scroll-margin-top
+  // definido en la propia tarjeta (ver styles.productCard) sin depender de
+  // medir la cabecera ni de la estructura de hermanos en el DOM.
   const posicionarYFijarArticulo = (productId, field, input) => {
     if (input) {
       input.focus({ preventScroll: true });
@@ -2112,31 +2122,9 @@ export default function App() {
     });
 
     const elemento = rowRefs.current[productId];
-    const topArea = document.querySelector("[data-top-area='true']");
-    const alturaTop = topArea ? topArea.getBoundingClientRect().height : 0;
-    const margen = 8;
-
-    let objetivo = window.scrollY;
     if (elemento) {
-      // Anclamos a la tarjeta ANTERIOR (si existe) en vez de a la tocada,
-      // para que la tocada quede en el segundo hueco, no en el primero
-      // pegado a la cabecera. Si es la primera tarjeta de su departamento,
-      // el "elemento anterior" en el DOM NO es otra tarjeta: es el <h2>
-      // con el nombre del departamento (cada departamento es una <section>
-      // que empieza con su título y luego sus artículos). Anclar ahí por
-      // error era la causa de que, al tocar el primer artículo de un
-      // departamento, pareciera "saltar" a ese departamento (el título
-      // quedaba destacado arriba del todo) y el artículo tocado no
-      // quedara donde debía. Por eso solo se usa el anterior si es
-      // realmente OTRA TARJETA (<article>); si no, se ancla a sí misma.
-      const anterior = elemento.previousElementSibling;
-      const referencia =
-        anterior && anterior.tagName === "ARTICLE" ? anterior : elemento;
-      const rect = referencia.getBoundingClientRect();
-      objetivo = Math.max(0, window.scrollY + rect.top - alturaTop - margen);
+      elemento.scrollIntoView({ block: "start", behavior: "auto" });
     }
-
-    window.scrollTo(0, objetivo);
   };
 
   const prepararCampoCantidad = (event, productId, field) => {
