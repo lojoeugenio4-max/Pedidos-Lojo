@@ -1139,7 +1139,29 @@ export default function App() {
       setHeaderCollapsed(window.scrollY > 90);
     };
 
-    const handleTouchMove = () => {
+    // Antes, CUALQUIER touchmove desbloqueaba el colapso de cabecera, sin
+    // mirar cuánto se había movido el dedo. Tocar con precisión un
+    // objetivo pequeño (los recuadros de "Cajas"/"Unid.", mucho más
+    // estrechos que el resto de la tarjeta) casi siempre viene acompañado
+    // de un ligero temblor del dedo, que ya se contaba como "el cliente
+    // quiere hacer scroll" y desbloqueaba el colapso ANTES de que el
+    // propio teléfono hiciera su reajuste de scroll al abrir el teclado
+    // — volviendo a colar el mismo fallo (la cabecera se expandía sola)
+    // pero SOLO al tocar esos recuadros directamente, no el resto de la
+    // tarjeta. Por eso ahora se exige un desplazamiento real (más de
+    // 10px) antes de considerarlo un scroll manual de verdad.
+    let touchStartY = null;
+
+    const handleTouchStart = (event) => {
+      touchStartY = event.touches?.[0]?.clientY ?? null;
+    };
+
+    const handleTouchMove = (event) => {
+      const currentY = event.touches?.[0]?.clientY;
+      if (touchStartY != null && currentY != null) {
+        if (Math.abs(currentY - touchStartY) < 10) return;
+      }
+
       // Gesto de scroll manual real del cliente: a partir de aquí la
       // cabecera vuelve a poder colapsarse/expandirse con normalidad.
       bloqueColapsoCabeceraRef.current = false;
@@ -1147,10 +1169,12 @@ export default function App() {
 
     handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("touchstart", handleTouchStart, { passive: true });
     window.addEventListener("touchmove", handleTouchMove, { passive: true });
 
     return () => {
       window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("touchstart", handleTouchStart);
       window.removeEventListener("touchmove", handleTouchMove);
     };
   }, []);
