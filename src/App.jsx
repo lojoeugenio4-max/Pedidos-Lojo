@@ -2121,7 +2121,20 @@ export default function App() {
       setCampoCantidadActivo(`${productId}:${field}`);
     });
 
-    const elemento = rowRefs.current[productId];
+    // IMPORTANTE: en la vista "Todos", un mismo artículo puede aparecer DOS
+    // VECES en la página (una en su sección promocional — Ofertas, Novedad,
+    // Ruleta, Bingo — y otra en su departamento real). rowRefs solo guarda
+    // UN elemento por id de producto: la segunda copia que se pinta
+    // sobrescribe a la primera, así que buscar la tarjeta ahí podía
+    // devolver la copia equivocada — la que se resaltaba/hacía scroll no
+    // era la que se acababa de tocar, sino su duplicado en otra sección
+    // más abajo (o arriba). Por eso aquí SIEMPRE se parte del propio
+    // campo que se acaba de tocar (input) para localizar SU tarjeta con
+    // closest("article"), nunca del mapa por id — así no hay ambigüedad
+    // posible, sea cual sea la copia tocada.
+    const elemento = input
+      ? input.closest("article")
+      : rowRefs.current[productId];
     if (elemento) {
       elemento.scrollIntoView({ block: "start", behavior: "auto" });
     }
@@ -2152,7 +2165,14 @@ export default function App() {
       return;
     }
 
-    posicionarYFijarArticulo(productId, "boxes", cajasInputRefs.current[productId]);
+    // No usamos cajasInputRefs (mapa por id, ambiguo si el artículo
+    // aparece dos veces en la vista "Todos" — ver el comentario en
+    // posicionarYFijarArticulo): buscamos el campo "Cajas" DENTRO de la
+    // propia tarjeta tocada (event.currentTarget es siempre la tarjeta
+    // correcta, la que se ha tocado de verdad), así no hay duda posible
+    // de cuál de las dos copias es.
+    const inputCajas = event.currentTarget.querySelector("input");
+    posicionarYFijarArticulo(productId, "boxes", inputCajas);
   };
 
   const updateQuantity = (productId, field, value) => {
@@ -2270,7 +2290,7 @@ export default function App() {
     setTimeout(recolocar, 380);
   };
 
-  const aceptarCantidad = (productId) => {
+  const aceptarCantidad = (productId, elementoTarjeta = null) => {
     // "Aceptar" únicamente cierra el teclado. No se mueve ni se "clava"
     // ningún elemento del catálogo — eso fue lo que causaba que se
     // activara el artículo equivocado y que a veces no se abriera el
@@ -2287,8 +2307,14 @@ export default function App() {
     // volvemos a traer con un scrollIntoView nativo (no manual). Se
     // comprueba con margen de sobra tras la animación de cierre del
     // teclado, y solo actúa si de verdad hace falta.
+    //
+    // Se usa la tarjeta recibida por parámetro (la que de verdad se ha
+    // tocado) en vez de rowRefs.current[productId]: ese mapa solo guarda
+    // una tarjeta por id de producto, así que con artículos duplicados en
+    // la vista "Todos" (ver el comentario en posicionarYFijarArticulo)
+    // podía devolver la copia equivocada.
     window.setTimeout(() => {
-      const elemento = rowRefs.current[productId];
+      const elemento = elementoTarjeta || rowRefs.current[productId];
       if (!elemento) return;
 
       const rect = elemento.getBoundingClientRect();
@@ -2303,7 +2329,7 @@ export default function App() {
   const manejarEnterCantidad = (event, productId) => {
     if (event.key === "Enter") {
       event.preventDefault();
-      aceptarCantidad(productId);
+      aceptarCantidad(productId, event.target.closest("article"));
     }
   };
 
@@ -3545,7 +3571,12 @@ export default function App() {
                                   // el clic. Así no desaparece prematuramente en iPhone.
                                   event.preventDefault();
                                 }}
-                                onClick={() => aceptarCantidad(product.id)}
+                                onClick={(event) =>
+                                  aceptarCantidad(
+                                    product.id,
+                                    event.currentTarget.closest("article")
+                                  )
+                                }
                                 aria-label="Aceptar cantidad"
                               >
                                 <Check size={15} strokeWidth={3} />
