@@ -2209,25 +2209,20 @@ export default function App() {
   //      parte del mismo toque y no llega a abrir el teclado ni a mostrar
   //      el cursor — esto es justo lo que rompió el foco en el intento
   //      anterior, al meter el scrollTo() antes del focus().
-  //   2) Medir dónde está el artículo EN PANTALLA antes de tocar nada.
-  //   3) Colapsar la cabecera y marcar el campo activo con flushSync
-  //      (para que el DOM quede en su tamaño final antes de volver a medir).
-  //   4) Medir de nuevo y corregir el scroll SOLO lo que la cabecera haya
-  //      empujado el contenido, para que el artículo quede exactamente en
-  //      el mismo sitio de la pantalla donde estaba cuando se tocó (antes
-  //      se reubicaba siempre justo debajo de la cabecera, aunque el
-  //      artículo estuviera más abajo en pantalla — eso era el salto
-  //      grande que en la vista "Todos" daba la sensación de saltar al
-  //      departamento del artículo).
-  //   5) Mantener esa posición mientras dure la apertura del teclado.
+  //   2) Colapsar la cabecera y marcar el campo activo con flushSync
+  //      (para que el DOM quede en su tamaño final antes de medir).
+  //   3) Colocar el artículo SIEMPRE en la segunda posición visible desde
+  //      arriba (dejando ver algo de la tarjeta anterior justo encima),
+  //      sea cual sea su posición original en la lista. Posición fija y
+  //      predecible: así el teclado nunca lo tapa (siempre queda arriba
+  //      del todo, lejos de él) y no depende de dónde estuviera antes, que
+  //      es lo que causaba el salto grande/impredecible.
+  //   4) Mantener esa posición mientras dure la apertura del teclado.
   const posicionarYFijarArticulo = (productId, field, input) => {
     if (input) {
       input.focus({ preventScroll: true });
       input.select?.();
     }
-
-    const elemento = rowRefs.current[productId];
-    const posicionAntes = elemento ? elemento.getBoundingClientRect().top : null;
 
     flushSync(() => {
       setHeaderCollapsed(true);
@@ -2235,14 +2230,20 @@ export default function App() {
       setCampoCantidadActivo(`${productId}:${field}`);
     });
 
+    const elemento = rowRefs.current[productId];
+    const topArea = document.querySelector("[data-top-area='true']");
+    const alturaTop = topArea ? topArea.getBoundingClientRect().height : 0;
+    const margen = 8;
+
     let objetivo = window.scrollY;
-    if (elemento && posicionAntes !== null) {
-      const posicionDespues = elemento.getBoundingClientRect().top;
-      // Al colapsar, la cabecera empuja el contenido hacia arriba. Corregimos
-      // el scroll para cancelar exactamente ese desplazamiento (ni más ni
-      // menos), en vez de saltar a una posición fija bajo la cabecera.
-      const desplazamiento = posicionAntes - posicionDespues;
-      objetivo = Math.max(0, window.scrollY - desplazamiento);
+    if (elemento) {
+      // Anclamos a la tarjeta ANTERIOR (si existe) en vez de a la tocada,
+      // para que la tocada quede en el segundo hueco, no en el primero
+      // pegado a la cabecera. Si es la primera tarjeta de la lista, no hay
+      // anterior y se ancla a ella misma.
+      const referencia = elemento.previousElementSibling || elemento;
+      const rect = referencia.getBoundingClientRect();
+      objetivo = Math.max(0, window.scrollY + rect.top - alturaTop - margen);
     }
 
     window.scrollTo(0, objetivo);
