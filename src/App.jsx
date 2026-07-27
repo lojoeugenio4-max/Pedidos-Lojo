@@ -464,6 +464,7 @@ export default function App() {
   const cajasInputRefs = useRef({});
   const departmentDropdownRef = useRef(null);
   const stickyCardRef = useRef(null);
+  const catalogMainRef = useRef(null);
 
   const [savedOrder] = useState(() => readSavedOrder());
 
@@ -504,7 +505,7 @@ export default function App() {
   // perdía debajo/encima del teclado justo al aceptar la cantidad).
   // Congelando el body por completo no hay nada que el teléfono pueda
   // desplazar mientras dure la edición.
-  const scrollLockRef = useRef({ locked: false, scrollY: 0, elemento: null });
+  const scrollLockRef = useRef({ locked: false, scrollY: 0, elemento: null, mainTop: 0 });
   const scrollUnlockTimeoutRef = useRef(null);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [mostrarAyudaInstalacion, setMostrarAyudaInstalacion] = useState(false);
@@ -2135,80 +2136,137 @@ export default function App() {
   // con "perseguir" el scroll con window.scrollTo() a intervalos: a veces
   // el desplazamiento que hace iOS ocurre dentro del visual viewport sin
   // llegar a tocar window.scrollY, así que ese reintento no lo detecta.
-  // En vez de perseguirlo, congelamos el body con position:fixed en la
-  // posición exacta donde debe quedar el artículo — así no hay scroll que
-  // el teléfono pueda mover, ni al abrir ni al cerrar el teclado.
+  //
+  // En vez de perseguirlo, "clavamos" con position:fixed únicamente el
+  // LISTADO de artículos (<main>), justo en el sitio de la pantalla donde
+  // ya está en ese momento — así el teléfono no tiene nada que mover ni
+  // al abrir ni al cerrar el teclado.
+  //
+  // IMPORTANTE: a diferencia de un primer intento anterior, aquí NO se
+  // clava el <body> entero. Clavar el body rompía la cabecera de arriba
+  // (buscador/departamentos), que usa position:sticky: al quedar sin
+  // scroll real que seguir, la cabecera dejaba de quedarse fija y se
+  // desplazaba igual que el resto del contenido, dando la sensación de
+  // "saltar" de golpe a la sección del departamento donde estuviera el
+  // artículo tocado. Clavando solo <main> (mediante catalogMainRef), la
+  // cabecera de arriba sigue funcionando con su scroll real de siempre.
   const bloquearScrollPagina = (scrollObjetivo, elemento = null) => {
     if (scrollUnlockTimeoutRef.current) {
       clearTimeout(scrollUnlockTimeoutRef.current);
       scrollUnlockTimeoutRef.current = null;
     }
 
-    if (!scrollLockRef.current.locked) {
-      document.body.style.position = "fixed";
-      document.body.style.left = "0";
-      document.body.style.right = "0";
-      document.body.style.width = "100%";
+    // Si ya había un artículo distinto clavado, primero se restaura todo
+    // a su estado normal (con el scroll real que tuviera entonces) antes
+    // de volver a calcular y clavar la nueva posición. Así evitamos
+    // arrastrar coordenadas calculadas sobre un <main> que ya estaba fijo.
+    if (scrollLockRef.current.locked) {
+      desbloquearScrollPaginaInmediato();
     }
 
-    document.body.style.top = `-${scrollObjetivo}px`;
-    scrollLockRef.current = { locked: true, scrollY: scrollObjetivo, elemento };
+    // 1) Scroll real (de verdad) hasta la posición objetivo: esto deja el
+    //    artículo tocado en el sitio exacto de la pantalla donde debe
+    //    quedar (el mismo cálculo de siempre), y de paso dispara con
+    //    normalidad el position:sticky de la cabecera si corresponde.
+    window.scrollTo(0, scrollObjetivo);
+
+    // 2) Clavamos <main> exactamente en el sitio de la pantalla donde
+    //    acaba de quedar tras ese scroll real. A partir de aquí, aunque
+    //    el teléfono mueva el scroll real por su cuenta al abrir/cerrar
+    //    el teclado, <main> no se entera: sigue anclado a esa coordenada
+    //    de pantalla.
+    const main = catalogMainRef.current;
+    if (main) {
+      const mainTop = main.getBoundingClientRect().top;
+      main.style.position = "fixed";
+      main.style.top = `${mainTop}px`;
+      main.style.left = "0";
+      main.style.right = "0";
+
+      scrollLockRef.current = {
+        locked: true,
+        scrollY: scrollObjetivo,
+        elemento,
+        mainTop,
+      };
+    } else {
+      scrollLockRef.current = {
+        locked: false,
+        scrollY: 0,
+        elemento: null,
+        mainTop: 0,
+      };
+    }
   };
 
-  // Se llama en cada aviso de window.visualViewport mientras la página
-  // esté congelada (ver el useEffect de visualViewport, más arriba). Si el
+  // Se llama en cada aviso de window.visualViewport mientras el listado
+  // esté clavado (ver el useEffect de visualViewport, más arriba). Si el
   // artículo activo queda tapado por el teclado al abrirse, sube un poco
-  // más el contenido congelado — nunca lo mueve si ya es visible, y nunca
-  // lo manda arriba del todo.
+  // más el listado clavado — nunca lo mueve si ya es visible, y nunca lo
+  // manda arriba del todo.
   const ajustarScrollBloqueadoPorTeclado = () => {
     if (!scrollLockRef.current.locked) return;
 
     const elementoActivo = scrollLockRef.current.elemento;
+    const main = catalogMainRef.current;
     const vv = window.visualViewport;
-    if (!elementoActivo || !vv) return;
+    if (!elementoActivo || !main || !vv) return;
 
     const rect = elementoActivo.getBoundingClientRect();
     const margenTeclado = 12;
     const exceso = rect.bottom - (vv.height - margenTeclado);
 
     if (exceso > 1) {
-      const nuevoObjetivo = scrollLockRef.current.scrollY + exceso;
-      document.body.style.top = `-${nuevoObjetivo}px`;
-      scrollLockRef.current.scrollY = nuevoObjetivo;
+      const nuevoMainTop = scrollLockRef.current.mainTop - exceso;
+      main.style.top = `${nuevoMainTop}px`;
+      scrollLockRef.current.mainTop = nuevoMainTop;
     }
   };
 
-  const desbloquearScrollPagina = () => {
+  // Suelta el listado clavado YA MISMO, sin esperar nada. Se usa tanto al
+  // empezar a clavar un artículo distinto (ver bloquearScrollPagina) como
+  // cuando el cliente hace scroll manual de verdad con el dedo.
+  const desbloquearScrollPaginaInmediato = () => {
     if (!scrollLockRef.current.locked) return;
 
     const scrollY = scrollLockRef.current.scrollY;
+    const main = catalogMainRef.current;
 
-    document.body.style.position = "";
-    document.body.style.top = "";
-    document.body.style.left = "";
-    document.body.style.right = "";
-    document.body.style.width = "";
+    if (main) {
+      main.style.position = "";
+      main.style.top = "";
+      main.style.left = "";
+      main.style.right = "";
+    }
 
-    scrollLockRef.current = { locked: false, scrollY: 0, elemento: null };
+    scrollLockRef.current = { locked: false, scrollY: 0, elemento: null, mainTop: 0 };
     window.scrollTo(0, scrollY);
   };
 
+  const desbloquearScrollPagina = () => {
+    if (scrollUnlockTimeoutRef.current) {
+      clearTimeout(scrollUnlockTimeoutRef.current);
+      scrollUnlockTimeoutRef.current = null;
+    }
+    desbloquearScrollPaginaInmediato();
+  };
+
   // Igual que desbloquearScrollPagina, pero esperando un poco antes de
-  // soltar el scroll. Al aceptar una cantidad o cerrar el teclado tocando
+  // soltar el listado. Al aceptar una cantidad o cerrar el teclado tocando
   // fuera, iOS sigue reajustando el visual viewport unos cientos de
-  // milisegundos DESPUÉS del blur. Si soltáramos el scroll en ese
+  // milisegundos DESPUÉS del blur. Si soltáramos el bloqueo en ese
   // instante, ese reajuste final del teléfono se aplicaría sin nada que
   // lo compense y el artículo se perdería de vista otra vez — que es
   // justo el fallo que se ve en el vídeo al pulsar "Aceptar cantidad".
-  // Mantenemos la página congelada durante esa animación y solo entonces
-  // la liberamos.
+  // Mantenemos el listado clavado durante esa animación y solo entonces
+  // lo soltamos.
   const desbloquearScrollPaginaConRetraso = (ms = 400) => {
     if (scrollUnlockTimeoutRef.current) {
       clearTimeout(scrollUnlockTimeoutRef.current);
     }
     scrollUnlockTimeoutRef.current = setTimeout(() => {
       scrollUnlockTimeoutRef.current = null;
-      desbloquearScrollPagina();
+      desbloquearScrollPaginaInmediato();
     }, ms);
   };
 
@@ -3442,6 +3500,7 @@ export default function App() {
       </div>
 
       <main
+        ref={catalogMainRef}
         style={{
           ...styles.catalog,
           ...(selectedDepartment !== "TODOS" && !search.trim()
