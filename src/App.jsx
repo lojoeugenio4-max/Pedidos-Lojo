@@ -2360,7 +2360,16 @@ export default function App() {
     // “Aceptar” únicamente cierra el teclado. Antes se desplazaba al artículo
     // siguiente y podía saltar incluso al departamento siguiente.
     // Ese desplazamiento automático queda eliminado por completo.
-    detenerScrollFijo();
+    //
+    // IMPORTANTE: antes se llamaba aquí a detenerScrollFijo(), justo antes
+    // del blur() que cierra el teclado — es decir, se soltaba el control
+    // del scroll justo en el instante en que el teléfono hace su ajuste
+    // más brusco al cerrar el teclado, dejando ese salto sin nada que lo
+    // corrija. Ahora, en su lugar, fijamos el scroll en la posición actual
+    // y dejamos que la ráfaga de reintentos (igual que al abrir el
+    // teclado) mantenga la pantalla quieta mientras se cierra. Se libera
+    // solo con un scroll manual real (touchmove) o al tocar otro campo.
+    mantenerScrollFijo(window.scrollY);
 
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
@@ -3514,7 +3523,12 @@ export default function App() {
                               onFocus={() => activarCampoCantidad(product.id, "boxes")}
                               onKeyDown={(event) => manejarEnterCantidad(event, product.id)}
                               onBlur={() => {
-                                detenerScrollFijo();
+                                // Igual que en aceptarCantidad: no soltamos el
+                                // control del scroll justo antes de que el
+                                // teclado se cierre (blur), sino que lo
+                                // dejamos fijado en la posición actual
+                                // mientras dura ese cierre.
+                                mantenerScrollFijo(window.scrollY);
                                 setCampoCantidadActivo(null);
                               }}
                               onChange={(event) =>
@@ -3564,7 +3578,12 @@ export default function App() {
                               }}
                               onKeyDown={(event) => manejarEnterCantidad(event, product.id)}
                               onBlur={() => {
-                                detenerScrollFijo();
+                                // Igual que en aceptarCantidad: no soltamos el
+                                // control del scroll justo antes de que el
+                                // teclado se cierre (blur), sino que lo
+                                // dejamos fijado en la posición actual
+                                // mientras dura ese cierre.
+                                mantenerScrollFijo(window.scrollY);
                                 setCampoCantidadActivo(null);
                               }}
                               onChange={(event) =>
