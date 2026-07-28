@@ -42,25 +42,118 @@ function construirUrlQr(codigoParticipacion) {
   return `https://quickchart.io/qr?${params.toString()}`;
 }
 
-// Muchos lectores de mano tipo "pistola" son escáneres LÁSER de 1 sola
-// línea (lectura 1D): están diseñados para códigos de barras lineales
-// (Code128, EAN...) y son físicamente incapaces de decodificar un QR (2D),
-// por bien generado que esté. Como el código de participación es texto
-// plano corto, generamos también un código de barras Code128 con ese
-// mismo texto para que esos lectores 1D puedan leerlo igual que si se
-// escribiera a mano.
-function construirUrlCodigoBarras(codigoParticipacion) {
-  if (!codigoParticipacion) return "";
+// WhatsApp no permite poner color de fondo ni de letra en un mensaje de
+// texto normal (solo negrita/cursiva/tachado). Para simular el aviso en
+// "rojo y amarillo" que pidió el cliente, se usa una franja de emojis
+// 🔴🟡 a modo de banda de color arriba y abajo del bloque de participación,
+// además de negrita y mayúsculas, para que destaque igual aunque no haya
+// color real disponible en el texto.
+const FRANJA_DESTACADO = "🔴🟡🔴🟡🔴🟡🔴🟡🔴🟡🔴🟡";
 
-  const params = new URLSearchParams({
-    type: "code128",
-    text: codigoParticipacion,
-    width: "3",
-    height: "110",
-    includetext: "true",
-  });
+function construirBloqueParticipacion({
+  participacionRuleta,
+  codigoParticipacion,
+  tiradasRuleta,
+  participacionJuegos,
+  participacionBingo,
+  premio,
+}) {
+  const lines = [];
 
-  return `https://quickchart.io/barcode?${params.toString()}`;
+  const participacionJuegosNormalizada = normalizarRespuestaJuego(participacionJuegos);
+  const participacionBingoNormalizada = normalizarRespuestaJuego(participacionBingo);
+
+  const codigoJuegos =
+    participacionJuegosNormalizada?.code ||
+    participacionJuegosNormalizada?.codigo ||
+    codigoParticipacion ||
+    participacionRuleta?.code ||
+    participacionRuleta?.codigo ||
+    null;
+
+  const cumpleVariedadBingo = Boolean(
+    participacionBingoNormalizada?.qualified ??
+      participacionBingoNormalizada?.clasificado ??
+      participacionBingoNormalizada?.eligible ??
+      participacionBingoNormalizada?.cumple ??
+      participacionBingoNormalizada?.bingo_eligible
+  );
+
+  // El pedido puede cumplir la variedad mínima y aun así no recibir Bingo
+  // de verdad, si el cliente ya lo consiguió hoy con otro pedido (regla de
+  // "1 pedido de Bingo al día"). bingo_eligible es el estado que de verdad
+  // quedó guardado tras esa comprobación; sin él, el mensaje podía decir
+  // "tienes bolas" aunque ese pedido en concreto no tuviera ninguna.
+  const bingoConcedido = Boolean(participacionJuegosNormalizada?.bingo_eligible);
+  const bingoConseguido = cumpleVariedadBingo && bingoConcedido;
+  const bingoBloqueadoPorLimiteDiario = cumpleVariedadBingo && !bingoConcedido;
+
+  if (codigoJuegos) {
+    const urlQr = construirUrlQr(codigoJuegos);
+
+    const numeroTiradas = participacionRuleta
+      ? Math.max(
+          1,
+          Number(
+            tiradasRuleta ||
+              participacionRuleta?.tiradas_ruleta ||
+              participacionRuleta?.tiradas_totales ||
+              participacionRuleta?.spins_total ||
+              1
+          )
+        )
+      : Math.max(0, Number(tiradasRuleta || 0));
+
+    const numeroBolasBingo = Math.max(
+      1,
+      Number(
+        participacionJuegosNormalizada?.bingo_plays_total ??
+          participacionJuegosNormalizada?.bingoPlaysTotal ??
+          1
+      )
+    );
+
+    lines.push(FRANJA_DESTACADO);
+    lines.push("🎉 *¡TIENES PARTICIPACIÓN EN RULETA/BINGO!* 🎉");
+    if (numeroTiradas > 0) lines.push(`🎡 Ruleta: *${numeroTiradas} tirada${numeroTiradas === 1 ? "" : "s"}*`);
+    if (bingoConseguido) {
+      lines.push(
+        `🟠 Bingo: *${numeroBolasBingo} ${numeroBolasBingo === 1 ? "bola disponible" : "bolas disponibles"}*`
+      );
+    } else if (bingoBloqueadoPorLimiteDiario) {
+      lines.push("🟠 Bingo: ya conseguido hoy con otro pedido, este no suma más.");
+    }
+    lines.push("");
+    lines.push("📷 *Muestra este QR en caja:*");
+    lines.push(urlQr);
+    lines.push(`Código manual (si falla el escáner): *${codigoJuegos}*`);
+    lines.push(FRANJA_DESTACADO);
+    lines.push("");
+    return lines;
+  }
+
+  if (bingoConseguido) {
+    lines.push(FRANJA_DESTACADO);
+    lines.push("🟠 *PARTICIPACIÓN DE BINGO CONSEGUIDA*");
+    lines.push("No se pudo generar el código. Contacta con Cash Lojo antes de presentar el pedido en caja.");
+    lines.push(FRANJA_DESTACADO);
+    lines.push("");
+    return lines;
+  }
+
+  if (premio) {
+    lines.push(FRANJA_DESTACADO);
+    lines.push("🎁 *PREMIO RULETA:*");
+    lines.push(`*${premio.nombre}*`);
+    if (premio.codigo) {
+      lines.push(`Código: ${premio.codigo}`);
+    }
+    lines.push(FRANJA_DESTACADO);
+    lines.push("");
+    return lines;
+  }
+
+  return lines;
 }
 
 export function construirTextoPedidoWhatsApp({
@@ -76,6 +169,20 @@ export function construirTextoPedidoWhatsApp({
   participacionJuegos = null,
 }) {
   const lines = [];
+
+  // El bloque de participación (QR/Bingo/Ruleta) va primero y bien
+  // destacado, para que no pase desapercibido entre el resto del texto.
+  // Debajo va el pedido, igual que hasta ahora.
+  lines.push(
+    ...construirBloqueParticipacion({
+      participacionRuleta,
+      codigoParticipacion,
+      tiradasRuleta,
+      participacionJuegos,
+      participacionBingo,
+      premio,
+    })
+  );
 
   lines.push(`*${t.orderSummary}*`);
   lines.push("");
@@ -131,105 +238,6 @@ export function construirTextoPedidoWhatsApp({
 
   if (notesPedido) {
     lines.push(`*${t.notes}:* ${notesPedido}`);
-    lines.push("");
-  }
-
-  const participacionJuegosNormalizada = normalizarRespuestaJuego(participacionJuegos);
-  const participacionBingoNormalizada = normalizarRespuestaJuego(participacionBingo);
-
-  const codigoJuegos =
-    participacionJuegosNormalizada?.code ||
-    participacionJuegosNormalizada?.codigo ||
-    codigoParticipacion ||
-    participacionRuleta?.code ||
-    participacionRuleta?.codigo ||
-    null;
-
-  const cumpleVariedadBingo = Boolean(
-    participacionBingoNormalizada?.qualified ??
-      participacionBingoNormalizada?.clasificado ??
-      participacionBingoNormalizada?.eligible ??
-      participacionBingoNormalizada?.cumple ??
-      participacionBingoNormalizada?.bingo_eligible
-  );
-
-  // El pedido puede cumplir la variedad mínima y aun así no recibir Bingo
-  // de verdad, si el cliente ya lo consiguió hoy con otro pedido (regla de
-  // "1 pedido de Bingo al día"). bingo_eligible es el estado que de verdad
-  // quedó guardado tras esa comprobación; sin él, el mensaje podía decir
-  // "tienes bolas" aunque ese pedido en concreto no tuviera ninguna.
-  const bingoConcedido = Boolean(participacionJuegosNormalizada?.bingo_eligible);
-  const bingoConseguido = cumpleVariedadBingo && bingoConcedido;
-  const bingoBloqueadoPorLimiteDiario = cumpleVariedadBingo && !bingoConcedido;
-
-  if (codigoJuegos) {
-    const urlQr = construirUrlQr(codigoJuegos);
-    const urlBarras = construirUrlCodigoBarras(codigoJuegos);
-
-    const numeroTiradas = participacionRuleta
-      ? Math.max(
-          1,
-          Number(
-            tiradasRuleta ||
-              participacionRuleta?.tiradas_ruleta ||
-              participacionRuleta?.tiradas_totales ||
-              participacionRuleta?.spins_total ||
-              1
-          )
-        )
-      : Math.max(0, Number(tiradasRuleta || 0));
-
-    const numeroBolasBingo = Math.max(
-      1,
-      Number(
-        participacionJuegosNormalizada?.bingo_plays_total ??
-          participacionJuegosNormalizada?.bingoPlaysTotal ??
-          1
-      )
-    );
-
-    lines.push("🎁 *PARTICIPACIÓN CONSEGUIDA*");
-    lines.push("");
-    if (numeroTiradas > 0) lines.push(`🎡 Ruleta: *${numeroTiradas} tirada${numeroTiradas === 1 ? "" : "s"}*`);
-    if (bingoConseguido) {
-      lines.push(
-        `🟠 Bingo: *${numeroBolasBingo} ${numeroBolasBingo === 1 ? "bola disponible" : "bolas disponibles"}* (hoy no se generarán más códigos de Bingo)`
-      );
-    } else if (bingoBloqueadoPorLimiteDiario) {
-      lines.push("🟠 Bingo: hoy ya conseguiste Bingo con otro pedido, así que este no suma bolas nuevas.");
-    }
-    lines.push(`Código manual: *${codigoJuegos}*`);
-    lines.push("");
-
-    if (urlQr) {
-      lines.push("📷 *QR para presentar en caja:*");
-      lines.push(urlQr);
-      lines.push("");
-    }
-
-    if (urlBarras) {
-      lines.push("📊 *Código de barras (si el lector de caja no lee el QR):*");
-      lines.push(urlBarras);
-      lines.push("");
-    }
-
-    lines.push("Presenta este QR o el código manual en caja.");
-    lines.push("En caja aparecerán los juegos disponibles para este pedido.");
-    lines.push("");
-  } else if (bingoConseguido) {
-    lines.push("🟠 *PARTICIPACIÓN DE BINGO CONSEGUIDA*");
-    lines.push("");
-    lines.push("Tu pedido cumple las condiciones del Bingo, pero no se pudo generar el código común.");
-    lines.push("Contacta con Cash Lojo antes de presentar el pedido en caja.");
-    lines.push("");
-  } else if (premio) {
-    lines.push("🎁 *PREMIO RULETA:*");
-    lines.push(`*${premio.nombre}*`);
-
-    if (premio.codigo) {
-      lines.push(`Código: ${premio.codigo}`);
-    }
-
     lines.push("");
   }
 
