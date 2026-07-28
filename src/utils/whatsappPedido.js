@@ -42,13 +42,46 @@ function construirUrlQr(codigoParticipacion) {
   return `https://quickchart.io/qr?${params.toString()}`;
 }
 
-// WhatsApp no permite poner color de fondo ni de letra en un mensaje de
-// texto normal (solo negrita/cursiva/tachado). Para simular el aviso en
-// "rojo y amarillo" que pidió el cliente, se usa una franja de emojis
-// 🔴🟡 a modo de banda de color arriba y abajo del bloque de participación,
-// además de negrita y mayúsculas, para que destaque igual aunque no haya
-// color real disponible en el texto.
-const FRANJA_DESTACADO = "🔴🟡🔴🟡🔴🟡🔴🟡🔴🟡🔴🟡";
+// El QR en sí se mantiene siempre en blanco y negro (mejor contraste posible
+// para los lectores de caja, ya ajustado con margin/ecLevel más arriba tras
+// problemas reales de escaneo). El aviso en rojo/amarillo se genera como una
+// imagen APARTE (vía QuickChart /chart, con fondo de canvas real y texto de
+// color real, no emojis) para no arriesgar la lectura del QR mezclando
+// colores dentro de la misma imagen.
+function construirUrlBannerParticipacion(lineas) {
+  if (!lineas || !lineas.length) return "";
+
+  const chartConfig = {
+    type: "bar",
+    data: { labels: [""], datasets: [{ data: [0] }] },
+    options: {
+      plugins: {
+        legend: { display: false },
+        title: {
+          display: true,
+          text: lineas,
+          color: "#fde047",
+          font: { size: 30, weight: "bold" },
+          padding: { top: 24, bottom: 24 },
+        },
+      },
+      scales: {
+        x: { display: false },
+        y: { display: false },
+      },
+    },
+  };
+
+  const params = new URLSearchParams({
+    backgroundColor: "#dc2626",
+    width: "640",
+    height: "220",
+    version: "4",
+    c: JSON.stringify(chartConfig),
+  });
+
+  return `https://quickchart.io/chart?${params.toString()}`;
+}
 
 function construirBloqueParticipacion({
   participacionRuleta,
@@ -113,42 +146,38 @@ function construirBloqueParticipacion({
       )
     );
 
-    lines.push(FRANJA_DESTACADO);
-    lines.push("🎉 *¡TIENES PARTICIPACIÓN EN RULETA/BINGO!* 🎉");
-    if (numeroTiradas > 0) lines.push(`🎡 Ruleta: *${numeroTiradas} tirada${numeroTiradas === 1 ? "" : "s"}*`);
+    const bannerLineas = ["¡TIENES PARTICIPACIÓN!"];
+    if (numeroTiradas > 0) bannerLineas.push(`🎡 Ruleta: ${numeroTiradas} tirada${numeroTiradas === 1 ? "" : "s"}`);
     if (bingoConseguido) {
-      lines.push(
-        `🟠 Bingo: *${numeroBolasBingo} ${numeroBolasBingo === 1 ? "bola disponible" : "bolas disponibles"}*`
+      bannerLineas.push(
+        `🟠 Bingo: ${numeroBolasBingo} ${numeroBolasBingo === 1 ? "bola disponible" : "bolas disponibles"}`
       );
     } else if (bingoBloqueadoPorLimiteDiario) {
-      lines.push("🟠 Bingo: ya conseguido hoy con otro pedido, este no suma más.");
+      bannerLineas.push("🟠 Bingo ya conseguido hoy");
     }
+
+    lines.push(construirUrlBannerParticipacion(bannerLineas));
     lines.push("");
     lines.push("📷 *Muestra este QR en caja:*");
     lines.push(urlQr);
     lines.push(`Código manual (si falla el escáner): *${codigoJuegos}*`);
-    lines.push(FRANJA_DESTACADO);
     lines.push("");
     return lines;
   }
 
   if (bingoConseguido) {
-    lines.push(FRANJA_DESTACADO);
-    lines.push("🟠 *PARTICIPACIÓN DE BINGO CONSEGUIDA*");
+    lines.push(construirUrlBannerParticipacion(["BINGO CONSEGUIDO"]));
     lines.push("No se pudo generar el código. Contacta con Cash Lojo antes de presentar el pedido en caja.");
-    lines.push(FRANJA_DESTACADO);
     lines.push("");
     return lines;
   }
 
   if (premio) {
-    lines.push(FRANJA_DESTACADO);
-    lines.push("🎁 *PREMIO RULETA:*");
+    lines.push(construirUrlBannerParticipacion(["PREMIO RULETA"]));
     lines.push(`*${premio.nombre}*`);
     if (premio.codigo) {
       lines.push(`Código: ${premio.codigo}`);
     }
-    lines.push(FRANJA_DESTACADO);
     lines.push("");
     return lines;
   }
