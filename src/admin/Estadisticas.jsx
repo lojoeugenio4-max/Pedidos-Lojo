@@ -383,7 +383,7 @@ export default function Estadisticas() {
     const mapa = new Map();
 
     bingoDraws.forEach((draw) => {
-      const orderId = String(draw.order_id || "").trim();
+      const orderId = String(draw.order_id || "").trim().toLowerCase();
       if (!orderId) return;
 
       const actual = mapa.get(orderId) || [];
@@ -492,7 +492,7 @@ export default function Estadisticas() {
     const mapa = new Map();
 
     entitlements.forEach((fila) => {
-      const pedidoId = String(fila.order_id || "").trim();
+      const pedidoId = String(fila.order_id || "").trim().toLowerCase();
       if (!pedidoId) return;
       // Si un pedido llegara a tener más de un entitlement, nos quedamos
       // con el más reciente (la lista ya viene ordenada por created_at desc).
@@ -506,7 +506,7 @@ export default function Estadisticas() {
     const mapa = new Map();
 
     participacionesRuleta.forEach((participacion) => {
-      const pedidoId = String(participacion.order_id || participacion.pedido_id || "");
+      const pedidoId = String(participacion.order_id || participacion.pedido_id || "").trim().toLowerCase();
       if (!pedidoId) return;
 
       const actual = mapa.get(pedidoId) || [];
@@ -521,7 +521,7 @@ export default function Estadisticas() {
     const mapa = new Map();
 
     movimientos.forEach((fila) => {
-      const pedidoId = String(fila.pedido_id || fila.id || "");
+      const pedidoId = String(fila.pedido_id || fila.id || "").trim().toLowerCase();
       if (!pedidoId || mapa.has(pedidoId)) return;
 
       mapa.set(pedidoId, {
@@ -534,7 +534,7 @@ export default function Estadisticas() {
     });
 
     participacionesRuleta.forEach((participacion) => {
-      const pedidoId = String(participacion.order_id || participacion.pedido_id || "");
+      const pedidoId = String(participacion.order_id || participacion.pedido_id || "").trim().toLowerCase();
       if (!pedidoId || mapa.has(pedidoId)) return;
 
       mapa.set(pedidoId, {
