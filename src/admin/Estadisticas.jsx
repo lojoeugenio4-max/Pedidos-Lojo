@@ -178,6 +178,7 @@ export default function Estadisticas() {
   const [promocionesRuletaPorId, setPromocionesRuletaPorId] = useState(new Map());
   const [entitlements, setEntitlements] = useState([]);
   const [bingoDraws, setBingoDraws] = useState([]);
+  const [bingoDebug, setBingoDebug] = useState(null);
   const [desde, setDesde] = useState(hoyEstadistico);
   const [hasta, setHasta] = useState(hoyEstadistico);
   const [periodoActivo, setPeriodoActivo] = useState("hoy");
@@ -264,10 +265,23 @@ export default function Estadisticas() {
           if (drawsError) throw drawsError;
           setBingoDraws(drawsData || []);
         }
+
+        setBingoDebug({
+          inicio,
+          fin,
+          entitlementsCount: (entitlementsData || []).length,
+          error: "",
+        });
       } catch (entitlementsCatchError) {
         console.error("Error cargando datos de Bingo/clientes:", entitlementsCatchError);
         setEntitlements([]);
         setBingoDraws([]);
+        setBingoDebug({
+          inicio,
+          fin,
+          entitlementsCount: 0,
+          error: entitlementsCatchError?.message || String(entitlementsCatchError),
+        });
       }
 
       // El informe debe utilizar la promoción asociada a cada participación,
@@ -707,6 +721,12 @@ export default function Estadisticas() {
           <p style={subtitle}>
             Día estadístico real: de 14:30 a 14:30. Hoy es {formatearFecha(hoyEstadistico)}.
           </p>
+          {bingoDebug && (
+            <p style={{ ...subtitle, fontSize: "12px", color: "#9a3412", marginTop: "4px" }}>
+              🎱 Diagnóstico Bingo — rango consultado: {bingoDebug.inicio} → {bingoDebug.fin} · pedidos con juego cargados: {bingoDebug.entitlementsCount}
+              {bingoDebug.error ? ` · ERROR: ${bingoDebug.error}` : ""}
+            </p>
+          )}
         </div>
 
         <button type="button" onClick={() => cargarEstadisticas(desde, hasta, periodoActivo)} style={refreshButton}>
