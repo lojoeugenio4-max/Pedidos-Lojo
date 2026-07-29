@@ -379,21 +379,16 @@ export default function Estadisticas() {
     cargarEstadisticas(desde, hasta, "manual");
   }
 
-  // Declarado antes que "resumen" a propósito: resumen ya usa este mapa, y
-  // en JavaScript un const no se puede leer antes de la línea donde se
-  // declara (aunque esté más abajo en el mismo componente). Tenerlo después
-  // de resumen es justo lo que provocaba el "Cannot access before
-  // initialization" en la consola.
-  const bingoDrawsPorToken = useMemo(() => {
+  const bingoDrawsPorOrderId = useMemo(() => {
     const mapa = new Map();
 
     bingoDraws.forEach((draw) => {
-      const token = String(draw.customer_token || "").trim();
-      if (!token) return;
+      const orderId = String(draw.order_id || "").trim();
+      if (!orderId) return;
 
-      const actual = mapa.get(token) || [];
+      const actual = mapa.get(orderId) || [];
       actual.push(draw);
-      mapa.set(token, actual);
+      mapa.set(orderId, actual);
     });
 
     mapa.forEach((lista) => {
@@ -415,9 +410,7 @@ export default function Estadisticas() {
     ).size;
 
     const pedidosConBingo = entitlements.filter((fila) => {
-      const token = String(fila.customer_token || "").trim();
-      const bolasDesdeDraws = token ? (bingoDrawsPorToken.get(token) || []).length : 0;
-      const bolasCount = Math.max(bolasDesdeDraws, Number(fila.bingo_plays_used || 0));
+      const bolasCount = Number(fila.bingo_plays_used || 0);
       return Boolean(fila.bingo_eligible) || bolasCount > 0;
     }).length;
 
@@ -440,7 +433,7 @@ export default function Estadisticas() {
       bolasBingoCantadas: bingoDraws.length,
       pedidosConEnlacePersonal: pedidosConEnlacePersonalIds.size,
     };
-  }, [movimientos, participacionesRuleta, entitlements, bingoDraws, bingoDrawsPorToken]);
+  }, [movimientos, participacionesRuleta, entitlements, bingoDraws]);
 
   const pedidosPorDia = useMemo(() => {
     const mapa = new Map();
@@ -565,13 +558,14 @@ export default function Estadisticas() {
     return Array.from(mapa.values())
       .map((pedido) => {
         const entitlement = entitlementsPorPedido.get(pedido.pedido_id) || null;
-        const bolas = entitlement?.customer_token
-          ? bingoDrawsPorToken.get(String(entitlement.customer_token)) || []
-          : [];
-        // Respaldo: si por lo que sea no hay filas en bingo_draws pero el
-        // propio entitlement indica bolas usadas, se muestra ese número
-        // igualmente (aunque sin el detalle de qué números salieron).
-        const bolasCount = Math.max(bolas.length, Number(entitlement?.bingo_plays_used || 0));
+        const bolas = bingoDrawsPorOrderId.get(pedido.pedido_id) || [];
+        // El conteo se apoya en bingo_plays_used (siempre exacto por
+        // pedido, ya que game_entitlements se crea uno por pedido). La
+        // lista de números concretos (bolas) solo puede venir de
+        // bingo_draws con order_id — las bolas sacadas antes de guardar
+        // ese dato se seguirán contando bien, pero sin poder enseñar qué
+        // números fueron.
+        const bolasCount = Number(entitlement?.bingo_plays_used || 0);
         // El nombre y el token del enlace personal ahora se guardan en
         // TODOS los pedidos (estadisticas_movimientos), gane o no premio.
         // El de game_entitlements se deja como respaldo para pedidos
@@ -595,7 +589,7 @@ export default function Estadisticas() {
     codigosRuletaPorPedido,
     entitlements,
     entitlementsPorPedido,
-    bingoDrawsPorToken,
+    bingoDrawsPorOrderId,
   ]);
 
 
@@ -644,10 +638,10 @@ export default function Estadisticas() {
         );
       });
 
-    const bingoBolas = entitlement?.customer_token
-      ? bingoDrawsPorToken.get(String(entitlement.customer_token)) || []
+    const bingoBolas = pedidoSeleccionado?.pedido_id
+      ? bingoDrawsPorOrderId.get(String(pedidoSeleccionado.pedido_id)) || []
       : [];
-    const bingoBolasCount = Math.max(bingoBolas.length, Number(entitlement?.bingo_plays_used || 0));
+    const bingoBolasCount = Number(entitlement?.bingo_plays_used || 0);
 
     return {
       ...pedidoSeleccionado,
@@ -672,7 +666,7 @@ export default function Estadisticas() {
     movimientos,
     promocionesRuletaPorId,
     entitlementsPorPedido,
-    bingoDrawsPorToken,
+    bingoDrawsPorOrderId,
   ]);
 
 
