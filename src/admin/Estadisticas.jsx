@@ -410,7 +410,7 @@ export default function Estadisticas() {
     ).size;
 
     const pedidosConBingo = entitlements.filter((fila) => {
-      const bolasCount = Number(fila.bingo_plays_used || 0);
+      const bolasCount = Number(fila.bingo_plays_total || 0);
       return Boolean(fila.bingo_eligible) || bolasCount > 0;
     }).length;
 
@@ -559,13 +559,15 @@ export default function Estadisticas() {
       .map((pedido) => {
         const entitlement = entitlementsPorPedido.get(pedido.pedido_id) || null;
         const bolas = bingoDrawsPorOrderId.get(pedido.pedido_id) || [];
-        // El conteo se apoya en bingo_plays_used (siempre exacto por
-        // pedido, ya que game_entitlements se crea uno por pedido). La
-        // lista de números concretos (bolas) solo puede venir de
-        // bingo_draws con order_id — las bolas sacadas antes de guardar
-        // ese dato se seguirán contando bien, pero sin poder enseñar qué
-        // números fueron.
-        const bolasCount = Number(entitlement?.bingo_plays_used || 0);
+        // El conteo muestra bingo_plays_total: las bolas CONCEDIDAS a este
+        // pedido (desde el momento en que se validó), no las ya sacadas.
+        // Así un pedido sin escanear todavía muestra igualmente cuántas le
+        // tocan, en vez de "0" hasta que pase por caja. La lista de
+        // números concretos (bolas) solo puede venir de bingo_draws con
+        // order_id — las bolas sacadas antes de guardar ese dato se
+        // seguirán contando bien, pero sin poder enseñar qué números
+        // fueron.
+        const bolasCount = Number(entitlement?.bingo_plays_total || 0);
         // El nombre y el token del enlace personal ahora se guardan en
         // TODOS los pedidos (estadisticas_movimientos), gane o no premio.
         // El de game_entitlements se deja como respaldo para pedidos
@@ -641,7 +643,7 @@ export default function Estadisticas() {
     const bingoBolas = pedidoSeleccionado?.pedido_id
       ? bingoDrawsPorOrderId.get(String(pedidoSeleccionado.pedido_id)) || []
       : [];
-    const bingoBolasCount = Number(entitlement?.bingo_plays_used || 0);
+    const bingoBolasCount = Number(entitlement?.bingo_plays_total || 0);
 
     return {
       ...pedidoSeleccionado,
