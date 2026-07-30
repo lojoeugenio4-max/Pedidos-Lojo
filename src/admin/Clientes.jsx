@@ -8,7 +8,7 @@ import {
 
 const ACTIVO = "activo";
 const INACTIVO = "inactivo";
-const FORMULARIO_VACIO = { nombre: "", telefono: "", estado: ACTIVO };
+const FORMULARIO_VACIO = { nombre: "", telefono: "", estado: ACTIVO, mensaje_bingo_voz: "" };
 const PLANTILLA_WHATSAPP_KEY = "lojo_admin_plantilla_whatsapp_clientes";
 const PLANTILLA_WHATSAPP_ANTERIOR = `Hola 👋
 
@@ -175,6 +175,7 @@ export default function Clientes() {
       nombre: cliente.nombre || "",
       telefono: cliente.telefono || "",
       estado: cliente.estado === INACTIVO ? INACTIVO : ACTIVO,
+      mensaje_bingo_voz: cliente.mensaje_bingo_voz || "",
     });
     setErrores({});
     setModalAbierto(true);
@@ -213,6 +214,7 @@ export default function Clientes() {
         nombre: formulario.nombre.trim(),
         telefono: formulario.telefono.trim(),
         estado: formulario.estado,
+        mensaje_bingo_voz: formulario.mensaje_bingo_voz.trim() || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -573,6 +575,17 @@ export default function Clientes() {
                 <option value={ACTIVO}>Activo</option>
                 <option value={INACTIVO}>Inactivo</option>
               </select>
+            </Campo>
+            <Campo titulo="Mensaje de voz al jugar al Bingo (opcional)">
+              <input
+                style={styles.input}
+                value={formulario.mensaje_bingo_voz}
+                onChange={(e) => cambiarCampo("mensaje_bingo_voz", e.target.value)}
+                placeholder="Ej: Feliz cumpleaños, Eugenio"
+              />
+              <p style={styles.info}>
+                Se lee en voz alta justo después de cada número, solo cuando este cliente juega al Bingo en el bombo.
+              </p>
             </Campo>
             {!clienteEditando && <p style={styles.info}>El token y el enlace se generan automáticamente.</p>}
             <div style={styles.modalAcciones}>
