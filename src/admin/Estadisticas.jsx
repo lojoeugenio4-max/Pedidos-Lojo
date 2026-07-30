@@ -133,6 +133,67 @@ function construirTextoPedido(pedido) {
   ].filter((linea, indice, lista) => linea !== "" || lista[indice - 1] !== "").join("\n");
 }
 
+// Exportación a CSV de los pedidos del periodo. Un archivo con una fila por
+// línea de pedido (mismo detalle que "estadisticas_movimientos"): así se
+// puede abrir en Excel/Google Sheets y filtrar o sumar como se necesite.
+// Se usa ";" como separador porque es lo que Excel en español espera por
+// defecto (con "," se descuadran las columnas al llevar los números coma
+// decimal, p.ej. "1,5").
+function escaparCSV(valor) {
+  const texto = String(valor ?? "");
+  if (/[";\n]/.test(texto)) {
+    return `"${texto.replace(/"/g, '""')}"`;
+  }
+  return texto;
+}
+
+function descargarArchivo(nombreArchivo, contenido) {
+  // "\uFEFF" (BOM) al principio para que Excel detecte UTF-8 y no rompa
+  // las tildes/eñes al abrir el CSV directamente con doble clic.
+  const blob = new Blob(["\uFEFF" + contenido], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const enlace = document.createElement("a");
+  enlace.href = url;
+  enlace.download = nombreArchivo;
+  document.body.appendChild(enlace);
+  enlace.click();
+  document.body.removeChild(enlace);
+  URL.revokeObjectURL(url);
+}
+
+function exportarPedidosCSV(movimientos, desde, hasta) {
+  const cabecera = [
+    "Pedido",
+    "Fecha",
+    "Cliente",
+    "Departamento",
+    "Codigo articulo",
+    "Nombre articulo",
+    "Cajas",
+    "Unidades",
+  ];
+
+  const filas = movimientos
+    .slice()
+    .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+    .map((fila) => [
+      fila.pedido_id || fila.id || "",
+      fila.created_at ? new Date(fila.created_at).toLocaleString("es-ES") : "",
+      fila.customer_name || "",
+      fila.departamento || "",
+      fila.codigo_articulo || "",
+      fila.nombre_articulo || "",
+      formatearNumero(fila.cajas),
+      formatearNumero(fila.unidades),
+    ]);
+
+  const contenido = [cabecera, ...filas]
+    .map((fila) => fila.map(escaparCSV).join(";"))
+    .join("\r\n");
+
+  descargarArchivo(`pedidos_${desde}_a_${hasta}.csv`, contenido);
+}
+
 function escaparHtml(valor) {
   return String(valor ?? "")
     .replaceAll("&", "&amp;")
@@ -817,7 +878,21 @@ export default function Estadisticas() {
             <strong>Importante:</strong> desde ahora se cuentan pedidos reales usando pedido_id. Las estadísticas anteriores a este cambio pueden aparecer como líneas si no tenían pedido_id.
           </section>
 
-          <Panel title="Pedidos y juegos" subtitle="Cliente, Ruleta y Bingo de cada pedido del periodo — pulsa un pedido para ver el detalle completo">
+          <Panel
+            title="Pedidos y juegos"
+            subtitle="Cliente, Ruleta y Bingo de cada pedido del periodo — pulsa un pedido para ver el detalle completo"
+            actions={
+              <button
+                type="button"
+                style={exportCsvButton}
+                disabled={movimientos.length === 0}
+                onClick={() => exportarPedidosCSV(movimientos, desde, hasta)}
+                title="Descarga un CSV con una fila por artículo de cada pedido del periodo mostrado"
+              >
+                ⬇️ Exportar CSV
+              </button>
+            }
+          >
             <div style={tableWrap}>
               <table style={table}>
                 <thead>
@@ -1287,7 +1362,7 @@ function StatCard({ label, value, accent }) {
   );
 }
 
-function Panel({ title, subtitle, children }) {
+function Panel({ title, subtitle, children, actions }) {
   return (
     <section style={panel}>
       <div style={panelHeader}>
@@ -1295,6 +1370,7 @@ function Panel({ title, subtitle, children }) {
           <h2 style={panelTitle}>{title}</h2>
           {subtitle && <p style={panelSubtitle}>{subtitle}</p>}
         </div>
+        {actions && <div style={panelActions}>{actions}</div>}
       </div>
       {children}
     </section>
@@ -1412,6 +1488,8 @@ const gridTwo = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px" }
 const panel = { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "22px", padding: "16px", boxShadow: "0 14px 35px rgba(15,23,42,0.07)", marginBottom: "18px" };
 const panelHeader = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "14px", marginBottom: "14px" };
 const panelTitle = { margin: 0, color: "#111827", fontSize: "20px", fontWeight: "950" };
+const panelActions = { flexShrink: 0 };
+const exportCsvButton = { background: "#0ea5e9", color: "#fff", border: "none", borderRadius: "12px", padding: "10px 16px", fontSize: "14px", fontWeight: "800", cursor: "pointer", whiteSpace: "nowrap" };
 const panelSubtitle = { margin: "5px 0 0", color: "#64748b", fontSize: "13px" };
 const tableWrap = { overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: "18px", background: "#fff" };
 const table = { width: "100%", borderCollapse: "separate", borderSpacing: 0 };
