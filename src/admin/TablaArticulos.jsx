@@ -45,6 +45,7 @@ export default function TablaArticulos({
           <tr>
             <th style={{ ...th, width: "78px" }}>Foto</th>
             <th style={{ ...th, width: "80px" }}>Código</th>
+            <th style={{ ...th, width: "100px" }}>Cód. Lojo</th>
             <th style={th}>Artículo</th>
             <th style={{ ...th, width: "140px" }}>Departamento</th>
             <th style={{ ...th, minWidth: "260px" }}>Oferta</th>
@@ -74,6 +75,14 @@ export default function TablaArticulos({
 
                 <td style={td}>
                   <strong style={code}>{articulo.codigo}</strong>
+                </td>
+
+                <td style={td}>
+                  {articulo.codigo_lojo ? (
+                    <span style={code}>{articulo.codigo_lojo}</span>
+                  ) : (
+                    <span style={noPhoto}>—</span>
+                  )}
                 </td>
 
                 <td style={td}>
