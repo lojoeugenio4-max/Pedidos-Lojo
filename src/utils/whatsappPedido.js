@@ -42,47 +42,6 @@ function construirUrlQr(codigoParticipacion) {
   return `https://quickchart.io/qr?${params.toString()}`;
 }
 
-// El QR en sí se mantiene siempre en blanco y negro (mejor contraste posible
-// para los lectores de caja, ya ajustado con margin/ecLevel más arriba tras
-// problemas reales de escaneo). El aviso en rojo/amarillo se genera como una
-// imagen APARTE (vía QuickChart /chart, con fondo de canvas real y texto de
-// color real, no emojis) para no arriesgar la lectura del QR mezclando
-// colores dentro de la misma imagen.
-function construirUrlBannerParticipacion(lineas) {
-  if (!lineas || !lineas.length) return "";
-
-  const chartConfig = {
-    type: "bar",
-    data: { labels: [""], datasets: [{ data: [0] }] },
-    options: {
-      plugins: {
-        legend: { display: false },
-        title: {
-          display: true,
-          text: lineas,
-          color: "#fde047",
-          font: { size: 30, weight: "bold" },
-          padding: { top: 24, bottom: 24 },
-        },
-      },
-      scales: {
-        x: { display: false },
-        y: { display: false },
-      },
-    },
-  };
-
-  const params = new URLSearchParams({
-    backgroundColor: "#dc2626",
-    width: "640",
-    height: "220",
-    version: "4",
-    c: JSON.stringify(chartConfig),
-  });
-
-  return `https://quickchart.io/chart?${params.toString()}`;
-}
-
 function construirBloqueParticipacion({
   participacionRuleta,
   codigoParticipacion,
@@ -146,17 +105,18 @@ function construirBloqueParticipacion({
       )
     );
 
-    const bannerLineas = ["¡TIENES PARTICIPACIÓN!"];
-    if (numeroTiradas > 0) bannerLineas.push(`🎡 Ruleta: ${numeroTiradas} tirada${numeroTiradas === 1 ? "" : "s"}`);
+    const bannerLineas = [];
+    bannerLineas.push("🎉 *¡TIENES PARTICIPACIÓN EN RULETA/BINGO!* 🎉");
+    if (numeroTiradas > 0) bannerLineas.push(`🎡 Ruleta: *${numeroTiradas} tirada${numeroTiradas === 1 ? "" : "s"}*`);
     if (bingoConseguido) {
       bannerLineas.push(
-        `🟠 Bingo: ${numeroBolasBingo} ${numeroBolasBingo === 1 ? "bola disponible" : "bolas disponibles"}`
+        `🟠 Bingo: *${numeroBolasBingo} ${numeroBolasBingo === 1 ? "bola disponible" : "bolas disponibles"}*`
       );
     } else if (bingoBloqueadoPorLimiteDiario) {
-      bannerLineas.push("🟠 Bingo ya conseguido hoy");
+      bannerLineas.push("🟠 Bingo ya conseguido hoy con otro pedido.");
     }
 
-    lines.push(construirUrlBannerParticipacion(bannerLineas));
+    lines.push(...bannerLineas);
     lines.push("");
     lines.push("📷 *Muestra este QR en caja:*");
     lines.push(urlQr);
@@ -166,14 +126,14 @@ function construirBloqueParticipacion({
   }
 
   if (bingoConseguido) {
-    lines.push(construirUrlBannerParticipacion(["BINGO CONSEGUIDO"]));
+    lines.push("🟠 *PARTICIPACIÓN DE BINGO CONSEGUIDA*");
     lines.push("No se pudo generar el código. Contacta con Cash Lojo antes de presentar el pedido en caja.");
     lines.push("");
     return lines;
   }
 
   if (premio) {
-    lines.push(construirUrlBannerParticipacion(["PREMIO RULETA"]));
+    lines.push("🎁 *PREMIO RULETA:*");
     lines.push(`*${premio.nombre}*`);
     if (premio.codigo) {
       lines.push(`Código: ${premio.codigo}`);
