@@ -16,6 +16,7 @@ export default function Articulos() {
 
   const [form, setForm] = useState({
     codigo: "",
+    codigo_lojo: "",
     nombre: "",
     departamento_id: "",
     precio: "",
@@ -43,6 +44,7 @@ export default function Articulos() {
       .select(`
         id,
         codigo,
+        codigo_lojo,
         nombre,
         precio,
         activo,
@@ -121,6 +123,7 @@ export default function Articulos() {
 
     setForm({
       codigo: siguienteCodigo,
+      codigo_lojo: "",
       nombre: "",
       departamento_id: "",
       precio: "",
@@ -148,6 +151,7 @@ export default function Articulos() {
 
     setForm({
       codigo: String(articulo.codigo || ""),
+      codigo_lojo: articulo.codigo_lojo || "",
       nombre: articulo.nombre || "",
       departamento_id: String(articulo.departamento_id || ""),
       precio: articulo.precio ?? "",
@@ -222,8 +226,11 @@ export default function Articulos() {
 
       }
 
+      const codigoLojoLimpio = String(form.codigo_lojo || "").trim();
+
       const datosArticulo = {
         codigo: Number(codigoLimpio),
+        codigo_lojo: codigoLojoLimpio === "" ? null : codigoLojoLimpio,
         nombre: nombreLimpio,
         departamento_id: form.oculto ? null : Number(form.departamento_id),
         precio: form.precio === "" ? null : Number(form.precio),
