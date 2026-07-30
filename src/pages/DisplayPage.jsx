@@ -140,6 +140,7 @@ export default function DisplayPage() {
   const [bingoRemaining, setBingoRemaining] = useState(null);
   const [premiosBingoTV, setPremiosBingoTV] = useState([]);
   const [premioBingoGanado, setPremioBingoGanado] = useState(null);
+  const [mensajeVozFinal, setMensajeVozFinal] = useState(null);
 
   useEffect(() => {
     cargarPremios();
@@ -267,6 +268,7 @@ export default function DisplayPage() {
       setBingoTrigger(null);
       setBingoRemaining(null);
       setPremioBingoGanado(null);
+      setMensajeVozFinal(null);
       return;
     }
 
@@ -337,6 +339,10 @@ export default function DisplayPage() {
     if (event.type === "bingo-premio") {
       setPremioBingoGanado(payload.premio || null);
     }
+
+    if (event.type === "bingo-mensaje-voz") {
+      setMensajeVozFinal(payload.mensaje || null);
+    }
   }
 
   function escucharEventos() {
@@ -385,6 +391,7 @@ export default function DisplayPage() {
         customerName={entrada?.customer_name || ""}
         bolasRestantes={bingoRemaining}
         premioGanado={premioBingoGanado}
+        mensajeVozFinal={mensajeVozFinal}
       />
     );
   }
