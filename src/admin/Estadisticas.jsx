@@ -161,37 +161,189 @@ function descargarArchivo(nombreArchivo, contenido) {
   URL.revokeObjectURL(url);
 }
 
-function exportarPedidosCSV(movimientos, desde, hasta) {
-  const cabecera = [
-    "Pedido",
-    "Fecha",
-    "Cliente",
-    "Departamento",
-    "Codigo articulo",
-    "Nombre articulo",
-    "Cajas",
-    "Unidades",
-  ];
+const CABECERA_CSV_PEDIDO = [
+  "Pedido",
+  "Fecha",
+  "Cliente",
+  "Departamento",
+  "Codigo articulo",
+  "Nombre articulo",
+  "Cajas",
+  "Unidades",
+];
 
+function filaCSVDesdeMovimiento(fila) {
+  return [
+    fila.pedido_id || fila.id || "",
+    fila.created_at ? new Date(fila.created_at).toLocaleString("es-ES") : "",
+    fila.customer_name || "",
+    fila.departamento || "",
+    fila.codigo_articulo || "",
+    fila.nombre_articulo || "",
+    formatearNumero(fila.cajas),
+    formatearNumero(fila.unidades),
+  ];
+}
+
+function construirContenidoCSV(cabecera, filas) {
+  return [cabecera, ...filas].map((fila) => fila.map(escaparCSV).join(";")).join("\r\n");
+}
+
+function exportarPedidosCSV(movimientos, desde, hasta) {
   const filas = movimientos
     .slice()
     .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
-    .map((fila) => [
-      fila.pedido_id || fila.id || "",
-      fila.created_at ? new Date(fila.created_at).toLocaleString("es-ES") : "",
-      fila.customer_name || "",
-      fila.departamento || "",
-      fila.codigo_articulo || "",
-      fila.nombre_articulo || "",
-      formatearNumero(fila.cajas),
-      formatearNumero(fila.unidades),
-    ]);
+    .map(filaCSVDesdeMovimiento);
 
-  const contenido = [cabecera, ...filas]
-    .map((fila) => fila.map(escaparCSV).join(";"))
-    .join("\r\n");
+  descargarArchivo(`pedidos_${desde}_a_${hasta}.csv`, construirContenidoCSV(CABECERA_CSV_PEDIDO, filas));
+}
 
-  descargarArchivo(`pedidos_${desde}_a_${hasta}.csv`, contenido);
+// Un archivo comprimido (.zip) con un CSV independiente por cada pedido
+// (mismas columnas que el CSV conjunto, incluida "Codigo articulo"), para
+// quien necesite el detalle de cada pedido por separado en su propio
+// fichero. Se genera el ZIP a mano (sin compresión, formato STORE) para no
+// depender de ninguna librería externa que este proyecto no tiene instalada.
+function crc32(bytes) {
+  let crc = ~0;
+  for (let i = 0; i < bytes.length; i += 1) {
+    crc ^= bytes[i];
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+  }
+  return (~crc) >>> 0;
+}
+
+function fechaDOS(fecha) {
+  const dosTime =
+    ((fecha.getHours() & 0x1f) << 11) |
+    ((fecha.getMinutes() & 0x3f) << 5) |
+    (Math.floor(fecha.getSeconds() / 2) & 0x1f);
+  const dosDate =
+    (((fecha.getFullYear() - 1980) & 0x7f) << 9) |
+    (((fecha.getMonth() + 1) & 0x0f) << 5) |
+    (fecha.getDate() & 0x1f);
+  return { dosTime, dosDate };
+}
+
+function crearZip(archivos) {
+  const encoder = new TextEncoder();
+  const { dosTime, dosDate } = fechaDOS(new Date());
+  const partesLocales = [];
+  const partesCentral = [];
+  let offset = 0;
+
+  archivos.forEach(({ nombre, contenido }) => {
+    const nameBytes = encoder.encode(nombre);
+    const dataBytes = encoder.encode(contenido);
+    const crc = crc32(dataBytes);
+
+    const localHeader = new DataView(new ArrayBuffer(30));
+    localHeader.setUint32(0, 0x04034b50, true);
+    localHeader.setUint16(4, 20, true);
+    localHeader.setUint16(6, 0, true);
+    localHeader.setUint16(8, 0, true);
+    localHeader.setUint16(10, dosTime, true);
+    localHeader.setUint16(12, dosDate, true);
+    localHeader.setUint32(14, crc, true);
+    localHeader.setUint32(18, dataBytes.length, true);
+    localHeader.setUint32(22, dataBytes.length, true);
+    localHeader.setUint16(26, nameBytes.length, true);
+    localHeader.setUint16(28, 0, true);
+
+    partesLocales.push(new Uint8Array(localHeader.buffer), nameBytes, dataBytes);
+
+    const centralHeader = new DataView(new ArrayBuffer(46));
+    centralHeader.setUint32(0, 0x02014b50, true);
+    centralHeader.setUint16(4, 20, true);
+    centralHeader.setUint16(6, 20, true);
+    centralHeader.setUint16(8, 0, true);
+    centralHeader.setUint16(10, 0, true);
+    centralHeader.setUint16(12, dosTime, true);
+    centralHeader.setUint16(14, dosDate, true);
+    centralHeader.setUint32(16, crc, true);
+    centralHeader.setUint32(20, dataBytes.length, true);
+    centralHeader.setUint32(24, dataBytes.length, true);
+    centralHeader.setUint16(28, nameBytes.length, true);
+    centralHeader.setUint16(30, 0, true);
+    centralHeader.setUint16(32, 0, true);
+    centralHeader.setUint16(34, 0, true);
+    centralHeader.setUint16(36, 0, true);
+    centralHeader.setUint32(38, 0, true);
+    centralHeader.setUint32(42, offset, true);
+
+    partesCentral.push(new Uint8Array(centralHeader.buffer), nameBytes);
+
+    offset += 30 + nameBytes.length + dataBytes.length;
+  });
+
+  const tamanoCentral = partesCentral.reduce((total, parte) => total + parte.length, 0);
+  const offsetCentral = offset;
+
+  const finRegistro = new DataView(new ArrayBuffer(22));
+  finRegistro.setUint32(0, 0x06054b50, true);
+  finRegistro.setUint16(4, 0, true);
+  finRegistro.setUint16(6, 0, true);
+  finRegistro.setUint16(8, archivos.length, true);
+  finRegistro.setUint16(10, archivos.length, true);
+  finRegistro.setUint32(12, tamanoCentral, true);
+  finRegistro.setUint32(16, offsetCentral, true);
+  finRegistro.setUint16(20, 0, true);
+
+  const partes = [...partesLocales, ...partesCentral, new Uint8Array(finRegistro.buffer)];
+  const tamanoTotal = partes.reduce((total, parte) => total + parte.length, 0);
+  const zipBytes = new Uint8Array(tamanoTotal);
+  let cursor = 0;
+  partes.forEach((parte) => {
+    zipBytes.set(parte, cursor);
+    cursor += parte.length;
+  });
+
+  return zipBytes;
+}
+
+function descargarZip(nombreArchivo, archivos) {
+  const zipBytes = crearZip(archivos);
+  const blob = new Blob([zipBytes], { type: "application/zip" });
+  const url = URL.createObjectURL(blob);
+  const enlace = document.createElement("a");
+  enlace.href = url;
+  enlace.download = nombreArchivo;
+  document.body.appendChild(enlace);
+  enlace.click();
+  document.body.removeChild(enlace);
+  URL.revokeObjectURL(url);
+}
+
+function nombreArchivoSeguro(pedidoId) {
+  const texto = String(pedidoId || "sin_id").trim();
+  return texto.replace(/[^a-zA-Z0-9-_]+/g, "_") || "sin_id";
+}
+
+function exportarPedidosPorPedidoZIP(movimientos, desde, hasta) {
+  const porPedido = new Map();
+
+  movimientos.forEach((fila) => {
+    const pedidoId = String(fila.pedido_id || fila.id || "sin_id");
+    if (!porPedido.has(pedidoId)) porPedido.set(pedidoId, []);
+    porPedido.get(pedidoId).push(fila);
+  });
+
+  const archivos = Array.from(porPedido.entries()).map(([pedidoId, filas]) => {
+    const filasOrdenadas = filas
+      .slice()
+      .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+      .map(filaCSVDesdeMovimiento);
+
+    return {
+      nombre: `pedido_${nombreArchivoSeguro(pedidoId)}.csv`,
+      contenido: construirContenidoCSV(CABECERA_CSV_PEDIDO, filasOrdenadas),
+    };
+  });
+
+  if (archivos.length === 0) return;
+
+  descargarZip(`pedidos_por_pedido_${desde}_a_${hasta}.zip`, archivos);
 }
 
 function escaparHtml(valor) {
@@ -882,15 +1034,26 @@ export default function Estadisticas() {
             title="Pedidos y juegos"
             subtitle="Cliente, Ruleta y Bingo de cada pedido del periodo — pulsa un pedido para ver el detalle completo"
             actions={
-              <button
-                type="button"
-                style={exportCsvButton}
-                disabled={movimientos.length === 0}
-                onClick={() => exportarPedidosCSV(movimientos, desde, hasta)}
-                title="Descarga un CSV con una fila por artículo de cada pedido del periodo mostrado"
-              >
-                ⬇️ Exportar CSV
-              </button>
+              <div style={panelActionsGroup}>
+                <button
+                  type="button"
+                  style={exportCsvButton}
+                  disabled={movimientos.length === 0}
+                  onClick={() => exportarPedidosCSV(movimientos, desde, hasta)}
+                  title="Descarga un único CSV con una fila por artículo de cada pedido del periodo mostrado"
+                >
+                  ⬇️ Exportar CSV
+                </button>
+                <button
+                  type="button"
+                  style={exportZipButton}
+                  disabled={movimientos.length === 0}
+                  onClick={() => exportarPedidosPorPedidoZIP(movimientos, desde, hasta)}
+                  title="Descarga un .zip con un CSV independiente por cada pedido del periodo mostrado"
+                >
+                  ⬇️ Un CSV por pedido (.zip)
+                </button>
+              </div>
             }
           >
             <div style={tableWrap}>
@@ -1489,7 +1652,9 @@ const panel = { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius
 const panelHeader = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "14px", marginBottom: "14px" };
 const panelTitle = { margin: 0, color: "#111827", fontSize: "20px", fontWeight: "950" };
 const panelActions = { flexShrink: 0 };
+const panelActionsGroup = { display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "flex-end" };
 const exportCsvButton = { background: "#0ea5e9", color: "#fff", border: "none", borderRadius: "12px", padding: "10px 16px", fontSize: "14px", fontWeight: "800", cursor: "pointer", whiteSpace: "nowrap" };
+const exportZipButton = { background: "#6366f1", color: "#fff", border: "none", borderRadius: "12px", padding: "10px 16px", fontSize: "14px", fontWeight: "800", cursor: "pointer", whiteSpace: "nowrap" };
 const panelSubtitle = { margin: "5px 0 0", color: "#64748b", fontSize: "13px" };
 const tableWrap = { overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: "18px", background: "#fff" };
 const table = { width: "100%", borderCollapse: "separate", borderSpacing: 0 };
