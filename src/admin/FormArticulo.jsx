@@ -75,7 +75,7 @@ export default function FormArticulo({
           </div>
         </div>
 
-        <div style={gridTwo}>
+        <div style={gridThreeEqual}>
           <label style={field}>
             <span style={label}>Código</span>
             <input
@@ -92,6 +92,17 @@ export default function FormArticulo({
               type="text"
               value={form.nombre}
               onChange={(e) => onChange("nombre", e.target.value)}
+              style={input}
+            />
+          </label>
+
+          <label style={field}>
+            <span style={label}>Código Lojo</span>
+            <input
+              type="text"
+              value={form.codigo_lojo}
+              onChange={(e) => onChange("codigo_lojo", e.target.value)}
+              placeholder="Código del mayorista (opcional)"
               style={input}
             />
           </label>
@@ -404,6 +415,12 @@ const helpBox = {
 const gridTwo = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
+  gap: "18px",
+};
+
+const gridThreeEqual = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr 1fr",
   gap: "18px",
 };
 
