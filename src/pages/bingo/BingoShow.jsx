@@ -54,6 +54,8 @@ export default function BingoShow() {
   const [premiosTV, setPremiosTV] = useState([]);
   const [customerToken, setCustomerToken] = useState("");
   const [customerName, setCustomerName] = useState("");
+  const [mensajeVoz, setMensajeVoz] = useState("");
+  const [mensajeVozFinal, setMensajeVozFinal] = useState(null);
   const [esPruebas, setEsPruebas] = useState(false);
   const [bolasRestantes, setBolasRestantes] = useState(0);
   const [premioGanado, setPremioGanado] = useState(null);
@@ -98,6 +100,7 @@ export default function BingoShow() {
       setEsPruebas(Boolean(validated?.es_pruebas));
       setBolasRestantes(Number(validated?.bingo_remaining || 0));
       setCustomerName(String(validated?.customer_name || "").trim());
+      setMensajeVoz(String(validated?.mensaje_bingo_voz || "").trim());
     }
     setCustomerToken(token);
     if (!token) {
@@ -288,6 +291,10 @@ export default function BingoShow() {
       setDrawFinished(!esPruebas && restantes <= 0);
       comprobarPremiosBingo();
 
+      if (restantes <= 0 && mensajeVoz) {
+        setMensajeVozFinal({ texto: mensajeVoz, key: `${ballNumber}-${Date.now()}` });
+      }
+
       sendBingoControlEvent({
         type: "bingo-complete",
         code: qrCode,
@@ -359,6 +366,7 @@ export default function BingoShow() {
       error={error}
       premios={premiosTV}
       customerName={customerName}
+      mensajeVozFinal={mensajeVozFinal}
       bolasRestantes={bolasRestantes}
       premioGanado={premioGanado}
       drawFinished={drawFinished}
