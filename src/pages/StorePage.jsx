@@ -308,6 +308,7 @@ export default function StorePage() {
   const [bingoNumbers, setBingoNumbers] = useState([]);
   const [bingoTrigger, setBingoTrigger] = useState(null);
   const [premioBingoGanado, setPremioBingoGanado] = useState(null);
+  const [mensajeVozFinal, setMensajeVozFinal] = useState(null);
   const premiosYaCelebradosRef = useRef(new Set());
 
   useEffect(() => {
@@ -757,6 +758,15 @@ export default function StorePage() {
         comprobarPremiosBingo(entitlement.customer_token);
       }
 
+      if (restantes <= 0 && entitlement?.mensaje_bingo_voz) {
+        // Solo se dice en la última bola del pedido (cuando ya no quedan
+        // más), nunca en las intermedias.
+        const texto = entitlement.mensaje_bingo_voz;
+        const mensaje = { texto, key: `${ballNumber}-${Date.now()}` };
+        setMensajeVozFinal(mensaje);
+        enviarEventoDisplay("bingo-mensaje-voz", { mensaje });
+      }
+
       if (restantes > 0) {
         // Al cliente le quedan más bolas de este mismo pedido: nos
         // quedamos en la pantalla del bombo (no se pide el QR otra vez)
@@ -1118,6 +1128,7 @@ export default function StorePage() {
             error={estado === "error" ? mensaje : ""}
             customerName={entitlement?.customer_name || ""}
             bolasRestantes={Number.isFinite(Number(entitlement?.bingo_remaining)) ? Number(entitlement.bingo_remaining) : null}
+            mensajeVozFinal={mensajeVozFinal}
             premioGanado={premioBingoGanado}
           />
         </section>
