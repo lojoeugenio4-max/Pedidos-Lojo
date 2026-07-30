@@ -159,7 +159,7 @@ function audioCue(kind) {
   }
 }
 
-function decirEnVoz(texto, { rate = 0.95, pitch = 1 } = {}) {
+function decirEnVoz(texto, { rate = 0.95, pitch = 1, onEnd } = {}) {
   try {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
@@ -167,6 +167,7 @@ function decirEnVoz(texto, { rate = 0.95, pitch = 1 } = {}) {
     utter.lang = "es-ES";
     utter.rate = rate;
     utter.pitch = pitch;
+    if (onEnd) utter.onend = onEnd;
     window.speechSynthesis.speak(utter);
   } catch (error) {
     console.warn("Voz no disponible", error);
@@ -176,6 +177,25 @@ function decirEnVoz(texto, { rate = 0.95, pitch = 1 } = {}) {
 function cantarNumero(numero) {
   if (!Number.isFinite(numero)) return;
   decirEnVoz(`Número ${numero}`);
+}
+
+function encolarMensajeVoz(texto) {
+  // A diferencia de decirEnVoz, esta NO cancela lo que se esté diciendo:
+  // se añade a la cola del propio navegador, así que si el número todavía
+  // se está leyendo, este mensaje espera su turno y suena justo después,
+  // sin cortarlo. Se usa para el mensaje personalizado de la última bola,
+  // que se decide un instante después de cantar el número (cuando el
+  // servidor confirma que ya no quedan más bolas).
+  try {
+    const textoLimpio = String(texto || "").trim();
+    if (!textoLimpio || typeof window === "undefined" || !window.speechSynthesis) return;
+    const utter = new SpeechSynthesisUtterance(textoLimpio);
+    utter.lang = "es-ES";
+    utter.rate = 0.95;
+    window.speechSynthesis.speak(utter);
+  } catch (error) {
+    console.warn("Voz no disponible", error);
+  }
 }
 
 function celebrarPremio(nombrePremio) {
@@ -566,6 +586,7 @@ export default function BingoDrumStage({
   exitLabel = "SALIR",
   subtitle = "LOJO PRESENTA",
   onToggleFullscreen,
+  mensajeVozFinal = null,
 }) {
   const [phase, setPhase] = useState("idle");
   const [pendingNumber, setPendingNumber] = useState(null);
@@ -622,6 +643,15 @@ export default function BingoDrumStage({
     const oculto = window.setTimeout(() => setPremioVisible(null), 6000);
     return () => window.clearTimeout(oculto);
   }, [premioGanado]);
+
+  const ultimoMensajeVozRef = useRef(null);
+  useEffect(() => {
+    if (!mensajeVozFinal?.texto) return;
+    const clave = mensajeVozFinal.key || mensajeVozFinal.texto;
+    if (ultimoMensajeVozRef.current === clave) return;
+    ultimoMensajeVozRef.current = clave;
+    encolarMensajeVoz(mensajeVozFinal.texto);
+  }, [mensajeVozFinal]);
 
   useEffect(() => () => timers.current.forEach(window.clearTimeout), []);
 
