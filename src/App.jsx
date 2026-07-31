@@ -464,6 +464,7 @@ export default function App() {
   const cajasInputRefs = useRef({});
   const departmentDropdownRef = useRef(null);
   const stickyCardRef = useRef(null);
+  const searchInputRef = useRef(null);
 
   const [savedOrder] = useState(() => readSavedOrder());
 
@@ -3238,6 +3239,7 @@ export default function App() {
             <div style={styles.searchInputWrap}>
               <Search size={16} color="#64748b" />
               <input
+                ref={searchInputRef}
                 type="text"
                 value={searchInput}
                 onChange={(event) => {
@@ -3702,7 +3704,12 @@ export default function App() {
 
       <button
         type="button"
-        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        onClick={() => {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          setSearchInput("");
+          setSearch("");
+          searchInputRef.current?.focus();
+        }}
         style={styles.scrollTopButton}
         aria-label="Volver al inicio"
         title="Volver al inicio"
