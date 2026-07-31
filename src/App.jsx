@@ -3353,6 +3353,7 @@ export default function App() {
       <main
         style={{
           ...styles.catalog,
+          ...styles.catalogMinScrollRoom,
           ...(selectedDepartment !== "TODOS" && !search.trim()
             ? styles.catalogSingleDepartment
             : {}),
@@ -4486,6 +4487,15 @@ const styles = {
     // No añadimos espacio artificial ni recolocamos el catálogo.
     // La posición permanece exactamente donde la dejó el cliente.
     paddingTop: "6px",
+  },
+
+  // Garantiza recorrido vertical aunque la lista visible sea muy corta
+  // (pocos resultados de búsqueda, un departamento con pocos artículos,
+  // etc.). Sin espacio suficiente, el navegador bloquea el gesto de
+  // scroll y la pantalla se queda "atascada". Misma solución que ya se
+  // aplicaba solo en Mis favoritos, ahora también en el resto de casos.
+  catalogMinScrollRoom: {
+    minHeight: "calc(100dvh + 180px)",
   },
 
   catalogFavoritesMode: {
