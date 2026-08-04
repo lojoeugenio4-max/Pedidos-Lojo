@@ -80,21 +80,32 @@ function construirBloqueParticipacion({
   const bingoConseguido = cumpleVariedadBingo && bingoConcedido;
   const bingoBloqueadoPorLimiteDiario = cumpleVariedadBingo && !bingoConcedido;
 
-  if (codigoJuegos) {
-    const urlQr = construirUrlQr(codigoJuegos);
-
-    const numeroTiradas = participacionRuleta
-      ? Math.max(
-          1,
-          Number(
-            tiradasRuleta ||
-              participacionRuleta?.tiradas_ruleta ||
-              participacionRuleta?.tiradas_totales ||
-              participacionRuleta?.spins_total ||
-              1
-          )
+  const numeroTiradas = participacionRuleta
+    ? Math.max(
+        1,
+        Number(
+          tiradasRuleta ||
+            participacionRuleta?.tiradas_ruleta ||
+            participacionRuleta?.tiradas_totales ||
+            participacionRuleta?.spins_total ||
+            1
         )
-      : Math.max(0, Number(tiradasRuleta || 0));
+      )
+    : Math.max(0, Number(tiradasRuleta || 0));
+
+  // El QR se crea siempre que el pedido consiga Ruleta o Bingo (para que el
+  // lector de caja funcione), pero "conseguir Bingo" a nivel de FRONTEND solo
+  // mira la variedad de artículos, sin saber todavía si el servidor lo va a
+  // bloquear por la regla de "1 pedido de Bingo al día". Si ese bloqueo
+  // ocurre y el pedido tampoco tiene Ruleta, el código queda con 0 tiradas
+  // jugables en ambos juegos: mostrar igualmente el bloque "Muestra este QR
+  // en caja" es lo que llevaba a escanear por error un QR sin nada
+  // disponible y ver "ya lo ha jugado". Por eso el bloque con QR solo se
+  // pinta si de verdad hay algo que jugar.
+  const hayAlgoJugable = numeroTiradas > 0 || bingoConseguido;
+
+  if (codigoJuegos && hayAlgoJugable) {
+    const urlQr = construirUrlQr(codigoJuegos);
 
     const numeroBolasBingo = Math.max(
       1,
@@ -128,6 +139,16 @@ function construirBloqueParticipacion({
   if (bingoConseguido) {
     lines.push("🟠 *PARTICIPACIÓN DE BINGO CONSEGUIDA*");
     lines.push("No se pudo generar el código. Contacta con Cash Lojo antes de presentar el pedido en caja.");
+    lines.push("");
+    return lines;
+  }
+
+  // Bingo bloqueado por el límite de "1 pedido al día" y sin Ruleta: no hay
+  // nada jugable en este pedido, así que solo se informa por texto, sin QR
+  // (aunque exista un código creado en el servidor, no se enseña para que
+  // no se confunda con el QR del otro pedido que sí tiene bolas).
+  if (bingoBloqueadoPorLimiteDiario) {
+    lines.push("🟠 Bingo ya conseguido hoy con otro pedido: este pedido no suma bolas nuevas.");
     lines.push("");
     return lines;
   }
