@@ -138,6 +138,7 @@ export default function DisplayPage() {
   const [bingoNumbers, setBingoNumbers] = useState([]);
   const [bingoTrigger, setBingoTrigger] = useState(null);
   const [bingoRemaining, setBingoRemaining] = useState(null);
+  const [bingoModoRapido, setBingoModoRapido] = useState(false);
   const [premiosBingoTV, setPremiosBingoTV] = useState([]);
   const [premioBingoGanado, setPremioBingoGanado] = useState(null);
   const [mensajeVozFinal, setMensajeVozFinal] = useState(null);
@@ -267,6 +268,7 @@ export default function DisplayPage() {
       setBingoNumbers([]);
       setBingoTrigger(null);
       setBingoRemaining(null);
+      setBingoModoRapido(false);
       setPremioBingoGanado(null);
       setMensajeVozFinal(null);
       return;
@@ -314,6 +316,7 @@ export default function DisplayPage() {
       if (Number.isFinite(Number(payload.bingoRemaining))) {
         setBingoRemaining(Number(payload.bingoRemaining));
       }
+      setBingoModoRapido(Boolean(payload.modoRapido));
       return;
     }
 
@@ -321,6 +324,9 @@ export default function DisplayPage() {
       setEstado("bingo-spin");
       if (payload.numero && payload.token) {
         setBingoTrigger({ number: Number(payload.numero), token: payload.token });
+      }
+      if (typeof payload.modoRapido === "boolean") {
+        setBingoModoRapido(payload.modoRapido);
       }
       return;
     }
@@ -392,6 +398,7 @@ export default function DisplayPage() {
         bolasRestantes={bingoRemaining}
         premioGanado={premioBingoGanado}
         mensajeVozFinal={mensajeVozFinal}
+        fastMode={bingoModoRapido}
       />
     );
   }
