@@ -7,6 +7,9 @@ import { calcularPremiosConseguidos } from "../utils/bingoWinLogic";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
 const BINGO_CONTROL_CHANNEL = "lojo-bingo-control";
+// Con más de esta cantidad de bolas pendientes se activa el modo rápido
+// (sin clics, sin giro largo del bombo).
+const BINGO_MODO_RAPIDO_MIN_BOLAS = 3;
 const SPIN_DURATION_MS = 9200;
 
 const PRODUCTOS_PUBLIC_URL =
@@ -308,6 +311,11 @@ export default function StorePage() {
   const [bingoNumbers, setBingoNumbers] = useState([]);
   const [bingoTrigger, setBingoTrigger] = useState(null);
   const [premioBingoGanado, setPremioBingoGanado] = useState(null);
+  // Modo rápido: si el pedido tiene más de BINGO_MODO_RAPIDO_MIN_BOLAS
+  // bolas de Bingo, esperar a que el cajero pulse "GIRAR BOMBO" una por
+  // una es demasiado lento. En ese caso las bolas se disparan solas, sin
+  // ratón ni animación larga de giro.
+  const [modoRapidoBingo, setModoRapidoBingo] = useState(false);
   const [mensajeVozFinal, setMensajeVozFinal] = useState(null);
   const premiosYaCelebradosRef = useRef(new Set());
 
@@ -662,6 +670,10 @@ export default function StorePage() {
       comprobarPremiosBingo(entitlement.customer_token, { celebrar: false });
     }
 
+    const restantesIniciales = Number(entitlement?.bingo_remaining || 0);
+    const rapido = restantesIniciales > BINGO_MODO_RAPIDO_MIN_BOLAS;
+    setModoRapidoBingo(rapido);
+
     // Igual que la Ruleta: no se abre ninguna ventana nueva. La pantalla del
     // Televisor ya está abierta de forma permanente (lojo-ruleta-display) y
     // reacciona sola a este aviso, igual que ya hace con la ruleta. Se le
@@ -669,8 +681,15 @@ export default function StorePage() {
     enviarEventoDisplay("bingo-waiting", {
       entrada: entitlement,
       numeros,
-      bingoRemaining: Number(entitlement?.bingo_remaining || 0),
+      bingoRemaining: restantesIniciales,
+      modoRapido: rapido,
     });
+
+    if (rapido) {
+      // Modo rápido: se dispara sola la primera bola, sin esperar a que
+      // el cajero pulse GIRAR BOMBO.
+      window.setTimeout(() => { girarBombo(); }, 200);
+    }
   }
 
   async function girarBombo() {
@@ -711,7 +730,7 @@ export default function StorePage() {
       // pantallas.
       const token = Date.now();
       setBingoTrigger({ number: ballNumber, token });
-      enviarEventoDisplay("bingo-spin", { entrada: entitlement, numero: ballNumber, token });
+      enviarEventoDisplay("bingo-spin", { entrada: entitlement, numero: ballNumber, token, modoRapido: modoRapidoBingo });
     } catch (drawFailure) {
       setBomboGirando(false);
       setMensaje(drawFailure?.message || "No se pudo iniciar la extracción.");
@@ -778,7 +797,13 @@ export default function StorePage() {
           entrada: entitlement,
           numeros,
           bingoRemaining: restantes,
+          modoRapido: modoRapidoBingo,
         });
+        if (modoRapidoBingo) {
+          // Modo rápido: se encadena sola la siguiente bola, sin esperar
+          // a que el cajero pulse GIRAR BOMBO otra vez.
+          window.setTimeout(() => { girarBombo(); }, 250);
+        }
         return;
       }
 
@@ -933,6 +958,7 @@ export default function StorePage() {
     setBomboGirando(false);
     setBingoTrigger(null);
     setBingoNumbers([]);
+    setModoRapidoBingo(false);
     pendingBingoReservaRef.current = null;
     // Al volver a estar listos para el siguiente cliente (cursor de nuevo
     // en el campo de escaneo), la pantalla grande pasa a mostrar el Bingo
@@ -1119,10 +1145,13 @@ export default function StorePage() {
             onRevealComplete={onBingoRevealComplete}
             mostrarControles
             drawing={bomboGirando}
+            fastMode={modoRapidoBingo}
             drawMessage={
-              bomboGirando
-                ? "Extrayendo la bola…"
-                : "Pulsa GIRAR BOMBO para extraer la bola. Se verá a la vez en la pantalla grande."
+              modoRapidoBingo
+                ? "Modo rápido: muchas tiradas, salen solas."
+                : bomboGirando
+                  ? "Extrayendo la bola…"
+                  : "Pulsa GIRAR BOMBO para extraer la bola. Se verá a la vez en la pantalla grande."
             }
             onGirar={girarBombo}
             error={estado === "error" ? mensaje : ""}
