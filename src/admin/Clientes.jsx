@@ -8,7 +8,7 @@ import {
 
 const ACTIVO = "activo";
 const INACTIVO = "inactivo";
-const FORMULARIO_VACIO = { nombre: "", telefono: "", estado: ACTIVO, mensaje_bingo_voz: "" };
+const FORMULARIO_VACIO = { nombre: "", telefono: "", estado: ACTIVO, mensaje_bingo_voz: "", codigo_lojo: "" };
 const PLANTILLA_WHATSAPP_KEY = "lojo_admin_plantilla_whatsapp_clientes";
 const PLANTILLA_WHATSAPP_ANTERIOR = `Hola 👋
 
@@ -76,6 +76,16 @@ function crearEnlace(token) {
 
 function mensajeError(error, fallback) {
   return error?.message || error?.details || fallback;
+}
+
+function escaparHtml(valor) {
+  return String(valor ?? "").replace(/[&<>"']/g, (caracter) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[caracter]));
 }
 
 export default function Clientes() {
@@ -154,7 +164,7 @@ export default function Clientes() {
     if (!texto) return clientes;
 
     return clientes.filter((cliente) =>
-      `${cliente.nombre || ""} ${cliente.telefono || ""}`
+      `${cliente.nombre || ""} ${cliente.telefono || ""} ${cliente.codigo_lojo || ""}`
         .toLowerCase()
         .includes(texto)
     );
@@ -176,6 +186,7 @@ export default function Clientes() {
       telefono: cliente.telefono || "",
       estado: cliente.estado === INACTIVO ? INACTIVO : ACTIVO,
       mensaje_bingo_voz: cliente.mensaje_bingo_voz || "",
+      codigo_lojo: cliente.codigo_lojo || "",
     });
     setErrores({});
     setModalAbierto(true);
@@ -215,6 +226,7 @@ export default function Clientes() {
         telefono: formulario.telefono.trim(),
         estado: formulario.estado,
         mensaje_bingo_voz: formulario.mensaje_bingo_voz.trim() || null,
+        codigo_lojo: formulario.codigo_lojo.trim() || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -376,6 +388,39 @@ export default function Clientes() {
     setColaWhatsApp(null);
   }
 
+  function imprimirListado() {
+    const ventana = window.open("", "_blank", "width=900,height=720");
+    if (!ventana) {
+      mostrarAviso("error", "El navegador ha bloqueado la ventana de impresión.");
+      return;
+    }
+
+    const filas = clientesFiltrados
+      .map(
+        (cliente) => `
+      <tr>
+        <td>${escaparHtml(cliente.nombre)}</td>
+        <td>${escaparHtml(cliente.codigo_lojo || "—")}</td>
+        <td>${escaparHtml(cliente.telefono || "—")}</td>
+        <td>${cliente.estado === ACTIVO ? "Activo" : "Inactivo"}</td>
+      </tr>`
+      )
+      .join("");
+
+    ventana.document.write(`<!doctype html>
+      <html lang="es"><head><meta charset="utf-8"><title>Listado de clientes</title>
+      <style>
+        body{font-family:Arial,sans-serif;color:#111827;margin:32px} h1{font-size:22px;margin:0 0 8px} p{margin:4px 0 18px;color:#475569}
+        table{width:100%;border-collapse:collapse} th,td{border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:13px} th{background:#f3f4f6}
+        @media print{body{margin:12mm}}
+      </style></head><body>
+      <h1>Listado de clientes</h1>
+      <p>${escaparHtml(new Date().toLocaleString("es-ES"))} — ${clientesFiltrados.length} cliente(s)</p>
+      <table><thead><tr><th>Nombre</th><th>Código Lojo</th><th>Teléfono</th><th>Estado</th></tr></thead><tbody>${filas}</tbody></table>
+      <script>window.addEventListener('load',()=>{window.print();});<\/script></body></html>`);
+    ventana.document.close();
+  }
+
   async function eliminarCliente() {
     if (!clienteAEliminar) return;
 
@@ -430,6 +475,9 @@ export default function Clientes() {
         />
         <button type="button" style={styles.botonSecundario} onClick={cargarClientes}>
           Actualizar
+        </button>
+        <button type="button" style={styles.botonSecundario} onClick={imprimirListado}>
+          🖨️ Imprimir listado
         </button>
         <button
           type="button"
@@ -493,6 +541,7 @@ export default function Clientes() {
                     />
                   </th>
                   <th style={styles.th}>Nombre</th>
+                  <th style={styles.th}>Código Lojo</th>
                   <th style={styles.th}>Teléfono</th>
                   <th style={styles.th}>Copiar enlace</th>
                   <th style={styles.th}>Estado</th>
@@ -518,6 +567,7 @@ export default function Clientes() {
                         />
                       </td>
                       <td style={styles.td}><strong>{cliente.nombre}</strong></td>
+                      <td style={styles.td}>{cliente.codigo_lojo || "—"}</td>
                       <td style={styles.td}>{cliente.telefono || "—"}</td>
                       <td style={styles.td}>
                         <button type="button" style={styles.botonLink} onClick={() => copiarEnlace(cliente)}>
@@ -569,6 +619,9 @@ export default function Clientes() {
             </Campo>
             <Campo titulo="Teléfono" error={errores.telefono}>
               <input style={styles.input} type="tel" value={formulario.telefono} onChange={(e) => cambiarCampo("telefono", e.target.value)} />
+            </Campo>
+            <Campo titulo="Código Lojo (opcional)">
+              <input style={styles.input} value={formulario.codigo_lojo} onChange={(e) => cambiarCampo("codigo_lojo", e.target.value)} />
             </Campo>
             <Campo titulo="Estado">
               <select style={styles.input} value={formulario.estado} onChange={(e) => cambiarCampo("estado", e.target.value)}>
