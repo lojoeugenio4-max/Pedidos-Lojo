@@ -308,6 +308,22 @@ export default function StorePage() {
   const [bolaBingo, setBolaBingo] = useState(null);
   const [procesandoBingo, setProcesandoBingo] = useState(false);
   const [bomboGirando, setBomboGirando] = useState(false);
+  // Además del estado (que solo sirve para pintar la UI), guardamos el
+  // mismo valor en una ref. El estado, al leerse dentro de una función
+  // declarada en un render concreto, puede quedar "congelado" con el
+  // valor que tenía en ESE render aunque acabemos de llamar a
+  // setBomboGirando(...) unas líneas antes (los cambios de estado no se
+  // reflejan en la variable ya capturada por el cierre hasta el
+  // siguiente render). Eso es justo lo que rompía el modo rápido: el
+  // encadenado automático de la siguiente bola llamaba a girarBombo(),
+  // que comprobaba un "bomboGirando" todavía en true por ese motivo, y
+  // se salía sin hacer nada — el proceso se quedaba parado tras la
+  // primera bola. La ref, al ser mutable, siempre tiene el valor real.
+  const bomboGirandoRef = useRef(false);
+  function actualizarBomboGirando(valor) {
+    bomboGirandoRef.current = valor;
+    setBomboGirando(valor);
+  }
   const [bingoNumbers, setBingoNumbers] = useState([]);
   const [bingoTrigger, setBingoTrigger] = useState(null);
   const [premioBingoGanado, setPremioBingoGanado] = useState(null);
@@ -316,6 +332,11 @@ export default function StorePage() {
   // una es demasiado lento. En ese caso las bolas se disparan solas, sin
   // ratón ni animación larga de giro.
   const [modoRapidoBingo, setModoRapidoBingo] = useState(false);
+  const modoRapidoBingoRef = useRef(false);
+  function actualizarModoRapidoBingo(valor) {
+    modoRapidoBingoRef.current = valor;
+    setModoRapidoBingo(valor);
+  }
   const [mensajeVozFinal, setMensajeVozFinal] = useState(null);
   const premiosYaCelebradosRef = useRef(new Set());
 
@@ -647,7 +668,7 @@ export default function StorePage() {
 
     setBolaBingo(null);
     setMensaje("");
-    setBomboGirando(false);
+    actualizarBomboGirando(false);
     // Muy importante: si no se limpia aquí, al volver a montar el bombo
     // para el siguiente cliente, este seguía teniendo guardado el
     // disparador (bingoTrigger) de la jugada anterior y lo confundía con
@@ -672,7 +693,7 @@ export default function StorePage() {
 
     const restantesIniciales = Number(entitlement?.bingo_remaining || 0);
     const rapido = restantesIniciales > BINGO_MODO_RAPIDO_MIN_BOLAS;
-    setModoRapidoBingo(rapido);
+    actualizarModoRapidoBingo(rapido);
 
     // Igual que la Ruleta: no se abre ninguna ventana nueva. La pantalla del
     // Televisor ya está abierta de forma permanente (lojo-ruleta-display) y
@@ -693,12 +714,12 @@ export default function StorePage() {
   }
 
   async function girarBombo() {
-    if (!entitlement?.id || bomboGirando) return;
+    if (!entitlement?.id || bomboGirandoRef.current) return;
 
     const qrCode = normalizarCodigo(entitlement.code || codigo);
 
     setMensaje("");
-    setBomboGirando(true);
+    actualizarBomboGirando(true);
 
     try {
       const { data: raw, error: reserveError } = await supabase.rpc(
@@ -730,9 +751,9 @@ export default function StorePage() {
       // pantallas.
       const token = Date.now();
       setBingoTrigger({ number: ballNumber, token });
-      enviarEventoDisplay("bingo-spin", { entrada: entitlement, numero: ballNumber, token, modoRapido: modoRapidoBingo });
+      enviarEventoDisplay("bingo-spin", { entrada: entitlement, numero: ballNumber, token, modoRapido: modoRapidoBingoRef.current });
     } catch (drawFailure) {
-      setBomboGirando(false);
+      actualizarBomboGirando(false);
       setMensaje(drawFailure?.message || "No se pudo iniciar la extracción.");
       setEstado("error");
       enviarEventoDisplay("waiting");
@@ -761,7 +782,7 @@ export default function StorePage() {
 
       const restantes = Number(result.bingo_remaining || 0);
 
-      setBomboGirando(false);
+      actualizarBomboGirando(false);
       setBolaBingo(ballNumber);
       setEntitlement((current) =>
         current
@@ -797,9 +818,9 @@ export default function StorePage() {
           entrada: entitlement,
           numeros,
           bingoRemaining: restantes,
-          modoRapido: modoRapidoBingo,
+          modoRapido: modoRapidoBingoRef.current,
         });
-        if (modoRapidoBingo) {
+        if (modoRapidoBingoRef.current) {
           // Modo rápido: se encadena sola la siguiente bola, sin esperar
           // a que el cajero pulse GIRAR BOMBO otra vez.
           window.setTimeout(() => { girarBombo(); }, 250);
@@ -815,7 +836,7 @@ export default function StorePage() {
         bingoRemaining: restantes,
       });
     } catch (finalizeFailure) {
-      setBomboGirando(false);
+      actualizarBomboGirando(false);
       setMensaje(finalizeFailure?.message || "No se pudo publicar la bola.");
       setEstado("error");
       enviarEventoDisplay("waiting");
@@ -955,10 +976,10 @@ export default function StorePage() {
     setGirando(false);
     setPremioFinal(null);
     setPremioObjetivo(null);
-    setBomboGirando(false);
+    actualizarBomboGirando(false);
     setBingoTrigger(null);
     setBingoNumbers([]);
-    setModoRapidoBingo(false);
+    actualizarModoRapidoBingo(false);
     pendingBingoReservaRef.current = null;
     // Al volver a estar listos para el siguiente cliente (cursor de nuevo
     // en el campo de escaneo), la pantalla grande pasa a mostrar el Bingo
