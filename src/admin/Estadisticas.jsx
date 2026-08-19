@@ -165,6 +165,7 @@ const CABECERA_CSV_PEDIDO = [
   "Pedido",
   "Fecha",
   "Cliente",
+  "Codigo Lojo",
   "Departamento",
   "Codigo articulo",
   "Nombre articulo",
@@ -172,11 +173,12 @@ const CABECERA_CSV_PEDIDO = [
   "Unidades",
 ];
 
-function filaCSVDesdeMovimiento(fila) {
+function filaCSVDesdeMovimiento(fila, codigoLojoPorToken = {}) {
   return [
     fila.pedido_id || fila.id || "",
     fila.created_at ? new Date(fila.created_at).toLocaleString("es-ES") : "",
     fila.customer_name || "",
+    (fila.cliente_token && codigoLojoPorToken[fila.cliente_token]) || "",
     fila.departamento || "",
     fila.codigo_articulo || "",
     fila.nombre_articulo || "",
@@ -189,11 +191,11 @@ function construirContenidoCSV(cabecera, filas) {
   return [cabecera, ...filas].map((fila) => fila.map(escaparCSV).join(";")).join("\r\n");
 }
 
-function exportarPedidosCSV(movimientos, desde, hasta) {
+function exportarPedidosCSV(movimientos, desde, hasta, codigoLojoPorToken = {}) {
   const filas = movimientos
     .slice()
     .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
-    .map(filaCSVDesdeMovimiento);
+    .map((fila) => filaCSVDesdeMovimiento(fila, codigoLojoPorToken));
 
   descargarArchivo(`pedidos_${desde}_a_${hasta}.csv`, construirContenidoCSV(CABECERA_CSV_PEDIDO, filas));
 }
@@ -320,7 +322,7 @@ function nombreArchivoSeguro(pedidoId) {
   return texto.replace(/[^a-zA-Z0-9-_]+/g, "_") || "sin_id";
 }
 
-function exportarPedidosPorPedidoZIP(movimientos, desde, hasta) {
+function exportarPedidosPorPedidoZIP(movimientos, desde, hasta, codigoLojoPorToken = {}) {
   const porPedido = new Map();
 
   movimientos.forEach((fila) => {
@@ -333,7 +335,7 @@ function exportarPedidosPorPedidoZIP(movimientos, desde, hasta) {
     const filasOrdenadas = filas
       .slice()
       .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
-      .map(filaCSVDesdeMovimiento);
+      .map((fila) => filaCSVDesdeMovimiento(fila, codigoLojoPorToken));
 
     return {
       nombre: `pedido_${nombreArchivoSeguro(pedidoId)}.csv`,
@@ -387,6 +389,7 @@ export default function Estadisticas() {
   const hoyEstadistico = diaEstadisticoActualISO();
 
   const [movimientos, setMovimientos] = useState([]);
+  const [codigoLojoPorToken, setCodigoLojoPorToken] = useState({});
   const [participacionesRuleta, setParticipacionesRuleta] = useState([]);
   const [promocionesRuletaPorId, setPromocionesRuletaPorId] = useState(new Map());
   const [entitlements, setEntitlements] = useState([]);
@@ -402,6 +405,27 @@ export default function Estadisticas() {
   useEffect(() => {
     cargarEstadisticas(hoyEstadistico, hoyEstadistico);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Carga el Código Lojo de cada cliente (tabla "clientes") indexado por su
+  // token, para poder añadirlo a las filas del CSV de pedidos, ya que la
+  // vista "estadisticas_movimientos" no incluye ese campo.
+  useEffect(() => {
+    async function cargarCodigosLojo() {
+      const { data, error: clientesError } = await supabase
+        .from("clientes")
+        .select("token, codigo_lojo");
+
+      if (clientesError) return;
+
+      const mapa = {};
+      (data || []).forEach((cliente) => {
+        if (cliente.token) mapa[cliente.token] = cliente.codigo_lojo || "";
+      });
+      setCodigoLojoPorToken(mapa);
+    }
+
+    cargarCodigosLojo();
   }, []);
 
   async function cargarEstadisticas(desdeFiltro = desde, hastaFiltro = hasta, periodo = periodoActivo) {
@@ -1039,7 +1063,7 @@ export default function Estadisticas() {
                   type="button"
                   style={exportCsvButton}
                   disabled={movimientos.length === 0}
-                  onClick={() => exportarPedidosCSV(movimientos, desde, hasta)}
+                  onClick={() => exportarPedidosCSV(movimientos, desde, hasta, codigoLojoPorToken)}
                   title="Descarga un único CSV con una fila por artículo de cada pedido del periodo mostrado"
                 >
                   ⬇️ Exportar CSV
@@ -1048,7 +1072,7 @@ export default function Estadisticas() {
                   type="button"
                   style={exportZipButton}
                   disabled={movimientos.length === 0}
-                  onClick={() => exportarPedidosPorPedidoZIP(movimientos, desde, hasta)}
+                  onClick={() => exportarPedidosPorPedidoZIP(movimientos, desde, hasta, codigoLojoPorToken)}
                   title="Descarga un .zip con un CSV independiente por cada pedido del periodo mostrado"
                 >
                   ⬇️ Un CSV por pedido (.zip)
