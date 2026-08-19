@@ -10,6 +10,10 @@ const BINGO_CONTROL_CHANNEL = "lojo-bingo-control";
 // Con más de esta cantidad de bolas pendientes se activa el modo rápido
 // (sin clics, sin giro largo del bombo).
 const BINGO_MODO_RAPIDO_MIN_BOLAS = 3;
+// Pausa entre bola y bola en modo rápido: aunque el giro del bombo sea
+// casi instantáneo, hace falta este hueco para que dé tiempo a oír el
+// número cantado por voz antes de que salga el siguiente.
+const BINGO_MODO_RAPIDO_PAUSA_MS = 2000;
 const SPIN_DURATION_MS = 9200;
 
 const PRODUCTOS_PUBLIC_URL =
@@ -709,7 +713,7 @@ export default function StorePage() {
     if (rapido) {
       // Modo rápido: se dispara sola la primera bola, sin esperar a que
       // el cajero pulse GIRAR BOMBO.
-      window.setTimeout(() => { girarBombo(); }, 200);
+      window.setTimeout(() => { girarBombo(); }, BINGO_MODO_RAPIDO_PAUSA_MS);
     }
   }
 
@@ -823,7 +827,7 @@ export default function StorePage() {
         if (modoRapidoBingoRef.current) {
           // Modo rápido: se encadena sola la siguiente bola, sin esperar
           // a que el cajero pulse GIRAR BOMBO otra vez.
-          window.setTimeout(() => { girarBombo(); }, 250);
+          window.setTimeout(() => { girarBombo(); }, BINGO_MODO_RAPIDO_PAUSA_MS);
         }
         return;
       }
