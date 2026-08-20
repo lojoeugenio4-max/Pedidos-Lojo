@@ -27,13 +27,13 @@ import {
   construirTextoPedidoWhatsApp,
   abrirPedidoEnWhatsApp,
 } from "./utils/whatsappPedido";
+import { calcularVentanaPedido, puedeEditarPedido } from "./utils/pedidoEdicion";
 
 const WHATSAPP_NUMBER = "34670716744";
 const ORDER_STORAGE_KEY = "cash-lojo-pedido";
-const ORDER_SENT_PENDING_CLEAR_KEY = "cash-lojo-pedido-enviado-pendiente-borrar";
 const LANGUAGE_STORAGE_KEY = "cash-lojo-language";
 const APP_INSTALLED_STORAGE_KEY = "cash-lojo-app-instalada";
-const ORDER_STORAGE_VERSION = 1;
+const ORDER_STORAGE_VERSION = 2;
 
 function readSavedOrder() {
   try {
@@ -45,6 +45,13 @@ function readSavedOrder() {
       quantities: parsed?.quantities && typeof parsed.quantities === "object" ? parsed.quantities : {},
       customerName: typeof parsed?.customerName === "string" ? parsed.customerName : "",
       notes: typeof parsed?.notes === "string" ? parsed.notes : "",
+      // A partir de la versión 2: si el pedido ya se envió por WhatsApp,
+      // guardamos cuándo y hasta cuándo se puede seguir modificando, para
+      // poder ofrecer al cliente reabrirlo y editarlo en vez de obligarle
+      // a empezar uno nuevo.
+      enviadoEn: typeof parsed?.enviadoEn === "string" ? parsed.enviadoEn : null,
+      fechaLimiteEdicion:
+        typeof parsed?.fechaLimiteEdicion === "string" ? parsed.fechaLimiteEdicion : null,
     };
   } catch (error) {
     console.warn("No se pudo recuperar el pedido guardado:", error);
@@ -52,7 +59,7 @@ function readSavedOrder() {
   }
 }
 
-function savePendingOrder({ quantities, customerName, notes }) {
+function savePendingOrder({ quantities, customerName, notes, enviadoEn, fechaLimiteEdicion }) {
   try {
     localStorage.setItem(
       ORDER_STORAGE_KEY,
@@ -62,6 +69,8 @@ function savePendingOrder({ quantities, customerName, notes }) {
         quantities,
         customerName,
         notes,
+        enviadoEn: enviadoEn || null,
+        fechaLimiteEdicion: fechaLimiteEdicion || null,
       })
     );
   } catch (error) {
@@ -111,6 +120,13 @@ const translations = {
     searchedArticles: "Artículos buscados",
     catalogError: "Error cargando catálogo.",
     onlyBoxes: "Solo por cajas",
+    avisoModificacionTitulo: "Ya tienes un pedido enviado hoy",
+    avisoModificacionTexto:
+      "Todavía estás a tiempo de modificarlo. Si continúas, vas a editar el pedido que ya enviaste por WhatsApp; al enviarlo de nuevo, sustituirá al anterior. Si prefieres, también puedes borrarlo y empezar un pedido completamente nuevo.",
+    avisoModificacionSeguir: "Continuar modificando este pedido",
+    avisoModificacionNuevo: "Borrar y empezar un pedido nuevo",
+    bannerModificacionActiva:
+      "✏️ Estás modificando tu pedido ya enviado. Al pulsar «Enviar por WhatsApp» sustituirá al anterior.",
   },
   zh: {
     language: "语言",
@@ -152,6 +168,12 @@ const translations = {
     searchedArticles: "搜索到的商品",
     catalogError: "加载商品出错。",
     onlyBoxes: "只能按箱订购",
+    avisoModificacionTitulo: "您今天已经提交过一个订单",
+    avisoModificacionTexto:
+      "您仍可以修改该订单。继续操作将修改您已通过 WhatsApp 发送的订单，再次发送后会替换之前的订单。您也可以选择清空并重新开始一个新订单。",
+    avisoModificacionSeguir: "继续修改此订单",
+    avisoModificacionNuevo: "清空并开始新订单",
+    bannerModificacionActiva: "✏️ 您正在修改已发送的订单。点击「通过 WhatsApp 发送」将替换之前的订单。",
   },
 };
 
@@ -481,6 +503,24 @@ export default function App() {
   const [customerNameFocused, setCustomerNameFocused] = useState(false);
   const [soloCajasAviso, setSoloCajasAviso] = useState(null);
   const [notes, setNotes] = useState(() => savedOrder.notes || "");
+
+  // Modificación de un pedido ya enviado (mientras siga dentro de plazo,
+  // hasta las 4:00 AM del día de preparación). "pedidoEnviadoActivo"
+  // indica que el pedido actual en pantalla ya se mandó por WhatsApp y,
+  // si se envía de nuevo, sustituye al anterior. "avisoPedidoPrevio"
+  // controla el aviso que se muestra antes de dejar editar.
+  const [pedidoEnviadoActivo, setPedidoEnviadoActivo] = useState(() =>
+    Boolean(
+      savedOrder.enviadoEn &&
+        puedeEditarPedido(savedOrder.fechaLimiteEdicion, new Date())
+    )
+  );
+  const [pedidoEnviadoEn, setPedidoEnviadoEn] = useState(() => savedOrder.enviadoEn || null);
+  const [pedidoFechaLimiteEdicion, setPedidoFechaLimiteEdicion] = useState(
+    () => savedOrder.fechaLimiteEdicion || null
+  );
+  const [avisoPedidoPrevio, setAvisoPedidoPrevio] = useState(null);
+  const [comprobandoPedidoPrevio, setComprobandoPedidoPrevio] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("TODOS");
@@ -678,7 +718,74 @@ export default function App() {
     return () => {
       cancelado = true;
     };
-  }, [clienteIdentificado?.id]);
+  }, [clienteIdentificado]);
+
+  // Al cargar, comprobamos si ya había un pedido enviado hoy y todavía
+  // dentro de plazo para modificarse. Si es así, avisamos al cliente
+  // antes de dejarle tocar nada. Si el plazo ya pasó, lo limpiamos en
+  // silencio y se comporta como un pedido nuevo, igual que antes.
+  useEffect(() => {
+    if (cargandoCliente) return;
+
+    let cancelado = false;
+
+    async function comprobarPedidoPrevio() {
+      const ahora = new Date();
+
+      if (savedOrder.enviadoEn && !puedeEditarPedido(savedOrder.fechaLimiteEdicion, ahora)) {
+        limpiarPedidoDespuesEnvio();
+        return;
+      }
+
+      let pedidoPrevio =
+        savedOrder.enviadoEn && puedeEditarPedido(savedOrder.fechaLimiteEdicion, ahora)
+          ? { enviadoEn: savedOrder.enviadoEn }
+          : null;
+
+      if (clienteIdentificado?.id) {
+        setComprobandoPedidoPrevio(true);
+        try {
+          const { data, error } = await supabase
+            .from("pedidos_actuales")
+            .select("quantities, customer_name, notes, enviado_en, fecha_limite_edicion")
+            .eq("cliente_id", clienteIdentificado.id)
+            .maybeSingle();
+
+          if (error) throw error;
+          if (cancelado) return;
+
+          if (data && puedeEditarPedido(data.fecha_limite_edicion, ahora) && !pedidoPrevio) {
+            // No había nada guardado en este navegador: recuperamos el
+            // pedido desde Supabase para poder seguir editándolo aquí
+            // (por ejemplo, si lo envió desde otro dispositivo).
+            setQuantities(
+              data.quantities && typeof data.quantities === "object" ? data.quantities : {}
+            );
+            setCustomerName(data.customer_name || "");
+            setNotes(data.notes || "");
+            setPedidoEnviadoEn(data.enviado_en);
+            setPedidoFechaLimiteEdicion(data.fecha_limite_edicion);
+            pedidoPrevio = { enviadoEn: data.enviado_en };
+          }
+        } catch (error) {
+          console.error("No se pudo comprobar si había un pedido previo:", error);
+        } finally {
+          if (!cancelado) setComprobandoPedidoPrevio(false);
+        }
+      }
+
+      if (pedidoPrevio && !cancelado) {
+        setPedidoEnviadoActivo(true);
+        setAvisoPedidoPrevio(pedidoPrevio);
+      }
+    }
+
+    comprobarPedidoPrevio();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [cargandoCliente, clienteIdentificado?.id]);
 
   async function alternarFavorito(articuloId) {
     if (!clienteIdentificado?.id) return;
@@ -1037,12 +1144,24 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    savePendingOrder({ quantities, customerName, notes });
-  }, [quantities, customerName, notes]);
+    savePendingOrder({
+      quantities,
+      customerName,
+      notes,
+      enviadoEn: pedidoEnviadoEn,
+      fechaLimiteEdicion: pedidoFechaLimiteEdicion,
+    });
+  }, [quantities, customerName, notes, pedidoEnviadoEn, pedidoFechaLimiteEdicion]);
 
   useEffect(() => {
     const guardarAntesDeSalir = () => {
-      savePendingOrder({ quantities, customerName, notes });
+      savePendingOrder({
+        quantities,
+        customerName,
+        notes,
+        enviadoEn: pedidoEnviadoEn,
+        fechaLimiteEdicion: pedidoFechaLimiteEdicion,
+      });
     };
 
     window.addEventListener("pagehide", guardarAntesDeSalir);
@@ -1052,46 +1171,7 @@ export default function App() {
       window.removeEventListener("pagehide", guardarAntesDeSalir);
       document.removeEventListener("visibilitychange", guardarAntesDeSalir);
     };
-  }, [quantities, customerName, notes]);
-
-  useEffect(() => {
-    const borrarPedidoSiVuelveDeWhatsApp = () => {
-      if (sessionStorage.getItem(ORDER_SENT_PENDING_CLEAR_KEY) !== "true") return;
-
-      sessionStorage.removeItem(ORDER_SENT_PENDING_CLEAR_KEY);
-      localStorage.removeItem(ORDER_STORAGE_KEY);
-      setQuantities({});
-      setCustomerName("");
-      setCustomerNameFocused(false);
-      setSoloCajasAviso(null);
-      setNotes("");
-      setSearchInput("");
-      setSearch("");
-      setSelectedDepartment("TODOS");
-      setDepartmentDropdownOpen(false);
-      setShowOrderSummary(false);
-      setSelectedImage(null);
-      setHeaderCollapsed(false);
-    };
-
-    const comprobarVisibilidad = () => {
-      if (document.visibilityState === "visible") {
-        borrarPedidoSiVuelveDeWhatsApp();
-      }
-    };
-
-    window.addEventListener("pageshow", borrarPedidoSiVuelveDeWhatsApp);
-    window.addEventListener("focus", borrarPedidoSiVuelveDeWhatsApp);
-    document.addEventListener("visibilitychange", comprobarVisibilidad);
-
-    borrarPedidoSiVuelveDeWhatsApp();
-
-    return () => {
-      window.removeEventListener("pageshow", borrarPedidoSiVuelveDeWhatsApp);
-      window.removeEventListener("focus", borrarPedidoSiVuelveDeWhatsApp);
-      document.removeEventListener("visibilitychange", comprobarVisibilidad);
-    };
-  }, []);
+  }, [quantities, customerName, notes, pedidoEnviadoEn, pedidoFechaLimiteEdicion]);
 
   useEffect(() => {
     let viewport = document.querySelector("meta[name=viewport]");
@@ -2481,6 +2561,33 @@ export default function App() {
     setPushCerrado(false);
     setMostrarVolverPush(false);
     setHeaderCollapsed(false);
+    setPedidoEnviadoActivo(false);
+    setPedidoEnviadoEn(null);
+    setPedidoFechaLimiteEdicion(null);
+    setAvisoPedidoPrevio(null);
+  }
+
+  function continuarEditandoPedidoPrevio() {
+    // Los datos del pedido (cantidades, nombre, notas) ya están cargados
+    // en el estado, solo cerramos el aviso.
+    setAvisoPedidoPrevio(null);
+  }
+
+  async function empezarPedidoNuevoTrasAviso() {
+    const clienteId = clienteIdentificado?.id;
+    limpiarPedidoDespuesEnvio();
+
+    if (!clienteId) return;
+
+    try {
+      const { error } = await supabase
+        .from("pedidos_actuales")
+        .delete()
+        .eq("cliente_id", clienteId);
+      if (error) throw error;
+    } catch (error) {
+      console.error("No se pudo borrar el pedido anterior en Supabase:", error);
+    }
   }
 
   function normalizarCodigoRuleta(codigo) {
@@ -2747,6 +2854,54 @@ export default function App() {
     return result;
   }
 
+  // Registra el pedido como "ya enviado" sin borrar el carrito, para que
+  // el cliente pueda reabrirlo y modificarlo mientras siga dentro de
+  // plazo (hasta las 4:00 AM del día de preparación). Si el pedido se ha
+  // hecho fuera de la franja modificable (por la mañana, antes del
+  // corte), no hay nada que guardar: se comporta como antes, limpiando
+  // el carrito tras el envío. Si el cliente está identificado por su
+  // enlace personal, además dejamos constancia en Supabase (un único
+  // registro por cliente, se sobrescribe en cada modificación) para que
+  // también pueda retomarlo desde otro dispositivo y quede accesible
+  // desde el ADMIN.
+  async function marcarPedidoComoEnviado({ ventana, customerNamePedido, notesPedido }) {
+    if (!ventana.editable) {
+      limpiarPedidoDespuesEnvio();
+      return;
+    }
+
+    const enviadoEnIso = new Date().toISOString();
+    const fechaLimiteIso = ventana.fechaLimiteEdicion.toISOString();
+
+    setPedidoEnviadoActivo(true);
+    setPedidoEnviadoEn(enviadoEnIso);
+    setPedidoFechaLimiteEdicion(fechaLimiteIso);
+
+    if (!clienteIdentificado?.id) return;
+
+    try {
+      const { error } = await supabase.from("pedidos_actuales").upsert(
+        {
+          cliente_id: clienteIdentificado.id,
+          quantities,
+          customer_name: customerNamePedido,
+          notes: notesPedido,
+          enviado_en: enviadoEnIso,
+          dia_preparacion: ventana.diaPreparacion.toISOString().slice(0, 10),
+          fecha_limite_edicion: fechaLimiteIso,
+        },
+        { onConflict: "cliente_id" }
+      );
+
+      if (error) throw error;
+    } catch (error) {
+      // No bloqueamos WhatsApp si falla el guardado en Supabase: el
+      // pedido ya se ha enviado y sigue editable en este mismo navegador
+      // gracias al localStorage.
+      console.error("No se pudo guardar el pedido actual en Supabase:", error);
+    }
+  }
+
   function enviarPedidoFinal({
     itemsPedido,
     customerNamePedido,
@@ -2757,7 +2912,10 @@ export default function App() {
     participacionBingo = null,
     participacionJuegos = null,
   }) {
-    const texto = construirTextoPedidoWhatsApp({
+    const esModificacion = pedidoEnviadoActivo;
+    const ventana = calcularVentanaPedido(new Date());
+
+    let texto = construirTextoPedidoWhatsApp({
       t,
       itemsPedido,
       customerNamePedido,
@@ -2768,7 +2926,13 @@ export default function App() {
       participacionJuegos,
     });
 
-    limpiarPedidoDespuesEnvio();
+    if (esModificacion) {
+      // Aviso al inicio del mensaje para que en tienda quede claro que
+      // este pedido sustituye al que se envió antes por WhatsApp.
+      texto = `✏️ *PEDIDO MODIFICADO* (sustituye al enviado antes)\n\n${texto}`;
+    }
+
+    marcarPedidoComoEnviado({ ventana, customerNamePedido, notesPedido });
 
     // Guardamos estadísticas en segundo plano, sin bloquear WhatsApp.
     guardarEstadisticasPedido(itemsPedido, pedidoId, customerNamePedido);
@@ -3159,6 +3323,10 @@ export default function App() {
                 </div>
               </div>
             </header>
+
+            {pedidoEnviadoActivo && !avisoPedidoPrevio && (
+              <div style={styles.bannerModificacionActiva}>{t.bannerModificacionActiva}</div>
+            )}
 
             <section style={styles.customerPanel}>
               <div style={styles.languageLine}>
@@ -3735,6 +3903,31 @@ export default function App() {
           {t.reviewAndSend}
         </button>
       </div>
+
+      {avisoPedidoPrevio && (
+        <div style={styles.avisoModificacionOverlay}>
+          <div style={styles.avisoModificacionPanel}>
+            <h2 style={styles.avisoModificacionTitulo}>{t.avisoModificacionTitulo}</h2>
+            <p style={styles.avisoModificacionTexto}>{t.avisoModificacionTexto}</p>
+
+            <button
+              type="button"
+              onClick={continuarEditandoPedidoPrevio}
+              style={styles.avisoModificacionBotonPrimario}
+            >
+              {t.avisoModificacionSeguir}
+            </button>
+
+            <button
+              type="button"
+              onClick={empezarPedidoNuevoTrasAviso}
+              style={styles.avisoModificacionBotonSecundario}
+            >
+              {t.avisoModificacionNuevo}
+            </button>
+          </div>
+        </div>
+      )}
 
       {showOrderSummary && (
         <div style={styles.summaryOverlay}>
@@ -5548,6 +5741,77 @@ const styles = {
     textAlign: "center",
     fontSize: "13px",
     fontWeight: "700",
+  },
+
+  avisoModificacionOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(15,23,42,0.65)",
+    zIndex: 1200,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "16px",
+    boxSizing: "border-box",
+  },
+
+  avisoModificacionPanel: {
+    width: "100%",
+    maxWidth: "420px",
+    background: "#fff",
+    borderRadius: "18px",
+    padding: "22px 20px",
+    boxSizing: "border-box",
+    boxShadow: "0 20px 40px rgba(15,23,42,0.35)",
+  },
+
+  avisoModificacionTitulo: {
+    margin: "0 0 10px",
+    fontSize: "18px",
+    fontWeight: "900",
+    color: "#111a8f",
+  },
+
+  avisoModificacionTexto: {
+    margin: "0 0 20px",
+    fontSize: "14px",
+    lineHeight: 1.5,
+    color: "#334155",
+  },
+
+  avisoModificacionBotonPrimario: {
+    width: "100%",
+    padding: "13px 16px",
+    borderRadius: "12px",
+    border: "none",
+    background: "#111a8f",
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: "15px",
+    marginBottom: "10px",
+  },
+
+  avisoModificacionBotonSecundario: {
+    width: "100%",
+    padding: "13px 16px",
+    borderRadius: "12px",
+    border: "2px solid #dc2626",
+    background: "#fff",
+    color: "#dc2626",
+    fontWeight: "800",
+    fontSize: "15px",
+  },
+
+  bannerModificacionActiva: {
+    background: "#fef3c7",
+    border: "1px solid #f59e0b",
+    color: "#92400e",
+    borderRadius: "12px",
+    padding: "10px 14px",
+    fontSize: "13px",
+    fontWeight: "700",
+    margin: "0 0 12px",
+    textAlign: "center",
   },
 
 };
