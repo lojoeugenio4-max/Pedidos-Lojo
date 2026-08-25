@@ -33,7 +33,7 @@ const WHATSAPP_NUMBER = "34670716744";
 const ORDER_STORAGE_KEY = "cash-lojo-pedido";
 const LANGUAGE_STORAGE_KEY = "cash-lojo-language";
 const APP_INSTALLED_STORAGE_KEY = "cash-lojo-app-instalada";
-const ORDER_STORAGE_VERSION = 2;
+const ORDER_STORAGE_VERSION = 3;
 
 function readSavedOrder() {
   try {
@@ -52,6 +52,11 @@ function readSavedOrder() {
       enviadoEn: typeof parsed?.enviadoEn === "string" ? parsed.enviadoEn : null,
       fechaLimiteEdicion:
         typeof parsed?.fechaLimiteEdicion === "string" ? parsed.fechaLimiteEdicion : null,
+      // A partir de la versión 3: identificador estable del pedido para
+      // Estadísticas. Se reutiliza en cada modificación para que el
+      // pedido editado sustituya al anterior en vez de aparecer como uno
+      // nuevo.
+      pedidoStatsId: typeof parsed?.pedidoStatsId === "string" ? parsed.pedidoStatsId : null,
     };
   } catch (error) {
     console.warn("No se pudo recuperar el pedido guardado:", error);
@@ -59,7 +64,14 @@ function readSavedOrder() {
   }
 }
 
-function savePendingOrder({ quantities, customerName, notes, enviadoEn, fechaLimiteEdicion }) {
+function savePendingOrder({
+  quantities,
+  customerName,
+  notes,
+  enviadoEn,
+  fechaLimiteEdicion,
+  pedidoStatsId,
+}) {
   try {
     localStorage.setItem(
       ORDER_STORAGE_KEY,
@@ -71,6 +83,7 @@ function savePendingOrder({ quantities, customerName, notes, enviadoEn, fechaLim
         notes,
         enviadoEn: enviadoEn || null,
         fechaLimiteEdicion: fechaLimiteEdicion || null,
+        pedidoStatsId: pedidoStatsId || null,
       })
     );
   } catch (error) {
@@ -125,8 +138,10 @@ const translations = {
       "Todavía estás a tiempo de modificarlo. Si continúas, vas a editar el pedido que ya enviaste por WhatsApp; al enviarlo de nuevo, sustituirá al anterior. Si prefieres, también puedes borrarlo y empezar un pedido completamente nuevo.",
     avisoModificacionSeguir: "Continuar modificando este pedido",
     avisoModificacionNuevo: "Borrar y empezar un pedido nuevo",
-    bannerModificacionActiva:
-      "✏️ Estás modificando tu pedido ya enviado. Al pulsar «Enviar por WhatsApp» sustituirá al anterior.",
+    pushRecordatorioTitulo: "📦 Tienes un pedido enviado",
+    pushRecordatorioTexto:
+      "Todavía no se ha impreso. Si has olvidado algo, puedes seguir añadiendo artículos a tu pedido.",
+    pushRecordatorioAceptar: "Aceptar",
   },
   zh: {
     language: "语言",
@@ -173,7 +188,9 @@ const translations = {
       "您仍可以修改该订单。继续操作将修改您已通过 WhatsApp 发送的订单，再次发送后会替换之前的订单。您也可以选择清空并重新开始一个新订单。",
     avisoModificacionSeguir: "继续修改此订单",
     avisoModificacionNuevo: "清空并开始新订单",
-    bannerModificacionActiva: "✏️ 您正在修改已发送的订单。点击「通过 WhatsApp 发送」将替换之前的订单。",
+    pushRecordatorioTitulo: "📦 您有一个已发送的订单",
+    pushRecordatorioTexto: "该订单尚未打印。如果您忘记添加什么，仍可以继续往订单里添加商品。",
+    pushRecordatorioAceptar: "确定",
   },
 };
 
@@ -519,8 +536,19 @@ export default function App() {
   const [pedidoFechaLimiteEdicion, setPedidoFechaLimiteEdicion] = useState(
     () => savedOrder.fechaLimiteEdicion || null
   );
+  // Identificador estable del pedido para Estadísticas: se reutiliza en
+  // cada modificación (en vez de generar uno nuevo) para que las filas
+  // de estadisticas_movimientos se sustituyan y no aparezcan como un
+  // segundo pedido del mismo cliente.
+  const [pedidoStatsIdActual, setPedidoStatsIdActual] = useState(
+    () => savedOrder.pedidoStatsId || null
+  );
   const [avisoPedidoPrevio, setAvisoPedidoPrevio] = useState(null);
   const [comprobandoPedidoPrevio, setComprobandoPedidoPrevio] = useState(false);
+  // Aviso destacado (tipo push, con botón "Aceptar") que recuerda al
+  // cliente que tiene un pedido enviado y puede seguir añadiendo
+  // artículos. Sustituye al pequeño aviso permanente en pantalla.
+  const [pushRecordatorioModificacion, setPushRecordatorioModificacion] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("TODOS");
@@ -747,7 +775,9 @@ export default function App() {
         try {
           const { data, error } = await supabase
             .from("pedidos_actuales")
-            .select("quantities, customer_name, notes, enviado_en, fecha_limite_edicion")
+            .select(
+              "quantities, customer_name, notes, enviado_en, fecha_limite_edicion, pedido_stats_id"
+            )
             .eq("cliente_id", clienteIdentificado.id)
             .maybeSingle();
 
@@ -765,6 +795,7 @@ export default function App() {
             setNotes(data.notes || "");
             setPedidoEnviadoEn(data.enviado_en);
             setPedidoFechaLimiteEdicion(data.fecha_limite_edicion);
+            setPedidoStatsIdActual(data.pedido_stats_id || null);
             pedidoPrevio = { enviadoEn: data.enviado_en };
           }
         } catch (error) {
@@ -1150,8 +1181,16 @@ export default function App() {
       notes,
       enviadoEn: pedidoEnviadoEn,
       fechaLimiteEdicion: pedidoFechaLimiteEdicion,
+      pedidoStatsId: pedidoStatsIdActual,
     });
-  }, [quantities, customerName, notes, pedidoEnviadoEn, pedidoFechaLimiteEdicion]);
+  }, [
+    quantities,
+    customerName,
+    notes,
+    pedidoEnviadoEn,
+    pedidoFechaLimiteEdicion,
+    pedidoStatsIdActual,
+  ]);
 
   useEffect(() => {
     const guardarAntesDeSalir = () => {
@@ -1161,6 +1200,7 @@ export default function App() {
         notes,
         enviadoEn: pedidoEnviadoEn,
         fechaLimiteEdicion: pedidoFechaLimiteEdicion,
+        pedidoStatsId: pedidoStatsIdActual,
       });
     };
 
@@ -1171,7 +1211,14 @@ export default function App() {
       window.removeEventListener("pagehide", guardarAntesDeSalir);
       document.removeEventListener("visibilitychange", guardarAntesDeSalir);
     };
-  }, [quantities, customerName, notes, pedidoEnviadoEn, pedidoFechaLimiteEdicion]);
+  }, [
+    quantities,
+    customerName,
+    notes,
+    pedidoEnviadoEn,
+    pedidoFechaLimiteEdicion,
+    pedidoStatsIdActual,
+  ]);
 
   useEffect(() => {
     let viewport = document.querySelector("meta[name=viewport]");
@@ -2530,6 +2577,17 @@ export default function App() {
         })
         .filter(Boolean);
 
+      // Si este pedido_id ya tenía filas guardadas (porque es una
+      // modificación de un pedido enviado antes), las sustituimos en vez
+      // de acumularlas: así en Estadísticas solo aparece un pedido por
+      // cliente, con el contenido más reciente.
+      const { error: borrarError } = await supabase
+        .from("estadisticas_movimientos")
+        .delete()
+        .eq("pedido_id", pedidoId);
+
+      if (borrarError) throw borrarError;
+
       if (!movimientos.length) return;
 
       const { error: movimientosError } = await supabase
@@ -2564,13 +2622,17 @@ export default function App() {
     setPedidoEnviadoActivo(false);
     setPedidoEnviadoEn(null);
     setPedidoFechaLimiteEdicion(null);
+    setPedidoStatsIdActual(null);
     setAvisoPedidoPrevio(null);
+    setPushRecordatorioModificacion(false);
   }
 
   function continuarEditandoPedidoPrevio() {
     // Los datos del pedido (cantidades, nombre, notas) ya están cargados
-    // en el estado, solo cerramos el aviso.
+    // en el estado, solo cerramos el aviso y mostramos el recordatorio
+    // destacado en su lugar.
     setAvisoPedidoPrevio(null);
+    setPushRecordatorioModificacion(true);
   }
 
   async function empezarPedidoNuevoTrasAviso() {
@@ -2864,7 +2926,12 @@ export default function App() {
   // registro por cliente, se sobrescribe en cada modificación) para que
   // también pueda retomarlo desde otro dispositivo y quede accesible
   // desde el ADMIN.
-  async function marcarPedidoComoEnviado({ ventana, customerNamePedido, notesPedido }) {
+  async function marcarPedidoComoEnviado({
+    ventana,
+    customerNamePedido,
+    notesPedido,
+    pedidoStatsId,
+  }) {
     if (!ventana.editable) {
       limpiarPedidoDespuesEnvio();
       return;
@@ -2876,6 +2943,8 @@ export default function App() {
     setPedidoEnviadoActivo(true);
     setPedidoEnviadoEn(enviadoEnIso);
     setPedidoFechaLimiteEdicion(fechaLimiteIso);
+    setPedidoStatsIdActual(pedidoStatsId);
+    setPushRecordatorioModificacion(true);
 
     if (!clienteIdentificado?.id) return;
 
@@ -2889,6 +2958,7 @@ export default function App() {
           enviado_en: enviadoEnIso,
           dia_preparacion: ventana.diaPreparacion.toISOString().slice(0, 10),
           fecha_limite_edicion: fechaLimiteIso,
+          pedido_stats_id: pedidoStatsId,
         },
         { onConflict: "cliente_id" }
       );
@@ -2932,10 +3002,23 @@ export default function App() {
       texto = `✏️ *PEDIDO MODIFICADO* (sustituye al enviado antes)\n\n${texto}`;
     }
 
-    marcarPedidoComoEnviado({ ventana, customerNamePedido, notesPedido });
+    // Identificador de Estadísticas: en una modificación reutilizamos el
+    // que ya tenía el pedido (para sustituir sus filas), en un pedido
+    // nuevo usamos el recién generado. Nótese que esto es independiente
+    // del "pedidoId" usado para Ruleta/Bingo/QR, que siempre es nuevo en
+    // cada envío para no interferir con esos sistemas de premios.
+    const pedidoIdEstadisticas =
+      esModificacion && pedidoStatsIdActual ? pedidoStatsIdActual : pedidoId;
+
+    marcarPedidoComoEnviado({
+      ventana,
+      customerNamePedido,
+      notesPedido,
+      pedidoStatsId: pedidoIdEstadisticas,
+    });
 
     // Guardamos estadísticas en segundo plano, sin bloquear WhatsApp.
-    guardarEstadisticasPedido(itemsPedido, pedidoId, customerNamePedido);
+    guardarEstadisticasPedido(itemsPedido, pedidoIdEstadisticas, customerNamePedido);
 
     // Abrir en la misma pestaña es lo más fiable en móviles.
     abrirPedidoEnWhatsApp({
@@ -3323,10 +3406,6 @@ export default function App() {
                 </div>
               </div>
             </header>
-
-            {pedidoEnviadoActivo && !avisoPedidoPrevio && (
-              <div style={styles.bannerModificacionActiva}>{t.bannerModificacionActiva}</div>
-            )}
 
             <section style={styles.customerPanel}>
               <div style={styles.languageLine}>
@@ -3924,6 +4003,23 @@ export default function App() {
               style={styles.avisoModificacionBotonSecundario}
             >
               {t.avisoModificacionNuevo}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pushRecordatorioModificacion && (
+        <div style={styles.avisoModificacionOverlay}>
+          <div style={styles.avisoModificacionPanel}>
+            <h2 style={styles.avisoModificacionTitulo}>{t.pushRecordatorioTitulo}</h2>
+            <p style={styles.avisoModificacionTexto}>{t.pushRecordatorioTexto}</p>
+
+            <button
+              type="button"
+              onClick={() => setPushRecordatorioModificacion(false)}
+              style={styles.avisoModificacionBotonPrimario}
+            >
+              {t.pushRecordatorioAceptar}
             </button>
           </div>
         </div>
@@ -5800,18 +5896,6 @@ const styles = {
     color: "#dc2626",
     fontWeight: "800",
     fontSize: "15px",
-  },
-
-  bannerModificacionActiva: {
-    background: "#fef3c7",
-    border: "1px solid #f59e0b",
-    color: "#92400e",
-    borderRadius: "12px",
-    padding: "10px 14px",
-    fontSize: "13px",
-    fontWeight: "700",
-    margin: "0 0 12px",
-    textAlign: "center",
   },
 
 };
