@@ -3004,9 +3004,11 @@ export default function App() {
 
     // Identificador de Estadísticas: en una modificación reutilizamos el
     // que ya tenía el pedido (para sustituir sus filas), en un pedido
-    // nuevo usamos el recién generado. Nótese que esto es independiente
-    // del "pedidoId" usado para Ruleta/Bingo/QR, que siempre es nuevo en
-    // cada envío para no interferir con esos sistemas de premios.
+    // nuevo usamos el recibido en pedidoId. Desde sendByWhatsApp, este
+    // "pedidoId" YA es el id estable reutilizado en modificaciones
+    // (pedidoIdEstable), el mismo que se usó para Bingo y el QR común;
+    // solo la Ruleta usa un id distinto y siempre nuevo (ver
+    // sendByWhatsApp para el porqué).
     const pedidoIdEstadisticas =
       esModificacion && pedidoStatsIdActual ? pedidoStatsIdActual : pedidoId;
 
@@ -3038,7 +3040,23 @@ export default function App() {
     const itemsPedido = [...orderedItems];
     const customerNamePedido = customerName.trim();
     const notesPedido = notes.trim();
-    const pedidoId = crearPedidoId();
+    const esModificacion = pedidoEnviadoActivo;
+
+    // Identificador ESTABLE del pedido: en una modificación reutilizamos
+    // el mismo que ya tenía (para Bingo y para el QR común de premios),
+    // en vez de uno nuevo cada vez. Así el pedido editado se sigue
+    // reconociendo como EL MISMO pedido, aunque se reenvíe en un día
+    // distinto al que se creó, y no vuelve a sumar bolas de Bingo como
+    // si fuera un pedido nuevo.
+    //
+    // La Ruleta usa aparte un id siempre nuevo (pedidoIdRuleta): su RPC
+    // fabrica un "teléfono" único a partir de ese id porque la tabla de
+    // participaciones solo permite una partida activa por teléfono, así
+    // que reutilizar el id ahí podría chocar con esa restricción. No lo
+    // tocamos para no arriesgar que se bloqueen los reenvíos.
+    const pedidoIdEstable =
+      esModificacion && pedidoStatsIdActual ? pedidoStatsIdActual : crearPedidoId();
+    const pedidoIdRuleta = crearPedidoId();
 
     const resumenRuletaPedidoEnvio = obtenerResumenPedidoRuleta(itemsPedido);
 
@@ -3054,7 +3072,7 @@ export default function App() {
       try {
         participacionRuleta = await crearParticipacionPromocion({
           promocionId: configuracionRuleta.id,
-          pedidoId,
+          pedidoId: pedidoIdRuleta,
           customerNamePedido,
           tiradasRuleta: resumenRuletaPedidoEnvio?.tiradasConseguidas || 1,
         });
@@ -3081,7 +3099,7 @@ export default function App() {
     let participacionBingo = null;
     if (clienteIdentificado?.id) {
       try {
-        participacionBingo = await registrarPedidoParaBingo(itemsPedido, pedidoId);
+        participacionBingo = await registrarPedidoParaBingo(itemsPedido, pedidoIdEstable);
       } catch (error) {
         const detalleErrorBingo = [
           error?.code ? `Código: ${error.code}` : null,
@@ -3092,12 +3110,22 @@ export default function App() {
           .filter(Boolean)
           .join("\n");
 
-        alert(
-          `El pedido no se enviará porque no se pudo registrar el Bingo.${
-            detalleErrorBingo ? `\n\n${detalleErrorBingo}` : ""
-          }`
-        );
-        return;
+        if (esModificacion) {
+          // En una modificación no bloqueamos el reenvío del pedido por
+          // un fallo al actualizar Bingo: el pedido ya se registró
+          // correctamente la primera vez.
+          console.error(
+            "No se pudo actualizar el Bingo al modificar el pedido (se envía igualmente):",
+            detalleErrorBingo || error
+          );
+        } else {
+          alert(
+            `El pedido no se enviará porque no se pudo registrar el Bingo.${
+              detalleErrorBingo ? `\n\n${detalleErrorBingo}` : ""
+            }`
+          );
+          return;
+        }
       }
     }
 
@@ -3111,7 +3139,7 @@ export default function App() {
     ) {
       try {
         participacionJuegos = await crearParticipacionJuegos({
-          pedidoId,
+          pedidoId: pedidoIdEstable,
           customerNamePedido,
           participacionRuleta,
           tiradasRuleta: resumenRuletaPedidoEnvio?.tiradasConseguidas || 0,
@@ -3128,14 +3156,21 @@ export default function App() {
           .filter(Boolean)
           .join("\n");
 
-        alert(
-          `El pedido no se enviará porque no se pudo generar el QR común.${
-            detalleErrorComun
-              ? `\n\n${detalleErrorComun}`
-              : " Comprueba que la migración de staging está instalada."
-          }`
-        );
-        return;
+        if (esModificacion) {
+          console.error(
+            "No se pudo actualizar el QR común al modificar el pedido (se envía igualmente):",
+            detalleErrorComun || error
+          );
+        } else {
+          alert(
+            `El pedido no se enviará porque no se pudo generar el QR común.${
+              detalleErrorComun
+                ? `\n\n${detalleErrorComun}`
+                : " Comprueba que la migración de staging está instalada."
+            }`
+          );
+          return;
+        }
       }
     }
 
@@ -3144,7 +3179,7 @@ export default function App() {
       customerNamePedido,
       notesPedido,
       participacionRuleta,
-      pedidoId,
+      pedidoId: pedidoIdEstable,
       resumenRuletaPedidoEnvio,
       participacionBingo,
       participacionJuegos,
