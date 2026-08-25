@@ -1,9 +1,9 @@
 // Reglas de la ventana de modificación de un pedido ya enviado.
 //
 // Resumen del negocio (confirmado con el cliente):
-// - Entre semana (lunes a viernes): lo recibido antes de las 14:30 se
+// - Entre semana (lunes a viernes): lo recibido antes de las 7:00 se
 //   prepara ESE MISMO día y NO es modificable. Lo recibido desde las
-//   14:30 se prepara al día siguiente -> editable hasta las 4:00 AM del
+//   7:00 se prepara al día siguiente -> editable hasta las 4:00 AM del
 //   día siguiente.
 // - Sábado: lo recibido antes de las 13:00 se prepara ESE MISMO sábado y
 //   NO es modificable. Lo recibido desde las 13:00 se prepara el LUNES
@@ -15,9 +15,9 @@
 //   el límite de esa ventana (aunque sean solo un par de horas).
 //
 // En resumen, SOLO son modificables los pedidos hechos dentro de estas
-// dos franjas: de 14:30 a 4:00 AM (entre semana) y de 13:00 del sábado a
-// 4:00 AM del lunes. Los pedidos hechos "de mañana" (antes del corte) no
-// se pueden modificar en ningún caso.
+// dos franjas: de 7:00 a 4:00 AM (entre semana) y de 13:00 del sábado a
+// 4:00 AM del lunes. Los pedidos hechos "de mañana muy temprano" (antes
+// del corte) no se pueden modificar en ningún caso.
 
 const CUATRO_AM_MINUTOS = 4 * 60;
 
@@ -25,7 +25,7 @@ function obtenerCutoffMinutos(diaSemana) {
   // diaSemana: 0 = domingo ... 6 = sábado
   if (diaSemana === 0) return null; // domingo: sin corte propio
   if (diaSemana === 6) return 13 * 60; // sábado 13:00
-  return 14 * 60 + 30; // lunes-viernes 14:30
+  return 7 * 60; // lunes-viernes 7:00
 }
 
 function soloFecha(fecha) {
@@ -43,7 +43,7 @@ function sumarDias(fecha, dias) {
 /**
  * Calcula, para un momento dado, cuándo se prepara el pedido y, si
  * corresponde, hasta cuándo se puede modificar. Los pedidos hechos antes
- * del corte del día (14:30 entre semana, 13:00 sábado) se preparan ese
+ * del corte del día (7:00 entre semana, 13:00 sábado) se preparan ese
  * mismo día y NO son modificables (fechaLimiteEdicion = null).
  *
  * @param {Date} ahora
