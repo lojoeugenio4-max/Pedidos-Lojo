@@ -2989,9 +2989,8 @@ export default function App() {
     // que ya tenía el pedido (para sustituir sus filas), en un pedido
     // nuevo usamos el recibido en pedidoId. Desde sendByWhatsApp, este
     // "pedidoId" YA es el id estable reutilizado en modificaciones
-    // (pedidoIdEstable), el mismo que se usó para Bingo y el QR común;
-    // solo la Ruleta usa un id distinto y siempre nuevo (ver
-    // sendByWhatsApp para el porqué).
+    // (pedidoIdEstable), el mismo que se usa también para Ruleta, Bingo
+    // y el QR común: un único id por pedido en todos los sitios.
     const pedidoIdEstadisticas =
       esModificacion && pedidoStatsIdActual ? pedidoStatsIdActual : pedidoId;
 
@@ -3026,20 +3025,15 @@ export default function App() {
     const esModificacion = pedidoEnviadoActivo;
 
     // Identificador ESTABLE del pedido: en una modificación reutilizamos
-    // el mismo que ya tenía (para Bingo y para el QR común de premios),
-    // en vez de uno nuevo cada vez. Así el pedido editado se sigue
-    // reconociendo como EL MISMO pedido, aunque se reenvíe en un día
-    // distinto al que se creó, y no vuelve a sumar bolas de Bingo como
-    // si fuera un pedido nuevo.
-    //
-    // La Ruleta usa aparte un id siempre nuevo (pedidoIdRuleta): su RPC
-    // fabrica un "teléfono" único a partir de ese id porque la tabla de
-    // participaciones solo permite una partida activa por teléfono, así
-    // que reutilizar el id ahí podría chocar con esa restricción. No lo
-    // tocamos para no arriesgar que se bloqueen los reenvíos.
+    // el mismo que ya tenía (para Ruleta, Bingo, el QR común de premios y
+    // Estadísticas), en vez de uno nuevo cada vez. Así el pedido editado
+    // se sigue reconociendo como EL MISMO pedido en todos los sitios —ya
+    // no vuelve a sumar bolas de Bingo como si fuera un pedido nuevo, ni
+    // aparece como un "pedido" fantasma aparte (sin artículos) en el
+    // panel de Pedidos y juegos del ADMIN, que es justo lo que pasaba
+    // antes al usar un id distinto solo para la Ruleta.
     const pedidoIdEstable =
       esModificacion && pedidoStatsIdActual ? pedidoStatsIdActual : crearPedidoId();
-    const pedidoIdRuleta = crearPedidoId();
 
     const resumenRuletaPedidoEnvio = obtenerResumenPedidoRuleta(itemsPedido);
 
@@ -3055,7 +3049,7 @@ export default function App() {
       try {
         participacionRuleta = await crearParticipacionPromocion({
           promocionId: configuracionRuleta.id,
-          pedidoId: pedidoIdRuleta,
+          pedidoId: pedidoIdEstable,
           customerNamePedido,
           tiradasRuleta: resumenRuletaPedidoEnvio?.tiradasConseguidas || 1,
         });
@@ -3070,12 +3064,22 @@ export default function App() {
           .filter(Boolean)
           .join("\n");
 
-        alert(
-          `No se ha podido generar el código de ruleta.${
-            detalleError ? `\n\n${detalleError}` : " Inténtalo de nuevo."
-          }`
-        );
-        return;
+        if (esModificacion) {
+          // En una modificación no bloqueamos el reenvío del pedido por
+          // un fallo al actualizar la Ruleta: el pedido ya se registró
+          // correctamente la primera vez.
+          console.error(
+            "No se pudo actualizar la Ruleta al modificar el pedido (se envía igualmente):",
+            detalleError || error
+          );
+        } else {
+          alert(
+            `No se ha podido generar el código de ruleta.${
+              detalleError ? `\n\n${detalleError}` : " Inténtalo de nuevo."
+            }`
+          );
+          return;
+        }
       }
     }
 
