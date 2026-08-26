@@ -686,7 +686,9 @@ export default function App() {
           setClienteIdentificado(data);
           setCustomerName(data.nombre || "");
         } else {
-          // Token inexistente o cliente inactivo: compra anónima, sin bloquear.
+          // Token inexistente o cliente inactivo: no se identifica. Más
+          // abajo esto hace que se muestre la pantalla de "enlace no
+          // válido" en vez de dejar comprar de forma anónima.
           setClienteIdentificado(null);
         }
       } catch (error) {
@@ -3181,6 +3183,33 @@ export default function App() {
 
   const pushTieneVariosComprables =
     pushItems.filter((item) => item.comprable && item.id).length > 1;
+
+  // El enlace genérico (sin token, la URL raíz de la primera versión) y
+  // los tokens inválidos o de clientes dados de baja ya no dan acceso a
+  // la tienda: solo vale el enlace personal de cada cliente.
+  if (!cargandoCliente && !clienteIdentificado) {
+    return (
+      <div style={styles.page}>
+        <div style={styles.enlaceInvalidoOverlay}>
+          <div style={styles.enlaceInvalidoPanel}>
+            <h1 style={styles.enlaceInvalidoTitulo}>Este enlace ya no es válido</h1>
+            <p style={styles.enlaceInvalidoTexto}>
+              Para hacer tu pedido necesitas usar tu enlace personal. Si no lo tienes o no te
+              funciona, contacta con la tienda por WhatsApp y te lo enviamos.
+            </p>
+            <a
+              href={`https://wa.me/${WHATSAPP_NUMBER}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={styles.enlaceInvalidoBoton}
+            >
+              Contactar por WhatsApp
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.page}>
@@ -5845,6 +5874,56 @@ const styles = {
     textAlign: "center",
     fontSize: "13px",
     fontWeight: "700",
+  },
+
+  enlaceInvalidoOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "#0f172a",
+    zIndex: 1300,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "24px",
+    boxSizing: "border-box",
+  },
+
+  enlaceInvalidoPanel: {
+    width: "100%",
+    maxWidth: "420px",
+    background: "#fff",
+    borderRadius: "18px",
+    padding: "28px 22px",
+    boxSizing: "border-box",
+    textAlign: "center",
+    boxShadow: "0 20px 40px rgba(15,23,42,0.35)",
+  },
+
+  enlaceInvalidoTitulo: {
+    margin: "0 0 12px",
+    fontSize: "19px",
+    fontWeight: "900",
+    color: "#111a8f",
+  },
+
+  enlaceInvalidoTexto: {
+    margin: "0 0 22px",
+    fontSize: "14px",
+    lineHeight: 1.5,
+    color: "#334155",
+  },
+
+  enlaceInvalidoBoton: {
+    display: "inline-block",
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "13px 16px",
+    borderRadius: "12px",
+    background: "#25D366",
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: "15px",
+    textDecoration: "none",
   },
 
   avisoModificacionOverlay: {
