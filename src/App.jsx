@@ -135,9 +135,8 @@ const translations = {
     onlyBoxes: "Solo por cajas",
     avisoModificacionTitulo: "Ya tienes un pedido enviado hoy",
     avisoModificacionTexto:
-      "Todavía estás a tiempo de modificarlo. Si continúas, vas a editar el pedido que ya enviaste por WhatsApp; al enviarlo de nuevo, sustituirá al anterior. Si prefieres, también puedes borrarlo y empezar un pedido completamente nuevo.",
+      "Todavía estás a tiempo de modificarlo. Al continuar vas a editar el pedido que ya enviaste por WhatsApp; al enviarlo de nuevo, sustituirá al anterior.",
     avisoModificacionSeguir: "Continuar modificando este pedido",
-    avisoModificacionNuevo: "Borrar y empezar un pedido nuevo",
     pushRecordatorioTitulo: "📦 Tienes un pedido enviado",
     pushRecordatorioTexto:
       "Todavía no se ha impreso. Si has olvidado algo, puedes seguir añadiendo artículos a tu pedido.",
@@ -185,9 +184,8 @@ const translations = {
     onlyBoxes: "只能按箱订购",
     avisoModificacionTitulo: "您今天已经提交过一个订单",
     avisoModificacionTexto:
-      "您仍可以修改该订单。继续操作将修改您已通过 WhatsApp 发送的订单，再次发送后会替换之前的订单。您也可以选择清空并重新开始一个新订单。",
+      "您仍可以修改该订单。继续操作将修改您已通过 WhatsApp 发送的订单，再次发送后会替换之前的订单。",
     avisoModificacionSeguir: "继续修改此订单",
-    avisoModificacionNuevo: "清空并开始新订单",
     pushRecordatorioTitulo: "📦 您有一个已发送的订单",
     pushRecordatorioTexto: "该订单尚未打印。如果您忘记添加什么，仍可以继续往订单里添加商品。",
     pushRecordatorioAceptar: "确定",
@@ -2635,23 +2633,6 @@ export default function App() {
     setPushRecordatorioModificacion(true);
   }
 
-  async function empezarPedidoNuevoTrasAviso() {
-    const clienteId = clienteIdentificado?.id;
-    limpiarPedidoDespuesEnvio();
-
-    if (!clienteId) return;
-
-    try {
-      const { error } = await supabase
-        .from("pedidos_actuales")
-        .delete()
-        .eq("cliente_id", clienteId);
-      if (error) throw error;
-    } catch (error) {
-      console.error("No se pudo borrar el pedido anterior en Supabase:", error);
-    }
-  }
-
   function normalizarCodigoRuleta(codigo) {
     return String(codigo || "").trim();
   }
@@ -4030,14 +4011,6 @@ export default function App() {
               style={styles.avisoModificacionBotonPrimario}
             >
               {t.avisoModificacionSeguir}
-            </button>
-
-            <button
-              type="button"
-              onClick={empezarPedidoNuevoTrasAviso}
-              style={styles.avisoModificacionBotonSecundario}
-            >
-              {t.avisoModificacionNuevo}
             </button>
           </div>
         </div>
@@ -5920,17 +5893,6 @@ const styles = {
     fontWeight: "800",
     fontSize: "15px",
     marginBottom: "10px",
-  },
-
-  avisoModificacionBotonSecundario: {
-    width: "100%",
-    padding: "13px 16px",
-    borderRadius: "12px",
-    border: "2px solid #dc2626",
-    background: "#fff",
-    color: "#dc2626",
-    fontWeight: "800",
-    fontSize: "15px",
   },
 
 };
