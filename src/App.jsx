@@ -3195,7 +3195,7 @@ export default function App() {
             <h1 style={styles.enlaceInvalidoTitulo}>Este enlace ya no es válido</h1>
             <p style={styles.enlaceInvalidoTexto}>
               Para hacer tu pedido necesitas usar tu enlace personal. Si no lo tienes o no te
-              funciona, contacta con la tienda por WhatsApp y te lo enviamos.
+              funciona, contacta con Cash Lojo por WhatsApp y te lo enviamos.
             </p>
             <a
               href={`https://wa.me/${WHATSAPP_NUMBER}`}
