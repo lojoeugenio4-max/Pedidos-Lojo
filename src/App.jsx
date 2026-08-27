@@ -3021,6 +3021,18 @@ export default function App() {
       return;
     }
 
+    // Si hay un enlace personal en la URL pero todavía estamos
+    // comprobando quién es el cliente (petición a Supabase en curso),
+    // no dejamos enviar todavía: es la causa real de los pedidos que
+    // llegaban "Sin nombre" (el token ya está disponible al instante,
+    // pero el nombre tarda un poco más en llegar).
+    if (cargandoCliente) {
+      alert(
+        "Un momento, todavía estamos comprobando tu enlace personal. Vuelve a pulsar \"Enviar\" en un par de segundos."
+      );
+      return;
+    }
+
     // Snapshot del pedido en el momento exacto del clic.
     // Así podemos limpiar la app sin perder el contenido que irá a WhatsApp.
     const itemsPedido = [...orderedItems];
@@ -3029,7 +3041,27 @@ export default function App() {
     // de que el campo de texto esté vacío (por ejemplo, si se borró sin
     // querer o no se volvió a rellenar tras un pedido anterior). Si el
     // cliente es anónimo (sin enlace), se usa lo que haya escrito.
-    const customerNamePedido = (clienteIdentificado?.nombre || customerName).trim();
+    //
+    // Comprobación extra de seguridad: si hay token pero por lo que sea
+    // "clienteIdentificado" todavía no tiene nombre en memoria (aunque
+    // ya no está cargando), volvemos a preguntarle a Supabase justo
+    // aquí, en el momento del envío, para no depender de ningún efecto
+    // anterior. Así el nombre nunca falta si el cliente SÍ lo tiene
+    // registrado en el ADMIN.
+    let nombreClienteEnvio = clienteIdentificado?.nombre || "";
+    if (clienteToken && !nombreClienteEnvio) {
+      try {
+        const { data } = await supabase
+          .from("clientes")
+          .select("nombre")
+          .eq("token", clienteToken)
+          .maybeSingle();
+        nombreClienteEnvio = data?.nombre || "";
+      } catch (error) {
+        console.error("No se pudo volver a comprobar el nombre del cliente:", error);
+      }
+    }
+    const customerNamePedido = (nombreClienteEnvio || customerName).trim();
     const notesPedido = notes.trim();
     const esModificacion = pedidoEnviadoActivo;
 
