@@ -30,7 +30,7 @@ import {
 import { calcularVentanaPedido, puedeEditarPedido } from "./utils/pedidoEdicion";
 
 const WHATSAPP_NUMBER = "34670716744";
-const ORDER_STORAGE_KEY = "cash-lojo-pedido";
+const ORDER_STORAGE_KEY = "cash-lojo-pedido"; 
 const LANGUAGE_STORAGE_KEY = "cash-lojo-language";
 const APP_INSTALLED_STORAGE_KEY = "cash-lojo-app-instalada";
 const ORDER_STORAGE_VERSION = 3;
