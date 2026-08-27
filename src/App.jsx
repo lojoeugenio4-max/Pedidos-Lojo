@@ -2514,14 +2514,14 @@ export default function App() {
 
   const clearOrder = () => {
     setQuantities({});
-    setCustomerName("");
+    setCustomerName(clienteIdentificado?.nombre || "");
     setNotes("");
     setShowOrderSummary(false);
   };
 
   const resetToInitialState = () => {
     setQuantities({});
-    setCustomerName("");
+    setCustomerName(clienteIdentificado?.nombre || "");
     setCustomerNameFocused(false);
     setSoloCajasAviso(null);
     setNotes("");
@@ -2606,7 +2606,11 @@ export default function App() {
   function limpiarPedidoDespuesEnvio() {
     localStorage.removeItem(ORDER_STORAGE_KEY);
     setQuantities({});
-    setCustomerName("");
+    // Si el cliente está identificado por su enlace personal, dejamos su
+    // nombre puesto para el siguiente pedido (evita que un pedido
+    // posterior en la misma sesión salga "Sin nombre" si el campo se
+    // limpia aquí sin volver a rellenarse).
+    setCustomerName(clienteIdentificado?.nombre || "");
     setCustomerNameFocused(false);
     setSoloCajasAviso(null);
     setNotes("");
@@ -3020,7 +3024,12 @@ export default function App() {
     // Snapshot del pedido en el momento exacto del clic.
     // Así podemos limpiar la app sin perder el contenido que irá a WhatsApp.
     const itemsPedido = [...orderedItems];
-    const customerNamePedido = customerName.trim();
+    // El nombre asociado al enlace personal manda siempre que exista,
+    // para que un pedido nunca llegue "Sin nombre" por el simple hecho
+    // de que el campo de texto esté vacío (por ejemplo, si se borró sin
+    // querer o no se volvió a rellenar tras un pedido anterior). Si el
+    // cliente es anónimo (sin enlace), se usa lo que haya escrito.
+    const customerNamePedido = (clienteIdentificado?.nombre || customerName).trim();
     const notesPedido = notes.trim();
     const esModificacion = pedidoEnviadoActivo;
 
