@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { compararDepartamentosPedido } from "../utils/ordenDepartamentosPedido";
 
 const CORTE_HORA = 14;
 const CORTE_MINUTO = 30;
@@ -878,10 +879,9 @@ export default function Estadisticas() {
         };
       })
       .sort((a, b) => {
-        const porDepartamento = String(a.departamento || "").localeCompare(
-          String(b.departamento || ""),
-          "es",
-          { sensitivity: "base" }
+        const porDepartamento = compararDepartamentosPedido(
+          a.departamento,
+          b.departamento
         );
         if (porDepartamento !== 0) return porDepartamento;
         return String(a.nombre_articulo || "").localeCompare(
