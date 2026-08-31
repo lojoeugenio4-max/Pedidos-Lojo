@@ -28,6 +28,7 @@ import {
   abrirPedidoEnWhatsApp,
 } from "./utils/whatsappPedido";
 import { calcularVentanaPedido, puedeEditarPedido } from "./utils/pedidoEdicion";
+import { compararDepartamentosPedido } from "./utils/ordenDepartamentosPedido";
 
 const WHATSAPP_NUMBER = "34670716744";
 const ORDER_STORAGE_KEY = "cash-lojo-pedido"; 
@@ -2027,11 +2028,17 @@ export default function App() {
         };
       })
       .filter(Boolean)
-      .sort((a, b) =>
-        String(a.product.name).localeCompare(String(b.product.name), "es", {
+      .sort((a, b) => {
+        const porDepartamento = compararDepartamentosPedido(
+          a.product.department || a.product.departamento,
+          b.product.department || b.product.departamento
+        );
+        if (porDepartamento !== 0) return porDepartamento;
+
+        return String(a.product.name).localeCompare(String(b.product.name), "es", {
           sensitivity: "base",
-        })
-      );
+        });
+      });
   }, [quantities, productos]);
 
   const selectedCount = orderedItems.filter(
