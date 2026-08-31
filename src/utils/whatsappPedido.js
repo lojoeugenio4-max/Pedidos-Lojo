@@ -1,3 +1,5 @@
+import { compararDepartamentosPedido } from "./ordenDepartamentosPedido";
+
 function normalizarRespuestaJuego(raw) {
   let value = Array.isArray(raw) ? raw[0] : raw;
   const claves = ["result", "resultado", "data", "bingo_result", "order_result", "entitlement"];
@@ -211,10 +213,9 @@ export function construirTextoPedidoWhatsApp({
       b.product.department || b.product.departamento || "SIN DEPARTAMENTO"
     );
 
-    const compararDepartamento = departamentoA.localeCompare(
-      departamentoB,
-      "es",
-      { sensitivity: "base" }
+    const compararDepartamento = compararDepartamentosPedido(
+      departamentoA,
+      departamentoB
     );
 
     if (compararDepartamento !== 0) return compararDepartamento;
