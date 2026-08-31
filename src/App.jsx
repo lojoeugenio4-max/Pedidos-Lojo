@@ -2927,6 +2927,27 @@ export default function App() {
     const enviadoEnIso = new Date().toISOString();
     const fechaLimiteIso = ventana.fechaLimiteEdicion.toISOString();
 
+    // Guardado SÍNCRONO en localStorage, aquí mismo, sin depender del
+    // useEffect que vigila estos estados. Justo después de esto se
+    // navega a WhatsApp (window.location.assign) y esa navegación puede
+    // llegar antes de que React tenga ocasión de ejecutar el efecto,
+    // sobre todo en móvil, donde abrir WhatsApp saca la página a segundo
+    // plano casi al instante. Si eso pasa, el localStorage se queda con
+    // el pedido como "no enviado" y la siguiente vez se trata como un
+    // pedido nuevo en vez de una modificación (y arrastra también el
+    // Bingo: se registra con un pedidoId distinto y la regla de "1
+    // pedido de Bingo al día" lo bloquea, dando "ya jugado" al escanear
+    // el QR del pedido modificado). Por eso este guardado no puede
+    // depender de un ciclo de render.
+    savePendingOrder({
+      quantities,
+      customerName: customerNamePedido,
+      notes: notesPedido,
+      enviadoEn: enviadoEnIso,
+      fechaLimiteEdicion: fechaLimiteIso,
+      pedidoStatsId,
+    });
+
     setPedidoEnviadoActivo(true);
     setPedidoEnviadoEn(enviadoEnIso);
     setPedidoFechaLimiteEdicion(fechaLimiteIso);
@@ -2959,7 +2980,7 @@ export default function App() {
     }
   }
 
-  function enviarPedidoFinal({
+  async function enviarPedidoFinal({
     itemsPedido,
     customerNamePedido,
     notesPedido,
@@ -2998,7 +3019,13 @@ export default function App() {
     const pedidoIdEstadisticas =
       esModificacion && pedidoStatsIdActual ? pedidoStatsIdActual : pedidoId;
 
-    marcarPedidoComoEnviado({
+    // Esperamos a que termine de marcarse como enviado (localStorage ya
+    // se guarda dentro de forma síncrona, y aquí además esperamos a que
+    // termine —o falle— el intento de guardado en Supabase) ANTES de
+    // navegar a WhatsApp. Si no se espera, la navegación puede cortar la
+    // petición a Supabase a medias y el pedido queda sin marcar como
+    // modificable ni en local ni en remoto.
+    await marcarPedidoComoEnviado({
       ventana,
       customerNamePedido,
       notesPedido,
