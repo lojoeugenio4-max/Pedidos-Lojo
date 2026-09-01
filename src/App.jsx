@@ -35,6 +35,34 @@ const ORDER_STORAGE_KEY = "cash-lojo-pedido";
 const LANGUAGE_STORAGE_KEY = "cash-lojo-language";
 const APP_INSTALLED_STORAGE_KEY = "cash-lojo-app-instalada";
 const ORDER_STORAGE_VERSION = 3;
+// Cuando el cliente elige "Hacer un pedido nuevo" en vez de modificar el
+// pedido ya enviado, guardamos aquí el identificador (pedido_stats_id) de
+// ESE pedido concreto que decidió dejar de lado. Así, si recarga la
+// página antes de enviar el pedido nuevo, no se le vuelve a mostrar el
+// aviso ni se le recarga el pedido anterior desde Supabase: solo se
+// ignora ese pedido en particular, cualquier otro pedido previo distinto
+// sigue avisando con normalidad.
+const PEDIDO_IGNORADO_STORAGE_KEY = "cash-lojo-pedido-ignorado";
+
+function leerPedidoIgnorado() {
+  try {
+    return localStorage.getItem(PEDIDO_IGNORADO_STORAGE_KEY) || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function guardarPedidoIgnorado(pedidoStatsId) {
+  try {
+    if (pedidoStatsId) {
+      localStorage.setItem(PEDIDO_IGNORADO_STORAGE_KEY, pedidoStatsId);
+    } else {
+      localStorage.removeItem(PEDIDO_IGNORADO_STORAGE_KEY);
+    }
+  } catch (error) {
+    console.warn("No se pudo guardar el pedido ignorado:", error);
+  }
+}
 
 function readSavedOrder() {
   try {
@@ -136,8 +164,9 @@ const translations = {
     onlyBoxes: "Solo por cajas",
     avisoModificacionTitulo: "Ya tienes un pedido enviado hoy",
     avisoModificacionTexto:
-      "Todavía estás a tiempo de modificarlo. Al continuar vas a editar el pedido que ya enviaste por WhatsApp; al enviarlo de nuevo, sustituirá al anterior.",
+      "Todavía estás a tiempo de modificarlo. Al continuar vas a editar el pedido que ya enviaste por WhatsApp; al enviarlo de nuevo, sustituirá al anterior. Si lo que quieres es hacer un pedido distinto, puedes empezar uno nuevo en su lugar.",
     avisoModificacionSeguir: "Continuar modificando este pedido",
+    avisoModificacionNuevo: "Hacer un pedido nuevo",
     pushRecordatorioTitulo: "📦 Tienes un pedido enviado",
     pushRecordatorioTexto:
       "Todavía no se ha impreso. Si has olvidado algo, puedes seguir añadiendo artículos a tu pedido.",
@@ -185,8 +214,9 @@ const translations = {
     onlyBoxes: "只能按箱订购",
     avisoModificacionTitulo: "您今天已经提交过一个订单",
     avisoModificacionTexto:
-      "您仍可以修改该订单。继续操作将修改您已通过 WhatsApp 发送的订单，再次发送后会替换之前的订单。",
+      "您仍可以修改该订单。继续操作将修改您已通过 WhatsApp 发送的订单，再次发送后会替换之前的订单。如果您想下一个不同的新订单，也可以选择新建一个订单。",
     avisoModificacionSeguir: "继续修改此订单",
+    avisoModificacionNuevo: "新建一个订单",
     pushRecordatorioTitulo: "📦 您有一个已发送的订单",
     pushRecordatorioTexto: "该订单尚未打印。如果您忘记添加什么，仍可以继续往订单里添加商品。",
     pushRecordatorioAceptar: "确定",
@@ -760,14 +790,25 @@ export default function App() {
 
     async function comprobarPedidoPrevio() {
       const ahora = new Date();
+      // Pedido concreto que el cliente ya descartó explícitamente
+      // (botón "Hacer un pedido nuevo"). Si es el mismo que encontramos
+      // aquí, no se recupera ni se vuelve a avisar de él.
+      const pedidoIgnoradoId = leerPedidoIgnorado();
 
       if (savedOrder.enviadoEn && !puedeEditarPedido(savedOrder.fechaLimiteEdicion, ahora)) {
         limpiarPedidoDespuesEnvio();
         return;
       }
 
+      const savedOrderIgnorado =
+        pedidoIgnoradoId &&
+        (savedOrder.pedidoStatsId === pedidoIgnoradoId ||
+          savedOrder.enviadoEn === pedidoIgnoradoId);
+
       let pedidoPrevio =
-        savedOrder.enviadoEn && puedeEditarPedido(savedOrder.fechaLimiteEdicion, ahora)
+        !savedOrderIgnorado &&
+        savedOrder.enviadoEn &&
+        puedeEditarPedido(savedOrder.fechaLimiteEdicion, ahora)
           ? { enviadoEn: savedOrder.enviadoEn }
           : null;
 
@@ -785,7 +826,17 @@ export default function App() {
           if (error) throw error;
           if (cancelado) return;
 
-          if (data && puedeEditarPedido(data.fecha_limite_edicion, ahora) && !pedidoPrevio) {
+          const dataIgnorada =
+            pedidoIgnoradoId &&
+            (data?.pedido_stats_id === pedidoIgnoradoId ||
+              data?.enviado_en === pedidoIgnoradoId);
+
+          if (
+            data &&
+            !dataIgnorada &&
+            puedeEditarPedido(data.fecha_limite_edicion, ahora) &&
+            !pedidoPrevio
+          ) {
             // No había nada guardado en este navegador: recuperamos el
             // pedido desde Supabase para poder seguir editándolo aquí
             // (por ejemplo, si lo envió desde otro dispositivo).
@@ -2646,6 +2697,23 @@ export default function App() {
     setPushRecordatorioModificacion(true);
   }
 
+  function empezarPedidoNuevoTrasAviso() {
+    // El cliente no quiere modificar el pedido ya enviado, quiere hacer
+    // uno nuevo e independiente. El pedido anterior se queda tal cual se
+    // envió por WhatsApp (no se toca ni se reenvía); aquí solo vaciamos
+    // el carrito en pantalla y desvinculamos el estado de "modificación"
+    // para que, al enviar, cuente como un pedido nuevo de verdad: id
+    // propio y sin las restricciones de "ya jugado hoy" de Bingo/Ruleta
+    // que sí aplican a una modificación del mismo pedido.
+    //
+    // Guardamos también qué pedido concreto ha decidido ignorar (su
+    // pedido_stats_id), para que si recarga la página antes de llegar a
+    // enviar el pedido nuevo, no se le recupere desde Supabase el pedido
+    // que acaba de descartar ni se le vuelva a mostrar el aviso.
+    guardarPedidoIgnorado(pedidoStatsIdActual || pedidoEnviadoEn);
+    limpiarPedidoDespuesEnvio();
+  }
+
   function normalizarCodigoRuleta(codigo) {
     return String(codigo || "").trim();
   }
@@ -2926,6 +2994,12 @@ export default function App() {
     notesPedido,
     pedidoStatsId,
   }) {
+    // Cualquier pedido que se envía a partir de aquí es el pedido
+    // "actual" del cliente (sustituye al registro de pedidos_actuales),
+    // así que ya no hace falta seguir protegiendo del aviso a ningún
+    // pedido anterior que hubiera descartado antes.
+    guardarPedidoIgnorado(null);
+
     if (!ventana.editable) {
       limpiarPedidoDespuesEnvio();
       return;
@@ -4119,6 +4193,14 @@ export default function App() {
               style={styles.avisoModificacionBotonPrimario}
             >
               {t.avisoModificacionSeguir}
+            </button>
+
+            <button
+              type="button"
+              onClick={empezarPedidoNuevoTrasAviso}
+              style={styles.avisoModificacionBotonSecundario}
+            >
+              {t.avisoModificacionNuevo}
             </button>
           </div>
         </div>
@@ -6051,6 +6133,17 @@ const styles = {
     fontWeight: "800",
     fontSize: "15px",
     marginBottom: "10px",
+  },
+
+  avisoModificacionBotonSecundario: {
+    width: "100%",
+    padding: "13px 16px",
+    borderRadius: "12px",
+    border: "1px solid #cbd5e1",
+    background: "#fff",
+    color: "#334155",
+    fontWeight: "800",
+    fontSize: "15px",
   },
 
 };
