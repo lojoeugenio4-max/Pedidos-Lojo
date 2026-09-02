@@ -4002,6 +4002,16 @@ export default function App() {
         const estadoBingo = obtenerEstadoArticuloBingo(fichaProducto, fichaQuantity);
         const rouletteOk = Boolean(estadoRuleta?.completo);
         const bingoOk = Boolean(estadoBingo?.completo);
+        // Reservamos hueco fijo para estos avisos SIEMPRE que el artículo
+        // participe en Ruleta o Bingo, aunque de momento no haya ningún
+        // mensaje que mostrar (cantidad a 0 todavía). Así, cuando el
+        // cliente mete cantidad y aparece o cambia el aviso, el hueco ya
+        // estaba reservado de antes y ni la foto ni el resto de la ficha
+        // se desplazan.
+        const tienePromoRuletaOBingo = Boolean(
+          fichaProducto.participaRuleta ||
+            (fichaProducto.participaBingo && clienteIdentificado)
+        );
 
         const campoActivoCajas = campoCantidadActivo === `${fichaProducto.id}:boxes`;
         const campoActivoUnidades = campoCantidadActivo === `${fichaProducto.id}:units`;
@@ -4228,33 +4238,32 @@ export default function App() {
                 </div>
                 </div>
 
-                {(estadoRuleta || estadoBingo || (!fichaProducto.permite_unidades && soloCajasAviso === fichaProducto.id)) && (
-                <div style={{ marginTop: "14px" }}>
-                {(estadoRuleta || estadoBingo) && (
-                  rouletteOk && bingoOk ? (
-                    <div style={styles.ruletaProductStatusOk}>
-                      ✓ Este artículo ya cuenta para Ruleta y Bingo
-                    </div>
-                  ) : (
-                    <>
-                      {estadoRuleta && (
-                        <div style={rouletteOk ? styles.ruletaProductStatusOk : styles.ruletaProductStatusPending}>
-                          {estadoRuleta.texto}
+                {tienePromoRuletaOBingo && (
+                  <div style={styles.fichaPromoStatusWrap}>
+                    {(estadoRuleta || estadoBingo) &&
+                      (rouletteOk && bingoOk ? (
+                        <div style={styles.ruletaProductStatusOk}>
+                          ✓ Este artículo ya cuenta para Ruleta y Bingo
                         </div>
-                      )}
-                      {estadoBingo && (
-                        <div style={bingoOk ? styles.ruletaProductStatusOk : styles.ruletaProductStatusPending}>
-                          {estadoBingo.texto}
-                        </div>
-                      )}
-                    </>
-                  )
+                      ) : (
+                        <>
+                          {estadoRuleta && (
+                            <div style={rouletteOk ? styles.ruletaProductStatusOk : styles.ruletaProductStatusPending}>
+                              {estadoRuleta.texto}
+                            </div>
+                          )}
+                          {estadoBingo && (
+                            <div style={bingoOk ? styles.ruletaProductStatusOk : styles.ruletaProductStatusPending}>
+                              {estadoBingo.texto}
+                            </div>
+                          )}
+                        </>
+                      ))}
+                  </div>
                 )}
 
                 {!fichaProducto.permite_unidades && soloCajasAviso === fichaProducto.id && (
                   <div style={styles.onlyBoxesMessage}>{t.onlyBoxes}</div>
-                )}
-                </div>
                 )}
               </div>
 
@@ -5342,6 +5351,17 @@ const styles = {
     border: "1px solid #e5e7eb",
     borderRadius: "14px",
     padding: "12px",
+    boxSizing: "border-box",
+  },
+
+  // Hueco fijo para los avisos de Ruleta/Bingo dentro de la ficha. Igual
+  // aparezcan 0, 1 o 2 líneas de aviso (o cambien de rojo "pendiente" a
+  // verde "completo", que ocupa menos), este contenedor no cambia de
+  // altura: así ni la foto ni el resto de la ficha se desplazan al
+  // meter o cambiar la cantidad.
+  fichaPromoStatusWrap: {
+    marginTop: "14px",
+    minHeight: "94px",
     boxSizing: "border-box",
   },
 
