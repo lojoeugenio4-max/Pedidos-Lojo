@@ -4039,6 +4039,52 @@ export default function App() {
                 ) : (
                   <span style={styles.noPhoto}>{t.noPhoto}</span>
                 )}
+                {clienteIdentificado && (
+                  <button
+                    type="button"
+                    onClick={() => alternarFavorito(fichaProducto.id)}
+                    style={{
+                      ...styles.fichaFavoriteButton,
+                      ...(favoritos.has(String(fichaProducto.id))
+                        ? styles.fichaFavoriteButtonActive
+                        : {}),
+                    }}
+                    aria-label={
+                      favoritos.has(String(fichaProducto.id))
+                        ? "Quitar de favoritos"
+                        : "Añadir a favoritos"
+                    }
+                    title={
+                      favoritos.has(String(fichaProducto.id))
+                        ? "Quitar de favoritos"
+                        : "Añadir a favoritos"
+                    }
+                  >
+                    <Star
+                      size={16}
+                      fill={
+                        favoritos.has(String(fichaProducto.id))
+                          ? "currentColor"
+                          : "none"
+                      }
+                    />
+                    <span style={styles.fichaFavoriteButtonText}>
+                      {favoritos.has(String(fichaProducto.id)) ? (
+                        <>
+                          Quitar de
+                          <br />
+                          Mis Favoritos
+                        </>
+                      ) : (
+                        <>
+                          Añadir a
+                          <br />
+                          Mis Favoritos
+                        </>
+                      )}
+                    </span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setFichaProductoId(null)}
@@ -5304,6 +5350,37 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     cursor: "pointer",
+  },
+
+  fichaFavoriteButton: {
+    position: "absolute",
+    top: "12px",
+    left: "12px",
+    width: "62px",
+    padding: "6px 4px",
+    borderRadius: "12px",
+    border: "none",
+    background: "rgba(15,23,42,0.55)",
+    color: "#fff",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "3px",
+    cursor: "pointer",
+    boxSizing: "border-box",
+  },
+
+  fichaFavoriteButtonText: {
+    fontSize: "10px",
+    fontWeight: "800",
+    lineHeight: "1.2",
+    textAlign: "center",
+  },
+
+  fichaFavoriteButtonActive: {
+    background: "#fffbeb",
+    color: "#f59e0b",
   },
 
   fichaBody: {
