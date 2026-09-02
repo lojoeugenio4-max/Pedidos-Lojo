@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { flushSync } from "react-dom";
+import { flushSync, createPortal } from "react-dom";
 import {
   ShoppingCart,
   Trash2,
@@ -13,6 +13,8 @@ import {
   Download,
   Share,
   ArrowUp,
+  Plus,
+  Minus,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { supabaseStorage } from "./supabaseStorageClient";
@@ -138,7 +140,7 @@ const translations = {
     noPhoto: "Sin foto",
     boxes: "Cajas",
     boxesLower: "cajas",
-    units: "Unid.",
+    units: "Unidades Sueltas",
     unitsLower: "unidades",
     notes: "Observaciones",
     summary: "Resumen",
@@ -188,7 +190,7 @@ const translations = {
     noPhoto: "无图片",
     boxes: "箱",
     boxesLower: "箱",
-    units: "件",
+    units: "散件",
     unitsLower: "件",
     notes: "备注",
     summary: "订单摘要",
@@ -582,6 +584,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("TODOS");
   const [articuloDestacado, setArticuloDestacado] = useState(null);
+  const [fichaProductoId, setFichaProductoId] = useState(null);
   const [campoCantidadActivo, setCampoCantidadActivo] = useState(null);
   const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
   const [showOrderSummary, setShowOrderSummary] = useState(false);
@@ -1359,24 +1362,15 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (
-        departmentDropdownRef.current &&
-        !departmentDropdownRef.current.contains(event.target)
-      ) {
-        setDepartmentDropdownOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("touchstart", handleClickOutside);
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("touchstart", handleClickOutside);
-    };
-  }, []);
+  // El cierre al tocar fuera del desplegable de Departamentos ya lo
+  // gestiona el propio overlay (backdrop con onClick + panel con
+  // stopPropagation), así que este listener global ya no hace falta
+  // para eso. Se quitó porque, al pasar el menú a un portal (fuera del
+  // DOM de departmentDropdownRef), CUALQUIER toque dentro del propio
+  // menú —incluido el gesto de hacer scroll— hacía que
+  // departmentDropdownRef.current.contains(event.target) diera false, y
+  // el desplegable se cerraba en el instante de tocarlo, antes de poder
+  // desplazar la lista.
 
   useEffect(() => {
     async function cargarCatalogo() {
@@ -2435,6 +2429,17 @@ export default function App() {
         },
       };
     });
+  };
+
+  // Botones +/- del catálogo (estilo Yollgo). No es una vía nueva de
+  // negocio: simplemente calcula el siguiente número y se lo pasa a
+  // updateQuantity de toda la vida, así que hereda gratis la exclusividad
+  // cajas/unidades y el aviso de "solo cajas" que ya tenía updateQuantity.
+  const stepQuantity = (productId, field, delta) => {
+    const current = quantities[productId] || {};
+    const currentValue = Number(current[field] || 0) || 0;
+    const nextValue = Math.max(0, currentValue + delta);
+    updateQuantity(productId, field, String(nextValue));
   };
 
   const updateNotes = (productId, value) => {
@@ -3733,28 +3738,50 @@ export default function App() {
               <ChevronDown size={17} />
             </button>
 
-            {departmentDropdownOpen && (
-              <div style={styles.departmentMenu}>
-                {departmentOptions.map((option) => (
-                  <button
-                    key={option.name}
-                    type="button"
-                    onClick={() => {
-                      setSelectedDepartment(option.name);
-                      setDepartmentDropdownOpen(false);
-                    }}
-                    style={{
-                      ...styles.departmentOption,
-                      ...(["RULETA", "BINGO"].includes(option.name)
-                        ? styles.departmentOptionPromo
-                        : {}),
-                    }}
-                  >
-                    <span>{option.label}</span>
-                    <span style={styles.departmentCount}>{option.count}</span>
-                  </button>
-                ))}
-              </div>
+            {departmentDropdownOpen && createPortal(
+              <div
+                style={styles.departmentMenuOverlay}
+                onClick={() => setDepartmentDropdownOpen(false)}
+              >
+                <div
+                  style={styles.departmentMenuSheet}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div style={styles.departmentMenuSheetHeader}>
+                    <strong>{t.department}</strong>
+                    <button
+                      type="button"
+                      onClick={() => setDepartmentDropdownOpen(false)}
+                      style={styles.departmentMenuCloseButton}
+                      aria-label="Cerrar"
+                    >
+                      <X size={16} strokeWidth={3} />
+                    </button>
+                  </div>
+                  <div style={styles.departmentMenuSheetList}>
+                    {departmentOptions.map((option) => (
+                      <button
+                        key={option.name}
+                        type="button"
+                        onClick={() => {
+                          setSelectedDepartment(option.name);
+                          setDepartmentDropdownOpen(false);
+                        }}
+                        style={{
+                          ...styles.departmentOption,
+                          ...(["RULETA", "BINGO"].includes(option.name)
+                            ? styles.departmentOptionPromo
+                            : {}),
+                        }}
+                      >
+                        <span>{option.label}</span>
+                        <span style={styles.departmentCount}>{option.count}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>,
+              document.body
             )}
           </div>
 
@@ -3832,7 +3859,8 @@ export default function App() {
               {department.products.length === 0 ? (
                 <div style={styles.emptyBox}>{t.noItems}</div>
               ) : (
-                department.products.map((product) => {
+                <div style={styles.productsGrid}>
+                {department.products.map((product) => {
                   const quantity = quantities[product.id] || {};
 
                   return (
@@ -3841,9 +3869,6 @@ export default function App() {
                       ref={(element) => {
                         rowRefs.current[product.id] = element;
                       }}
-                      onClick={(event) =>
-                        manejarToqueTarjetaArticulo(event, product.id)
-                      }
                       style={{
                         ...styles.productCard,
                         ...(articuloDestacado === product.id
@@ -3851,20 +3876,26 @@ export default function App() {
                           : {}),
                       }}
                     >
-                      <div style={styles.photoBox}>
+                      <div
+                        style={styles.photoBox}
+                        onClick={() => setFichaProductoId(product.id)}
+                      >
                         {product.image ? (
                           <img
                             src={product.image}
                             alt=""
                             style={styles.productImage}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setSelectedImage(product.image);
-                            }}
                           />
                         ) : (
                           <span style={styles.noPhoto}>{t.noPhoto}</span>
+                        )}
+
+                        {(Number(quantity.boxes) > 0 || Number(quantity.units) > 0) && (
+                          <span style={styles.quantityBadge}>
+                            {Number(quantity.boxes) > 0
+                              ? `${quantity.boxes} ${t.boxes}`
+                              : `${quantity.units} ${t.units}`}
+                          </span>
                         )}
                       </div>
 
@@ -3936,217 +3967,310 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div style={styles.quantityGrid}>
-                          <label style={styles.quantityLabel}>
-                            {t.boxes}
-                            <input
-                              type="number"
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              enterKeyHint="done"
-                              min="0"
-                              step="1"
-                              autoComplete="off"
-                              ref={(element) => {
-                                cajasInputRefs.current[product.id] = element;
-                              }}
-                              value={quantity.boxes || ""}
-                              // Tocar Cajas/Unid. DIRECTAMENTE ya no dispara
-                              // posicionarYFijarArticulo (scroll + colapso de
-                              // cabecera): ese camino seguía dando problemas
-                              // de vez en cuando pese a los ajustes previos.
-                              // Ahora ese posicionamiento solo se hace al
-                              // tocar el resto de la tarjeta (que ya redirige
-                              // aquí y funciona de forma fiable); tocando
-                              // este recuadro directamente basta con el
-                              // enfoque nativo del navegador — es lo que ya
-                              // funcionaba sin fallos para corregir
-                              // cantidades existentes.
-                              onFocus={() => activarCampoCantidad(product.id, "boxes")}
-                              onKeyDown={(event) => manejarEnterCantidad(event, product.id)}
-                              onBlur={() => {
-                                setCampoCantidadActivo(null);
-                              }}
-                              onChange={(event) =>
-                                updateQuantity(
-                                  product.id,
-                                  "boxes",
-                                  event.target.value.replace(/[^0-9]/g, "")
-                                )
-                              }
-                              style={{
-                                ...styles.quantityInput,
-                                ...(campoCantidadActivo === `${product.id}:boxes`
-                                  ? styles.quantityInputActive
-                                  : {}),
-                              }}
-                            />
-                          </label>
-
-                          <label style={styles.quantityLabel}>
-                            {t.units}
-                            <input
-                              type="number"
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              enterKeyHint="done"
-                              min="0"
-                              step="1"
-                              autoComplete="off"
-                              readOnly={!product.permite_unidades}
-                              value={product.permite_unidades ? quantity.units || "" : ""}
-                              placeholder={product.permite_unidades ? "" : "—"}
-                              // Mismo motivo que en el input de Cajas: tocar
-                              // Unid. directamente ya no dispara scroll ni
-                              // colapso de cabecera, solo el enfoque nativo.
-                              onFocus={() => {
-                                activarCampoCantidad(product.id, "units");
-                                if (!product.permite_unidades) {
-                                  avisarSoloCajas(product.id);
-                                }
-                              }}
-                              onClick={() => {
-                                if (!product.permite_unidades) {
-                                  avisarSoloCajas(product.id);
-                                }
-                              }}
-                              onKeyDown={(event) => manejarEnterCantidad(event, product.id)}
-                              onBlur={() => {
-                                setCampoCantidadActivo(null);
-                              }}
-                              onChange={(event) =>
-                                updateQuantity(
-                                  product.id,
-                                  "units",
-                                  event.target.value.replace(/[^0-9]/g, "")
-                                )
-                              }
-                              style={{
-                                ...(product.permite_unidades
-                                  ? styles.quantityInput
-                                  : styles.quantityInputBlocked),
-                                ...(product.permite_unidades &&
-                                campoCantidadActivo === `${product.id}:units`
-                                  ? styles.quantityInputActive
-                                  : {}),
-                              }}
-                            />
-                          </label>
-
-                          {(() => {
-                            const campoActivoCajas =
-                              campoCantidadActivo === `${product.id}:boxes`;
-                            const campoActivoUnidades =
-                              campoCantidadActivo === `${product.id}:units`;
-                            const cantidadEscrita = campoActivoCajas
-                              ? quantity.boxes
-                              : campoActivoUnidades
-                                ? quantity.units
-                                : "";
-
-                            if (
-                              !campoActivoCajas &&
-                              !campoActivoUnidades
-                            ) {
-                              return null;
-                            }
-
-                            if (cantidadEscrita === "" || cantidadEscrita == null) {
-                              return null;
-                            }
-
-                            return (
-                              <button
-                                type="button"
-                                style={styles.acceptQuantityButton}
-                                onPointerDown={(event) => {
-                                  // Evita que el botón pierda el foco antes de ejecutar
-                                  // el clic. Así no desaparece prematuramente en iPhone.
-                                  event.preventDefault();
-                                }}
-                                onClick={(event) =>
-                                  aceptarCantidad(
-                                    product.id,
-                                    event.currentTarget.closest("article")
-                                  )
-                                }
-                                aria-label="Aceptar cantidad"
-                              >
-                                <Check size={15} strokeWidth={3} />
-                                <span>Aceptar cantidad</span>
-                              </button>
-                            );
-                          })()}
-
-                        </div>
-
-                        {(() => {
-                          const estadoRuleta = product.participaRuleta
-                            ? obtenerEstadoArticuloRuleta(product, quantity)
-                            : null;
-                          const estadoBingo = obtenerEstadoArticuloBingo(product, quantity);
-
-                          if (!estadoRuleta && !estadoBingo) return null;
-
-                          const rouletteOk = Boolean(estadoRuleta?.completo);
-                          const bingoOk = Boolean(estadoBingo?.completo);
-
-                          // Si ambas promos ya están completas, un único
-                          // mensaje combinado (igual que antes).
-                          if (rouletteOk && bingoOk) {
-                            return (
-                              <div style={styles.ruletaProductStatusOk}>
-                                ✓ Este artículo ya cuenta para Ruleta y Bingo
-                              </div>
-                            );
+                        <button
+                          type="button"
+                          onClick={() => setFichaProductoId(product.id)}
+                          style={
+                            Number(quantity.boxes) > 0 || Number(quantity.units) > 0
+                              ? styles.addButtonActive
+                              : styles.addButton
                           }
-
-                          // En cualquier otro caso, una línea por cada promo
-                          // en la que participa el artículo: si ya cuenta,
-                          // la confirmación en verde; si no, cuánto falta.
-                          return (
-                            <>
-                              {estadoRuleta && (
-                                <div
-                                  style={
-                                    rouletteOk
-                                      ? styles.ruletaProductStatusOk
-                                      : styles.ruletaProductStatusPending
-                                  }
-                                >
-                                  {estadoRuleta.texto}
-                                </div>
-                              )}
-                              {estadoBingo && (
-                                <div
-                                  style={
-                                    bingoOk
-                                      ? styles.ruletaProductStatusOk
-                                      : styles.ruletaProductStatusPending
-                                  }
-                                >
-                                  {estadoBingo.texto}
-                                </div>
-                              )}
-                            </>
-                          );
-                        })()}
-
-                        {!product.permite_unidades && soloCajasAviso === product.id && (
-                          <div style={styles.onlyBoxesMessage}>
-                            {t.onlyBoxes}
-                          </div>
-                        )}
-
-
+                        >
+                          {Number(quantity.boxes) > 0 || Number(quantity.units) > 0
+                            ? "Editar cantidad"
+                            : "Añadir"}
+                        </button>
                       </div>
                     </article>
                   );
-                })
+                })}
+                </div>
               )}
             </section>
           ))}
       </main>
+
+      {(() => {
+        if (!fichaProductoId) return null;
+        const fichaProducto = productos.find((item) => item.id === fichaProductoId);
+        if (!fichaProducto) return null;
+        const fichaQuantity = quantities[fichaProductoId] || {};
+
+        const estadoRuleta = fichaProducto.participaRuleta
+          ? obtenerEstadoArticuloRuleta(fichaProducto, fichaQuantity)
+          : null;
+        const estadoBingo = obtenerEstadoArticuloBingo(fichaProducto, fichaQuantity);
+        const rouletteOk = Boolean(estadoRuleta?.completo);
+        const bingoOk = Boolean(estadoBingo?.completo);
+
+        const campoActivoCajas = campoCantidadActivo === `${fichaProducto.id}:boxes`;
+        const campoActivoUnidades = campoCantidadActivo === `${fichaProducto.id}:units`;
+        const cantidadEscrita = campoActivoCajas
+          ? fichaQuantity.boxes
+          : campoActivoUnidades
+            ? fichaQuantity.units
+            : "";
+        const mostrarAceptarCantidad =
+          (campoActivoCajas || campoActivoUnidades) &&
+          cantidadEscrita !== "" &&
+          cantidadEscrita != null;
+
+        return (
+          <div style={styles.fichaOverlay} onClick={() => setFichaProductoId(null)}>
+            <div style={styles.fichaPanel} onClick={(event) => event.stopPropagation()}>
+              <div style={styles.fichaPhotoBox}>
+                {fichaProducto.image ? (
+                  <img
+                    src={fichaProducto.image}
+                    alt=""
+                    style={styles.productImage}
+                    onClick={() => setSelectedImage(fichaProducto.image)}
+                  />
+                ) : (
+                  <span style={styles.noPhoto}>{t.noPhoto}</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setFichaProductoId(null)}
+                  style={styles.fichaCloseButton}
+                  aria-label="Cerrar"
+                >
+                  <X size={16} strokeWidth={3} />
+                </button>
+              </div>
+
+              <div style={styles.fichaBody}>
+                {fichaProducto.codigo && (
+                  <p style={styles.fichaProductCode}>{fichaProducto.codigo}</p>
+                )}
+                <h3 style={styles.fichaProductName}>{fichaProducto.name}</h3>
+
+                <div style={styles.badges}>
+                  {fichaProducto.novedad && (
+                    <span style={styles.newsBadge}>⭐ {t.news}</span>
+                  )}
+                  {fichaProducto.offerText && (
+                    <span style={styles.offerBadge}>🏷️ {fichaProducto.offerText}</span>
+                  )}
+                </div>
+
+                {(fichaProducto.participaRuleta ||
+                  (fichaProducto.participaBingo && clienteIdentificado)) && (
+                  <div style={styles.fichaPromoBadgeWrap}>
+                    <MiniPromocionesBadge
+                      participaRuleta={fichaProducto.participaRuleta}
+                      cantidadMinimaRuleta={fichaProducto.cantidadMinimaRuleta}
+                      permiteUnidadesRuleta={fichaProducto.permite_unidades}
+                      participaBingo={fichaProducto.participaBingo}
+                      cantidadMinimaBingo={fichaProducto.cantidadMinimaBingo}
+                      permiteUnidadesBingo={fichaProducto.permite_unidades}
+                      mostrarBingo={Boolean(clienteIdentificado)}
+                    />
+                  </div>
+                )}
+
+                <p style={styles.fichaSectionLabel}>Cantidad</p>
+                <div style={styles.fichaQuantityCard}>
+                <div style={styles.quantityGrid}>
+                  <div style={styles.quantityRow}>
+                    <span style={styles.quantityLabel}>{t.boxes}</span>
+                    <div style={styles.stepperControl}>
+                      <button
+                        type="button"
+                        onClick={() => stepQuantity(fichaProducto.id, "boxes", -1)}
+                        style={styles.stepperButtonMinus}
+                        aria-label="Restar caja"
+                      >
+                        <Minus size={18} strokeWidth={3} />
+                      </button>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        enterKeyHint="done"
+                        min="0"
+                        step="1"
+                        autoComplete="off"
+                        ref={(element) => {
+                          cajasInputRefs.current[fichaProducto.id] = element;
+                        }}
+                        value={fichaQuantity.boxes || ""}
+                        onFocus={() => activarCampoCantidad(fichaProducto.id, "boxes")}
+                        onKeyDown={(event) => manejarEnterCantidad(event, fichaProducto.id)}
+                        onBlur={() => setCampoCantidadActivo(null)}
+                        onChange={(event) =>
+                          updateQuantity(
+                            fichaProducto.id,
+                            "boxes",
+                            event.target.value.replace(/[^0-9]/g, "")
+                          )
+                        }
+                        style={{
+                          ...styles.quantityInputFicha,
+                          ...(campoActivoCajas ? styles.quantityInputActive : {}),
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => stepQuantity(fichaProducto.id, "boxes", 1)}
+                        style={styles.stepperButtonPlus}
+                        aria-label="Sumar caja"
+                      >
+                        <Plus size={18} strokeWidth={3} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={styles.quantityRow}>
+                    <span style={styles.quantityLabel}>
+                      {t.units.includes(" ") ? (
+                        <>
+                          {t.units.split(" ")[0]}
+                          <br />
+                          {t.units.split(" ").slice(1).join(" ")}
+                        </>
+                      ) : (
+                        t.units
+                      )}
+                    </span>
+                    <div style={styles.stepperControl}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!fichaProducto.permite_unidades) {
+                            avisarSoloCajas(fichaProducto.id);
+                            return;
+                          }
+                          stepQuantity(fichaProducto.id, "units", -1);
+                        }}
+                        style={
+                          fichaProducto.permite_unidades
+                            ? styles.stepperButtonMinus
+                            : styles.stepperButtonDisabled
+                        }
+                        aria-label="Restar unidad"
+                      >
+                        <Minus size={18} strokeWidth={3} />
+                      </button>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        enterKeyHint="done"
+                        min="0"
+                        step="1"
+                        autoComplete="off"
+                        readOnly={!fichaProducto.permite_unidades}
+                        value={fichaProducto.permite_unidades ? fichaQuantity.units || "" : ""}
+                        placeholder={fichaProducto.permite_unidades ? "" : "—"}
+                        onFocus={() => {
+                          activarCampoCantidad(fichaProducto.id, "units");
+                          if (!fichaProducto.permite_unidades) {
+                            avisarSoloCajas(fichaProducto.id);
+                          }
+                        }}
+                        onClick={() => {
+                          if (!fichaProducto.permite_unidades) {
+                            avisarSoloCajas(fichaProducto.id);
+                          }
+                        }}
+                        onKeyDown={(event) => manejarEnterCantidad(event, fichaProducto.id)}
+                        onBlur={() => setCampoCantidadActivo(null)}
+                        onChange={(event) =>
+                          updateQuantity(
+                            fichaProducto.id,
+                            "units",
+                            event.target.value.replace(/[^0-9]/g, "")
+                          )
+                        }
+                        style={{
+                          ...(fichaProducto.permite_unidades
+                            ? styles.quantityInputFicha
+                            : styles.quantityInputBlockedFicha),
+                          ...(fichaProducto.permite_unidades && campoActivoUnidades
+                            ? styles.quantityInputActive
+                            : {}),
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!fichaProducto.permite_unidades) {
+                            avisarSoloCajas(fichaProducto.id);
+                            return;
+                          }
+                          stepQuantity(fichaProducto.id, "units", 1);
+                        }}
+                        style={
+                          fichaProducto.permite_unidades
+                            ? styles.stepperButtonPlus
+                            : styles.stepperButtonDisabled
+                        }
+                        aria-label="Sumar unidad"
+                      >
+                        <Plus size={18} strokeWidth={3} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {mostrarAceptarCantidad && (
+                    <button
+                      type="button"
+                      style={styles.acceptQuantityButton}
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={() => aceptarCantidad(fichaProducto.id)}
+                      aria-label="Aceptar cantidad"
+                    >
+                      <Check size={15} strokeWidth={3} />
+                      <span>Aceptar cantidad</span>
+                    </button>
+                  )}
+                </div>
+                </div>
+
+                {(estadoRuleta || estadoBingo || (!fichaProducto.permite_unidades && soloCajasAviso === fichaProducto.id)) && (
+                <div style={{ marginTop: "14px" }}>
+                {(estadoRuleta || estadoBingo) && (
+                  rouletteOk && bingoOk ? (
+                    <div style={styles.ruletaProductStatusOk}>
+                      ✓ Este artículo ya cuenta para Ruleta y Bingo
+                    </div>
+                  ) : (
+                    <>
+                      {estadoRuleta && (
+                        <div style={rouletteOk ? styles.ruletaProductStatusOk : styles.ruletaProductStatusPending}>
+                          {estadoRuleta.texto}
+                        </div>
+                      )}
+                      {estadoBingo && (
+                        <div style={bingoOk ? styles.ruletaProductStatusOk : styles.ruletaProductStatusPending}>
+                          {estadoBingo.texto}
+                        </div>
+                      )}
+                    </>
+                  )
+                )}
+
+                {!fichaProducto.permite_unidades && soloCajasAviso === fichaProducto.id && (
+                  <div style={styles.onlyBoxesMessage}>{t.onlyBoxes}</div>
+                )}
+                </div>
+                )}
+              </div>
+
+              <div style={styles.fichaFooter}>
+                <button
+                  type="button"
+                  onClick={() => setFichaProductoId(null)}
+                  style={styles.fichaListoButton}
+                >
+                  Listo
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <button
         type="button"
@@ -4938,6 +5062,64 @@ const styles = {
     WebkitOverflowScrolling: "touch",
   },
 
+  departmentMenuOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(15,23,42,0.55)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "28px 14px",
+    boxSizing: "border-box",
+    zIndex: 300,
+  },
+
+  departmentMenuSheet: {
+    width: "100%",
+    maxWidth: "480px",
+    maxHeight: "100%",
+    background: "#fff",
+    borderRadius: "20px",
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+  },
+
+  departmentMenuSheetHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "16px 16px 12px",
+    borderBottom: "1px solid #e5e7eb",
+    fontSize: "16px",
+    fontWeight: "800",
+    color: "#111827",
+    flex: "0 0 auto",
+  },
+
+  departmentMenuCloseButton: {
+    width: "30px",
+    height: "30px",
+    borderRadius: "999px",
+    border: "none",
+    background: "#f1f5f9",
+    color: "#111827",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  },
+
+  departmentMenuSheetList: {
+    flex: "1 1 auto",
+    minHeight: 0,
+    overflowY: "auto",
+    WebkitOverflowScrolling: "touch",
+    overscrollBehavior: "contain",
+    padding: "4px 0 calc(4px + env(safe-area-inset-bottom))",
+  },
+
   departmentOption: {
     width: "100%",
     border: "none",
@@ -5015,16 +5197,231 @@ const styles = {
     fontWeight: "800",
   },
 
+  productsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "8px",
+  },
+
+  quantityBadge: {
+    position: "absolute",
+    top: "6px",
+    right: "6px",
+    background: "#22c55e",
+    color: "#fff",
+    fontSize: "11px",
+    fontWeight: "800",
+    padding: "2px 7px",
+    borderRadius: "999px",
+    lineHeight: "1.3",
+  },
+
+  addButton: {
+    width: "100%",
+    marginTop: "auto",
+    padding: "7px",
+    border: "none",
+    borderRadius: "8px",
+    background: "#111827",
+    color: "#fff",
+    fontSize: "12px",
+    fontWeight: "800",
+    cursor: "pointer",
+    touchAction: "manipulation",
+    WebkitTapHighlightColor: "transparent",
+  },
+
+  addButtonActive: {
+    width: "100%",
+    marginTop: "auto",
+    padding: "7px",
+    border: "1px solid #22c55e",
+    borderRadius: "8px",
+    background: "#dcfce7",
+    color: "#15803d",
+    fontSize: "12px",
+    fontWeight: "800",
+    cursor: "pointer",
+    touchAction: "manipulation",
+    WebkitTapHighlightColor: "transparent",
+  },
+
+  fichaOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(15,23,42,0.55)",
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "center",
+    zIndex: 60,
+  },
+
+  fichaPanel: {
+    width: "100%",
+    maxWidth: "480px",
+    maxHeight: "96dvh",
+    overflow: "hidden",
+    background: "#fff",
+    borderTopLeftRadius: "20px",
+    borderTopRightRadius: "20px",
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+  },
+
+  fichaPhotoBox: {
+    position: "relative",
+    width: "100%",
+    height: "min(26dvh, 200px)",
+    flex: "0 0 auto",
+    background: "#dc2626",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+
+  fichaCloseButton: {
+    position: "absolute",
+    top: "12px",
+    right: "12px",
+    width: "34px",
+    height: "34px",
+    borderRadius: "999px",
+    border: "none",
+    background: "rgba(15,23,42,0.55)",
+    color: "#fff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  },
+
+  fichaBody: {
+    padding: "14px 16px 0",
+    boxSizing: "border-box",
+    overflow: "hidden",
+    flex: "1 1 auto",
+    minHeight: 0,
+  },
+
+  fichaProductCode: {
+    fontSize: "12px",
+    fontWeight: "700",
+    color: "#9ca3af",
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    margin: "0 0 2px",
+  },
+
+  fichaProductName: {
+    fontSize: "18px",
+    fontWeight: "800",
+    color: "#111827",
+    lineHeight: "1.25",
+    margin: "0 0 6px",
+  },
+
+  fichaPromoBadgeWrap: {
+    display: "flex",
+    justifyContent: "flex-start",
+    margin: "2px 0 10px",
+  },
+
+  fichaSectionLabel: {
+    fontSize: "12px",
+    fontWeight: "800",
+    color: "#6b7280",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    margin: "0 0 6px",
+  },
+
+  fichaQuantityCard: {
+    background: "#f8fafc",
+    border: "1px solid #e5e7eb",
+    borderRadius: "14px",
+    padding: "12px",
+    boxSizing: "border-box",
+  },
+
+  fichaFooter: {
+    flex: "0 0 auto",
+    background: "#fff",
+    borderTop: "1px solid #e5e7eb",
+    padding: "10px 16px calc(10px + env(safe-area-inset-bottom))",
+    marginTop: "10px",
+    boxSizing: "border-box",
+  },
+
+  fichaListoButton: {
+    width: "100%",
+    padding: "13px",
+    border: "none",
+    borderRadius: "12px",
+    background: "#22c55e",
+    color: "#fff",
+    fontSize: "15px",
+    fontWeight: "900",
+    cursor: "pointer",
+  },
+
+  quantityInputFicha: {
+    width: "56px",
+    minWidth: "56px",
+    maxWidth: "56px",
+    boxSizing: "border-box",
+    border: "none",
+    borderLeft: "1px solid #d1d5db",
+    borderRight: "1px solid #d1d5db",
+    borderRadius: "0",
+    padding: "1px 2px",
+    fontSize: "19px",
+    fontWeight: "800",
+    lineHeight: "26px",
+    height: "38px",
+    minHeight: "38px",
+    maxHeight: "38px",
+    textAlign: "center",
+    outline: "none",
+    background: "#fff",
+    appearance: "textfield",
+    WebkitAppearance: "none",
+  },
+
+  quantityInputBlockedFicha: {
+    width: "56px",
+    minWidth: "56px",
+    maxWidth: "56px",
+    boxSizing: "border-box",
+    border: "none",
+    borderLeft: "1px solid #f3a5a5",
+    borderRight: "1px solid #f3a5a5",
+    borderRadius: "0",
+    padding: "1px 2px",
+    fontSize: "19px",
+    fontWeight: "800",
+    lineHeight: "26px",
+    height: "38px",
+    minHeight: "38px",
+    maxHeight: "38px",
+    textAlign: "center",
+    outline: "none",
+    background: "#fee2e2",
+    color: "#991b1b",
+    cursor: "not-allowed",
+  },
+
   productCard: {
     display: "flex",
-    gap: "6px",
+    flexDirection: "column",
+    gap: "0",
     background: "#fff",
     border: "1px solid #e5e7eb",
-    borderRadius: "10px",
-    padding: "4px",
-    marginBottom: "4px",
+    borderRadius: "12px",
+    padding: "0",
+    marginBottom: "0",
     boxShadow: "0 2px 5px rgba(15,23,42,0.03)",
-    minHeight: "58px",
     width: "100%",
     maxWidth: "100%",
     boxSizing: "border-box",
@@ -5040,12 +5437,16 @@ const styles = {
   },
 
   photoBox: {
-    width: "46px",
-    height: "46px",
-    flex: "0 0 46px",
-    border: "1px solid #e5e7eb",
-    borderRadius: "8px",
-    background: "#fff",
+    width: "100%",
+    aspectRatio: "1 / 1",
+    flex: "0 0 auto",
+    position: "relative",
+    border: "none",
+    borderBottom: "1px solid #e5e7eb",
+    borderRadius: "0",
+    background: "#f8fafc",
+    borderTopLeftRadius: "12px",
+    borderTopRightRadius: "12px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -5068,18 +5469,26 @@ const styles = {
   productContent: {
     flex: 1,
     minWidth: 0,
+    padding: "6px",
+    display: "flex",
+    flexDirection: "column",
   },
 
   productTop: {
     display: "flex",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: "8px",
+    gap: "6px",
   },
 
   productTitleBlock: {
     minWidth: 0,
-    flex: 1,
+    // flex-basis 100% obliga al bloque de título a ocupar toda la fila:
+    // en la tarjeta estrecha de la cuadrícula (2 columnas), la pastilla
+    // de Ruleta/Bingo y el corazón de favoritos ya no caben al lado del
+    // nombre, así que bajan a su propia fila (productTop tiene flexWrap).
+    flex: "1 1 100%",
   },
 
   productTopActions: {
@@ -5087,6 +5496,7 @@ const styles = {
     alignItems: "flex-start",
     gap: "4px",
     flexShrink: 0,
+    marginTop: "2px",
   },
 
   favoriteButton: {
@@ -5287,63 +5697,129 @@ const styles = {
   },
 
   quantityGrid: {
-    display: "grid",
-    gridTemplateColumns: "52px 52px 52px",
-    gap: "4px",
-    marginTop: "3px",
-    alignItems: "end",
-    width: "164px",
-    maxWidth: "164px",
-    flexShrink: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    width: "100%",
+  },
+
+  quantityRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    width: "100%",
+    gap: "12px",
   },
 
   quantityLabel: {
-    color: "#374151",
-    fontSize: "9px",
+    color: "#111827",
+    fontSize: "15px",
     fontWeight: "800",
+    flexShrink: 0,
+    width: "84px",
+    lineHeight: "1.2",
+  },
+
+  stepperControl: {
+    display: "flex",
+    alignItems: "stretch",
+    border: "1px solid #d1d5db",
+    borderRadius: "10px",
+    overflow: "hidden",
+    flexShrink: 0,
+    background: "#fff",
+  },
+
+  stepperButtonMinus: {
+    width: "38px",
+    minWidth: "38px",
+    height: "38px",
+    border: "none",
+    background: "#f1f5f9",
+    color: "#111827",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    padding: 0,
+    touchAction: "manipulation",
+    WebkitTapHighlightColor: "transparent",
+  },
+
+  stepperButtonPlus: {
+    width: "38px",
+    minWidth: "38px",
+    height: "38px",
+    border: "none",
+    background: "#dcfce7",
+    color: "#16a34a",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    padding: 0,
+    touchAction: "manipulation",
+    WebkitTapHighlightColor: "transparent",
+  },
+
+  stepperButtonDisabled: {
+    width: "38px",
+    minWidth: "38px",
+    height: "38px",
+    border: "none",
+    background: "#fee2e2",
+    color: "#991b1b",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "not-allowed",
+    padding: 0,
+    touchAction: "manipulation",
+    WebkitTapHighlightColor: "transparent",
   },
 
   quantityInput: {
-    width: "52px",
-    minWidth: "52px",
-    maxWidth: "52px",
+    width: "32px",
+    minWidth: "32px",
+    maxWidth: "32px",
     boxSizing: "border-box",
-    marginTop: "1px",
-    border: "1px solid #d1d5db",
-    borderRadius: "7px",
-    padding: "1px 3px",
-    fontSize: "16px",
+    border: "none",
+    borderLeft: "1px solid #e5e7eb",
+    borderRight: "1px solid #e5e7eb",
+    borderRadius: "0",
+    padding: "1px 2px",
+    fontSize: "14px",
     lineHeight: "20px",
-    height: "24px",
-    minHeight: "24px",
-    maxHeight: "24px",
+    height: "26px",
+    minHeight: "26px",
+    maxHeight: "26px",
     textAlign: "center",
     outline: "none",
+    background: "#fff",
     appearance: "textfield",
     WebkitAppearance: "none",
   },
 
   quantityInputActive: {
     background: "#fef08a",
-    border: "2px solid #f59e0b",
-    boxShadow: "0 0 0 3px rgba(245,158,11,0.22)",
     fontWeight: "900",
   },
 
   quantityInputBlocked: {
-    width: "52px",
-    minWidth: "52px",
-    maxWidth: "52px",
+    width: "32px",
+    minWidth: "32px",
+    maxWidth: "32px",
     boxSizing: "border-box",
-    marginTop: "1px",
-    border: "1px solid #fecaca",
-    borderRadius: "7px",
-    padding: "1px 3px",
-    fontSize: "16px",
+    border: "none",
+    borderLeft: "1px solid #fecaca",
+    borderRight: "1px solid #fecaca",
+    borderRadius: "0",
+    padding: "1px 2px",
+    fontSize: "14px",
     lineHeight: "20px",
-    height: "24px",
-    minHeight: "24px",
-    maxHeight: "24px",
+    height: "26px",
+    minHeight: "26px",
+    maxHeight: "26px",
     textAlign: "center",
     outline: "none",
     background: "#fee2e2",
@@ -5363,10 +5839,9 @@ const styles = {
   },
 
   acceptQuantityButton: {
-    gridColumn: "1 / -1",
-    width: "164px",
-    minWidth: "164px",
-    maxWidth: "164px",
+    width: "100%",
+    minWidth: "100%",
+    maxWidth: "100%",
     minHeight: "30px",
     border: "none",
     borderRadius: "8px",
