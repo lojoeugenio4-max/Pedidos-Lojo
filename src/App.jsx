@@ -3187,6 +3187,7 @@ export default function App() {
     resumenRuletaPedidoEnvio = null,
     participacionBingo = null,
     participacionJuegos = null,
+    participacionSorteo = null,
   }) {
     const esModificacion = pedidoEnviadoActivo;
     const ventana = calcularVentanaPedido(new Date());
@@ -3200,6 +3201,7 @@ export default function App() {
       tiradasRuleta: resumenRuletaPedidoEnvio?.tiradasConseguidas || 0,
       participacionBingo,
       participacionJuegos,
+      participacionSorteo,
     });
 
     if (esModificacion) {
@@ -3461,6 +3463,7 @@ export default function App() {
       resumenRuletaPedidoEnvio,
       participacionBingo,
       participacionJuegos,
+      participacionSorteo,
     });
   };
 
