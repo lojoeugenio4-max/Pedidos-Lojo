@@ -1237,6 +1237,13 @@ export default function StorePage() {
                 ))}
               </div>
               <p style={styles.info}>Ya se ve reflejado en la cuadrícula de la pantalla grande.</p>
+              <button
+                type="button"
+                onClick={() => enviarEventoDisplay("waiting")}
+                style={styles.bingoActionButton}
+              >
+                📺 Volver al Bingo en pantalla grande
+              </button>
               {(entitlement.roulette_available || entitlement.bingo_available) ? (
                 <button type="button" onClick={() => setEstado("game-choice")} style={styles.rouletteActionButton}>ELEGIR SIGUIENTE JUEGO ›</button>
               ) : (
