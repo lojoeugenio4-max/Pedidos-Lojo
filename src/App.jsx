@@ -626,6 +626,16 @@ export default function App() {
   const [articulosBingoCliente, setArticulosBingoCliente] = useState([]);
   const [fechaLimiteBingoPropia, setFechaLimiteBingoPropia] = useState(null);
 
+  // Sorteo: en construcción, solo activo para el cliente de pruebas
+  // (clienteIdentificado.es_pruebas) mientras se valida en real. Nada
+  // de esto se muestra ni se registra para el resto de clientes.
+  const [configuracionSorteoCliente, setConfiguracionSorteoCliente] = useState(null);
+  const [mostrarJuegos, setMostrarJuegos] = useState(false);
+  const [mostrarMiSorteo, setMostrarMiSorteo] = useState(false);
+  const [numerosSorteoCliente, setNumerosSorteoCliente] = useState([]);
+  const [cargandoSorteo, setCargandoSorteo] = useState(false);
+  const [errorSorteo, setErrorSorteo] = useState("");
+
   const [premiosRuleta, setPremiosRuleta] = useState([]);
   const [configuracionRuleta, setConfiguracionRuleta] = useState(null);
   const [articulosRuleta, setArticulosRuleta] = useState([]);
@@ -709,7 +719,7 @@ export default function App() {
       try {
         const { data, error } = await supabase
           .from("clientes")
-          .select("id, nombre, telefono, estado, token")
+          .select("id, nombre, telefono, estado, token, es_pruebas")
           .eq("token", clienteToken)
           .maybeSingle();
 
@@ -948,6 +958,36 @@ export default function App() {
 
   useEffect(() => {
     let activo = true;
+    async function cargarDisponibilidadSorteo() {
+      // Solo tiene sentido consultarlo para el cliente de pruebas: el
+      // resto de clientes no debe ver ni registrar nada del Sorteo
+      // mientras esté en fase de validación en real.
+      if (!clienteIdentificado?.es_pruebas) {
+        setConfiguracionSorteoCliente(null);
+        return;
+      }
+      const { data, error } = await supabase
+        .from("promociones_sorteo")
+        .select("*")
+        .order("updated_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false });
+      if (!activo) return;
+      if (error) {
+        console.error("No se pudo comprobar la disponibilidad del Sorteo:", error);
+        setConfiguracionSorteoCliente(null);
+        return;
+      }
+      const hoy = getTodayISO();
+      const promociones = data || [];
+      const vigente = promociones.find((item) => item.activa && (!item.fecha_inicio || item.fecha_inicio <= hoy) && (!item.fecha_fin || item.fecha_fin >= hoy));
+      setConfiguracionSorteoCliente(vigente || null);
+    }
+    cargarDisponibilidadSorteo();
+    return () => { activo = false; };
+  }, [clienteIdentificado?.es_pruebas]);
+
+  useEffect(() => {
+    let activo = true;
     async function cargarFechaLimitePropia() {
       if (!clienteToken || !configuracionBingoCliente?.id) {
         setFechaLimiteBingoPropia(null);
@@ -1122,6 +1162,27 @@ export default function App() {
       );
     } finally {
       setCargandoBingo(false);
+    }
+  }
+
+  async function abrirMiSorteo() {
+    if (!clienteIdentificado?.es_pruebas || !clienteToken) return;
+
+    setMostrarMiSorteo(true);
+    setCargandoSorteo(true);
+    setErrorSorteo("");
+
+    try {
+      const { data, error } = await supabase.rpc("obtener_numeros_sorteo_cliente", {
+        p_token: clienteToken,
+      });
+      if (error) throw error;
+      setNumerosSorteoCliente(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("No se pudo cargar el Sorteo del cliente:", error);
+      setErrorSorteo("No se han podido cargar tus números de Sorteo. Inténtalo de nuevo.");
+    } finally {
+      setCargandoSorteo(false);
     }
   }
 
@@ -2900,17 +2961,35 @@ export default function App() {
     return Math.max(1, Math.floor(matched / required));
   }
 
+  function sorteoCumpleVariedad(participacionSorteo) {
+    if (!participacionSorteo || typeof participacionSorteo !== "object") return false;
+    const matched = Number(participacionSorteo.matched ?? 0);
+    const required = Number(participacionSorteo.required ?? 0);
+    if (!Number.isFinite(required) || required <= 0) return false;
+    return matched >= required;
+  }
+
+  function bloquesCumplidosSorteo(participacionSorteo) {
+    if (!participacionSorteo || typeof participacionSorteo !== "object") return 0;
+    const matched = Number(participacionSorteo.matched ?? 0);
+    const required = Number(participacionSorteo.required ?? 0);
+    if (!Number.isFinite(required) || required <= 0) return 0;
+    return Math.max(0, Math.floor(matched / required));
+  }
+
   async function crearParticipacionJuegos({
     pedidoId,
     customerNamePedido,
     participacionRuleta = null,
     tiradasRuleta = 0,
     participacionBingo = null,
+    participacionSorteo = null,
   }) {
     const bingoConseguido = pedidoCumpleBingo(participacionBingo);
     const ruletaConseguida = Boolean(participacionRuleta);
+    const sorteoConseguido = sorteoCumpleVariedad(participacionSorteo);
 
-    if (!ruletaConseguida && !bingoConseguido) return null;
+    if (!ruletaConseguida && !bingoConseguido && !sorteoConseguido) return null;
 
     const participacionRuletaId =
       participacionRuleta?.id || participacionRuleta?.participation_id || null;
@@ -2932,6 +3011,8 @@ export default function App() {
           ? Math.max(1, bloquesCumplidosBingo(participacionBingo) * Number(configuracionBingoCliente?.bolas_por_pedido || 1))
           : 0,
         p_expires_at: null,
+        p_sorteo_eligible: sorteoConseguido,
+        p_sorteo_plays_total: sorteoConseguido ? bloquesCumplidosSorteo(participacionSorteo) : 0,
       }
     );
 
@@ -2980,6 +3061,37 @@ export default function App() {
     }
 
     if (pedidoCumpleBingo(result)) setCartonBingo(null);
+    return result;
+  }
+
+  async function registrarPedidoParaSorteo(itemsPedido, pedidoId) {
+    // Igual que Bingo: la SQL decide qué artículos cuentan (todos, o solo
+    // los de ciertos departamentos, según promociones_sorteo.modo).
+    // Solo se llama para el cliente de pruebas mientras se valida en real.
+    if (!clienteIdentificado?.es_pruebas || !clienteToken || !configuracionSorteoCliente) return null;
+
+    const items = itemsPedido.map((item) => ({
+      articulo_id: item?.product?.id ?? null,
+      cajas: Number(item.boxes || 0),
+      unidades: Number(item.units || 0),
+    }));
+
+    const { data, error } = await supabase.rpc("registrar_pedido_sorteo", {
+      p_token: clienteToken,
+      p_order_id: pedidoId,
+      p_items: items,
+    });
+
+    if (error) {
+      console.error("No se pudo registrar el pedido para el Sorteo:", error);
+      throw error;
+    }
+
+    const result = normalizarRespuestaRpc(data);
+    if (!result || typeof result !== "object") {
+      throw new Error("Supabase no devolvió una respuesta válida al registrar el pedido de Sorteo.");
+    }
+
     return result;
   }
 
@@ -3270,13 +3382,37 @@ export default function App() {
       }
     }
 
+    let participacionSorteo = null;
+    if (clienteIdentificado?.es_pruebas) {
+      try {
+        participacionSorteo = await registrarPedidoParaSorteo(itemsPedido, pedidoIdEstable);
+      } catch (error) {
+        const detalleErrorSorteo = [
+          error?.code ? `Código: ${error.code}` : null,
+          error?.message ? `Mensaje: ${error.message}` : null,
+          error?.details ? `Detalle: ${error.details}` : null,
+          error?.hint ? `Sugerencia: ${error.hint}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        // El Sorteo está en pruebas: un fallo aquí nunca debe bloquear el
+        // envío del pedido, solo se registra en consola.
+        console.error(
+          "No se pudo registrar el pedido para el Sorteo (se envía igualmente):",
+          detalleErrorSorteo || error
+        );
+      }
+    }
+
     let participacionJuegos = null;
     // El QR común debe crearse para cualquier pedido que consiga Ruleta o Bingo.
     // No puede depender de que el cliente esté identificado: los pedidos anónimos
     // también necesitan su fila en game_entitlements para que el lector los valide.
     if (
       participacionRuleta ||
-      pedidoCumpleBingo(participacionBingo)
+      pedidoCumpleBingo(participacionBingo) ||
+      sorteoCumpleVariedad(participacionSorteo)
     ) {
       try {
         participacionJuegos = await crearParticipacionJuegos({
@@ -3285,6 +3421,7 @@ export default function App() {
           participacionRuleta,
           tiradasRuleta: resumenRuletaPedidoEnvio?.tiradasConseguidas || 0,
           participacionBingo,
+          participacionSorteo,
         });
       } catch (error) {
         console.error("Error creando la participación común:", error);
@@ -3512,6 +3649,105 @@ export default function App() {
       )}
 
 
+      {mostrarJuegos && clienteIdentificado && (
+        <div style={styles.bingoOverlay} onClick={() => setMostrarJuegos(false)} role="presentation">
+          <div
+            style={{ ...styles.bingoModal, maxWidth: 380 }}
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Juegos"
+          >
+            <button type="button" onClick={() => setMostrarJuegos(false)} style={styles.bingoCloseButton} aria-label="Cerrar Juegos">
+              <X size={24} />
+            </button>
+            <div style={{ ...styles.bingoModalBody, display: "grid", gap: 14 }}>
+              <h2 style={{ margin: 0 }}>Juegos</h2>
+              {configuracionBingoCliente && (
+                <button
+                  type="button"
+                  onClick={() => { setMostrarJuegos(false); abrirMiBingo(); }}
+                  style={styles.bingoButton}
+                >
+                  <Grid3X3 size={17} />
+                  Mi Bingo{fechaLimiteBingoPropia ? ` · hasta ${new Date(fechaLimiteBingoPropia).toLocaleDateString("es-ES")}` : ""}
+                </button>
+              )}
+              {configuracionSorteoCliente && (
+                <button
+                  type="button"
+                  onClick={() => { setMostrarJuegos(false); abrirMiSorteo(); }}
+                  style={styles.bingoButton}
+                >
+                  🎟️ Mi Sorteo
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mostrarMiSorteo && clienteIdentificado && (
+        <div style={styles.bingoOverlay} onClick={() => setMostrarMiSorteo(false)} role="presentation">
+          <div
+            style={styles.bingoModal}
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Mi Sorteo"
+          >
+            <button type="button" onClick={() => setMostrarMiSorteo(false)} style={styles.bingoCloseButton} aria-label="Cerrar Mi Sorteo">
+              <X size={24} />
+            </button>
+            <div style={styles.bingoModalBody}>
+              <h2 style={{ margin: "0 0 12px" }}>🎟️ Mi Sorteo</h2>
+
+              {cargandoSorteo && <div style={styles.bingoStatusBox}>Cargando tus números...</div>}
+              {!cargandoSorteo && errorSorteo && <div style={styles.bingoErrorBox}>{errorSorteo}</div>}
+
+              {!cargandoSorteo && !errorSorteo && numerosSorteoCliente.length === 0 && (
+                <div style={styles.bingoStatusBox}>
+                  Todavía no tienes ningún número. Se te asigna uno por cada {configuracionSorteoCliente?.variedad_minima || 10} artículos distintos que pidas.
+                </div>
+              )}
+
+              {!cargandoSorteo && !errorSorteo && numerosSorteoCliente.length > 0 && (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {numerosSorteoCliente.map((n, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "12px 16px",
+                        borderRadius: 12,
+                        background: n.ganador ? "#dcfce7" : "#f0fdf4",
+                        border: n.ganador ? "2px solid #16a34a" : "1px solid #bbf7d0",
+                      }}
+                    >
+                      <div>
+                        <strong>{n.edition_nombre}</strong>
+                        <div style={{ fontSize: 13, color: "#166534" }}>
+                          {n.estado === "resuelta"
+                            ? n.ganador
+                              ? "¡Enhorabuena, este número ha sido el premiado!"
+                              : `Resuelto · número premiado: ${String(n.numero_premiado).padStart(2, "0")}`
+                            : "Cuadrícula aún en juego"}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 30, fontWeight: 900, color: "#166534" }}>
+                        {String(n.numero).padStart(2, "0")}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {mostrarBingo && clienteIdentificado && configuracionBingoCliente && (
         <div
           style={styles.bingoOverlay}
@@ -3649,7 +3885,7 @@ export default function App() {
                     <Star size={16} fill={soloFavoritos ? "currentColor" : "none"} />
                     {soloFavoritos ? "Ver todos" : `Mis favoritos (${favoritos.size})`}
                   </button>
-                  {configuracionBingoCliente && (
+                  {configuracionBingoCliente && !clienteIdentificado?.es_pruebas && (
                     <button
                       type="button"
                       onClick={abrirMiBingo}
@@ -3658,6 +3894,21 @@ export default function App() {
                     >
                       <Grid3X3 size={17} />
                       Mi Bingo{fechaLimiteBingoPropia ? ` · hasta ${new Date(fechaLimiteBingoPropia).toLocaleDateString("es-ES")}` : ""}
+                    </button>
+                  )}
+                  {/* Pestaña "Juegos" (Bingo + Sorteo agrupados): de momento solo
+                      para el cliente de pruebas, mientras se valida el Sorteo en
+                      real sin que el resto de clientes vea nada nuevo. Cuando se
+                      confirme, basta con quitar la condición es_pruebas de aquí
+                      y del bloque de arriba para que sustituya a "Mi Bingo" para todos. */}
+                  {clienteIdentificado?.es_pruebas && (configuracionBingoCliente || configuracionSorteoCliente) && (
+                    <button
+                      type="button"
+                      onClick={() => setMostrarJuegos(true)}
+                      style={styles.bingoButton}
+                    >
+                      <Grid3X3 size={17} />
+                      Juegos
                     </button>
                   )}
                   {cargandoFavoritos && <small>Cargando favoritos...</small>}
