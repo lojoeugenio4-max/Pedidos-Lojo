@@ -3680,16 +3680,26 @@ export default function App() {
                     )}
                   </button>
                 )}
-                {configuracionSorteoCliente && (
-                  <button
-                    type="button"
-                    onClick={() => { setMostrarJuegos(false); abrirMiSorteo(); }}
-                    style={{ ...styles.juegoTarjeta, ...styles.juegoTarjetaSorteo }}
-                  >
-                    <span style={styles.juegoTarjetaIcono}>🎟️</span>
-                    <span style={styles.juegoTarjetaTitulo}>Sorteo</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!configuracionSorteoCliente) return;
+                    setMostrarJuegos(false);
+                    abrirMiSorteo();
+                  }}
+                  disabled={!configuracionSorteoCliente}
+                  style={{
+                    ...styles.juegoTarjeta,
+                    ...styles.juegoTarjetaSorteo,
+                    ...(configuracionSorteoCliente ? null : styles.juegoTarjetaCapada),
+                  }}
+                >
+                  <span style={styles.juegoTarjetaIcono}>🎟️</span>
+                  <span style={styles.juegoTarjetaTitulo}>Sorteo</span>
+                  {!configuracionSorteoCliente && (
+                    <span style={styles.juegoTarjetaSubtitulo}>Aún no disponible</span>
+                  )}
+                </button>
               </div>
             </div>
           </div>
@@ -3910,7 +3920,7 @@ export default function App() {
                       valida el Sorteo en real. Cuando se confirme, basta con
                       quitar la condición es_pruebas de aquí y del bloque de
                       arriba para que sustituya a "Mi Bingo" para todos. */}
-                  {clienteIdentificado?.es_pruebas && (configuracionBingoCliente || configuracionSorteoCliente) && (
+                  {clienteIdentificado?.es_pruebas && (
                     <button type="button" onClick={() => setMostrarJuegos(true)} style={styles.bingoButton}>
                       <Grid3X3 size={17} />
                       Juegos
@@ -6869,6 +6879,12 @@ const styles = {
   juegoTarjetaSorteo: {
     background: "linear-gradient(135deg, #059669, #064e3b)",
     boxShadow: "0 10px 26px rgba(5,150,105,.35)",
+  },
+  juegoTarjetaCapada: {
+    background: "linear-gradient(135deg, #6b7280, #374151)",
+    boxShadow: "none",
+    opacity: 0.55,
+    cursor: "not-allowed",
   },
   juegoTarjetaIcono: { fontSize: 40, lineHeight: 1 },
   juegoTarjetaTitulo: { fontSize: 19, fontWeight: 900 },
