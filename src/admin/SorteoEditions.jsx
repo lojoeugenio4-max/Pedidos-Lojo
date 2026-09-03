@@ -121,8 +121,9 @@ export default function SorteoEditions() {
 
       const resultado = Array.isArray(data) ? data[0] : data;
       const participantes = resultado?.participantes || [];
+      const ganadores = participantes.filter((p) => p.ganador);
 
-      const tokens = [...new Set(participantes.map((p) => p.cliente_token).filter(Boolean))];
+      const tokens = [...new Set(ganadores.map((p) => p.cliente_token).filter(Boolean))];
       let telefonosPorToken = {};
       if (tokens.length > 0) {
         const { data: clientesData } = await supabase
@@ -132,7 +133,7 @@ export default function SorteoEditions() {
         telefonosPorToken = Object.fromEntries((clientesData || []).map((c) => [c.token, c.telefono]));
       }
 
-      const mensajes = participantes.map((p) => ({
+      const mensajes = ganadores.map((p) => ({
         nombre: p.cliente_nombre || "Cliente",
         numero: p.numero,
         ganador: p.ganador,
@@ -145,9 +146,6 @@ export default function SorteoEditions() {
         }),
         enviado: false,
       }));
-
-      // El ganador primero, para no perderlo entre el resto de participantes.
-      mensajes.sort((a, b) => (b.ganador ? 1 : 0) - (a.ganador ? 1 : 0));
 
       setCola({ edicionNombre: resultado.edition_nombre, mensajes });
       await cargarEdiciones();
@@ -227,8 +225,8 @@ export default function SorteoEditions() {
 
       {cola && (
         <div style={colaBox}>
-          <h4 style={titulo}>Mensajes de {cola.edicionNombre}</h4>
-          <p style={texto}>Pulsa "WhatsApp" en cada cliente para abrir el mensaje ya escrito y enviarlo (uno a uno, evita el bloqueo de pop-ups).</p>
+          <h4 style={titulo}>Ganador de {cola.edicionNombre}</h4>
+          <p style={texto}>Pulsa "WhatsApp" para abrir el mensaje de felicitación ya escrito y enviarlo.</p>
           <div style={{ display: "grid", gap: 8 }}>
             {cola.mensajes.map((m, i) => {
               const url = construirUrlWhatsApp({ telefono: m.telefono, texto: m.texto });
