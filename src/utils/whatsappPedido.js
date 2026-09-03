@@ -50,6 +50,7 @@ function construirBloqueParticipacion({
   tiradasRuleta,
   participacionJuegos,
   participacionBingo,
+  participacionSorteo,
   premio,
 }) {
   const lines = [];
@@ -95,16 +96,26 @@ function construirBloqueParticipacion({
       )
     : Math.max(0, Number(tiradasRuleta || 0));
 
-  // El QR se crea siempre que el pedido consiga Ruleta o Bingo (para que el
-  // lector de caja funcione), pero "conseguir Bingo" a nivel de FRONTEND solo
-  // mira la variedad de artículos, sin saber todavía si el servidor lo va a
-  // bloquear por la regla de "1 pedido de Bingo al día". Si ese bloqueo
-  // ocurre y el pedido tampoco tiene Ruleta, el código queda con 0 tiradas
-  // jugables en ambos juegos: mostrar igualmente el bloque "Muestra este QR
-  // en caja" es lo que llevaba a escanear por error un QR sin nada
-  // disponible y ver "ya lo ha jugado". Por eso el bloque con QR solo se
-  // pinta si de verdad hay algo que jugar.
-  const hayAlgoJugable = numeroTiradas > 0 || bingoConseguido;
+  // Sorteo: participacionSorteo es el resultado de registrar_pedido_sorteo
+  // (matched/required), y los números YA asignados (si los hubo) quedan en
+  // participacionJuegos.sorteo_numbers (jsonb devuelto por
+  // create_or_update_game_entitlement). No hay "tiradas" que gastar: si se
+  // concedió, los números ya están fijados desde el envío del pedido.
+  const numerosSorteo = Array.isArray(participacionJuegosNormalizada?.sorteo_numbers)
+    ? participacionJuegosNormalizada.sorteo_numbers
+    : [];
+  const sorteoConseguido = Boolean(participacionJuegosNormalizada?.sorteo_eligible) && numerosSorteo.length > 0;
+
+  // El QR se crea siempre que el pedido consiga Ruleta, Bingo o Sorteo (para
+  // que el lector de caja funcione), pero "conseguir Bingo" a nivel de
+  // FRONTEND solo mira la variedad de artículos, sin saber todavía si el
+  // servidor lo va a bloquear por la regla de "1 pedido de Bingo al día". Si
+  // ese bloqueo ocurre y el pedido tampoco tiene Ruleta ni Sorteo, el código
+  // queda sin nada jugable: mostrar igualmente el bloque "Muestra este QR en
+  // caja" es lo que llevaba a escanear por error un QR sin nada disponible y
+  // ver "ya lo ha jugado". Por eso el bloque con QR solo se pinta si de
+  // verdad hay algo que jugar/revelar.
+  const hayAlgoJugable = numeroTiradas > 0 || bingoConseguido || sorteoConseguido;
 
   if (codigoJuegos && hayAlgoJugable) {
     const urlQr = construirUrlQr(codigoJuegos);
@@ -119,7 +130,7 @@ function construirBloqueParticipacion({
     );
 
     const bannerLineas = [];
-    bannerLineas.push("🎉 *¡TIENES PARTICIPACIÓN EN RULETA/BINGO!* 🎉");
+    bannerLineas.push("🎉 *¡TIENES PARTICIPACIÓN EN RULETA/BINGO/SORTEO!* 🎉");
     if (numeroTiradas > 0) bannerLineas.push(`🎡 Ruleta: *${numeroTiradas} tirada${numeroTiradas === 1 ? "" : "s"}*`);
     if (bingoConseguido) {
       bannerLineas.push(
@@ -127,6 +138,14 @@ function construirBloqueParticipacion({
       );
     } else if (bingoBloqueadoPorLimiteDiario) {
       bannerLineas.push("🟠 Bingo ya conseguido hoy con otro pedido.");
+    }
+    if (sorteoConseguido) {
+      const listaNumeros = numerosSorteo
+        .map((n) => `${n.edition_nombre || "Sorteo"} · ${String(n.numero).padStart(2, "0")}`)
+        .join(", ");
+      bannerLineas.push(
+        `🎟️ Sorteo: *${numerosSorteo.length === 1 ? "número asignado" : "números asignados"}* (${listaNumeros})`
+      );
     }
 
     lines.push(...bannerLineas);
@@ -145,10 +164,11 @@ function construirBloqueParticipacion({
     return lines;
   }
 
-  // Bingo bloqueado por el límite de "1 pedido al día" y sin Ruleta: no hay
-  // nada jugable en este pedido, así que solo se informa por texto, sin QR
-  // (aunque exista un código creado en el servidor, no se enseña para que
-  // no se confunda con el QR del otro pedido que sí tiene bolas).
+  // Bingo bloqueado por el límite de "1 pedido al día" y sin Ruleta ni
+  // Sorteo: no hay nada jugable en este pedido, así que solo se informa por
+  // texto, sin QR (aunque exista un código creado en el servidor, no se
+  // enseña para que no se confunda con el QR del otro pedido que sí tiene
+  // bolas).
   if (bingoBloqueadoPorLimiteDiario) {
     lines.push("🟠 Bingo ya conseguido hoy con otro pedido: este pedido no suma bolas nuevas.");
     lines.push("");
@@ -179,10 +199,11 @@ export function construirTextoPedidoWhatsApp({
   tiradasRuleta = 0,
   participacionBingo = null,
   participacionJuegos = null,
+  participacionSorteo = null,
 }) {
   const lines = [];
 
-  // El bloque de participación (QR/Bingo/Ruleta) va primero y bien
+  // El bloque de participación (QR/Bingo/Ruleta/Sorteo) va primero y bien
   // destacado, para que no pase desapercibido entre el resto del texto.
   // Debajo va el pedido, igual que hasta ahora.
   lines.push(
@@ -192,6 +213,7 @@ export function construirTextoPedidoWhatsApp({
       tiradasRuleta,
       participacionJuegos,
       participacionBingo,
+      participacionSorteo,
       premio,
     })
   );
