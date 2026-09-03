@@ -630,6 +630,7 @@ export default function App() {
   // (clienteIdentificado.es_pruebas) mientras se valida en real. Nada
   // de esto se muestra ni se registra para el resto de clientes.
   const [configuracionSorteoCliente, setConfiguracionSorteoCliente] = useState(null);
+  const [departamentosSorteoCliente, setDepartamentosSorteoCliente] = useState([]);
   const [mostrarJuegos, setMostrarJuegos] = useState(false);
   const [mostrarMiSorteo, setMostrarMiSorteo] = useState(false);
   const [numerosSorteoCliente, setNumerosSorteoCliente] = useState([]);
@@ -985,6 +986,29 @@ export default function App() {
     cargarDisponibilidadSorteo();
     return () => { activo = false; };
   }, [clienteIdentificado?.es_pruebas]);
+
+  useEffect(() => {
+    let activo = true;
+    async function cargarDepartamentosSorteo() {
+      if (configuracionSorteoCliente?.modo !== "departamentos" || !configuracionSorteoCliente?.id) {
+        setDepartamentosSorteoCliente([]);
+        return;
+      }
+      const { data, error } = await supabase
+        .from("promociones_sorteo_departamentos")
+        .select("departamento_id")
+        .eq("promocion_id", configuracionSorteoCliente.id);
+      if (!activo) return;
+      if (error) {
+        console.error("No se pudieron cargar los departamentos del Sorteo:", error);
+        setDepartamentosSorteoCliente([]);
+        return;
+      }
+      setDepartamentosSorteoCliente((data || []).map((d) => d.departamento_id));
+    }
+    cargarDepartamentosSorteo();
+    return () => { activo = false; };
+  }, [configuracionSorteoCliente?.id, configuracionSorteoCliente?.modo]);
 
   useEffect(() => {
     let activo = true;
@@ -2211,6 +2235,48 @@ export default function App() {
     () => obtenerResumenPedidoRuleta(orderedItems),
     [orderedItems, configuracionRuleta, articulosRuleta]
   );
+
+  const resumenSorteoPedido = useMemo(() => {
+    if (!clienteIdentificado?.es_pruebas || !configuracionSorteoCliente) return null;
+
+    const variedadMinima = Math.max(1, Number(configuracionSorteoCliente.variedad_minima || 10));
+    const departamentosPermitidos = new Set(departamentosSorteoCliente.map((id) => String(id)));
+
+    const articulosValidos = new Set();
+
+    orderedItems.forEach((item) => {
+      const cajas = Number(item.boxes || 0);
+      const unidades = Number(item.units || 0);
+      if (cajas <= 0 && unidades <= 0) return;
+
+      if (configuracionSorteoCliente.modo === "departamentos") {
+        const departamentoId = String(item?.product?.departamento_id ?? "");
+        if (!departamentoId || !departamentosPermitidos.has(departamentoId)) return;
+      }
+
+      articulosValidos.add(item?.product?.id);
+    });
+
+    const variedadActual = articulosValidos.size;
+    const numerosConseguidos = Math.floor(variedadActual / variedadMinima);
+    const variedadParaSiguiente = variedadActual % variedadMinima;
+    const variedadRestanteSiguiente =
+      variedadParaSiguiente === 0 ? variedadMinima : variedadMinima - variedadParaSiguiente;
+
+    return {
+      cumple: numerosConseguidos > 0,
+      variedadActual,
+      variedadMinima,
+      numerosConseguidos,
+      variedadRestante: Math.max(0, variedadMinima - variedadActual),
+      variedadRestanteSiguiente,
+    };
+  }, [
+    orderedItems,
+    clienteIdentificado?.es_pruebas,
+    configuracionSorteoCliente,
+    departamentosSorteoCliente,
+  ]);
 
   const resumenBingoPedido = useMemo(() => {
     if (!clienteIdentificado?.id || !configuracionBingoCliente) return null;
@@ -4088,6 +4154,37 @@ export default function App() {
               </div>
             </div>
           )}
+
+          {resumenSorteoPedido && (
+            <div style={styles.ruletaProgressPanel}>
+              <div style={styles.ruletaProgressHeader}>
+                <span style={styles.ruletaProgressTitle}>🎟️ Progreso Sorteo</span>
+                <strong>
+                  {resumenSorteoPedido.variedadActual}/{resumenSorteoPedido.variedadMinima}
+                </strong>
+              </div>
+              <div style={styles.ruletaProgressTrack}>
+                <div
+                  style={{
+                    ...styles.ruletaProgressFill,
+                    width: `${Math.min(
+                      100,
+                      ((resumenSorteoPedido.variedadMinima - resumenSorteoPedido.variedadRestanteSiguiente) /
+                        resumenSorteoPedido.variedadMinima) *
+                        100
+                    )}%`,
+                  }}
+                />
+              </div>
+              <div style={styles.ruletaProgressMessage}>
+                {resumenSorteoPedido.numerosConseguidos > 0
+                  ? `Tienes ${resumenSorteoPedido.numerosConseguidos} ${
+                      resumenSorteoPedido.numerosConseguidos === 1 ? "número" : "números"
+                    } de Sorteo. Te faltan ${resumenSorteoPedido.variedadRestanteSiguiente} artículos diferentes para el siguiente.`
+                  : `Te faltan ${resumenSorteoPedido.variedadRestante} artículos diferentes para conseguir un número de Sorteo.`}
+              </div>
+            </div>
+          )}
         </section>
       </div>
 
@@ -4154,6 +4251,8 @@ export default function App() {
                             src={product.image}
                             alt=""
                             style={styles.productImage}
+                            loading="lazy"
+                            decoding="async"
                           />
                         ) : (
                           <span style={styles.noPhoto}>{t.noPhoto}</span>
