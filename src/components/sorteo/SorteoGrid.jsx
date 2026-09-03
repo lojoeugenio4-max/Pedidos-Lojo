@@ -9,6 +9,7 @@ export default function SorteoGrid({
   numeroPremiado = null,
   numerosDestacados = [],
   compacto = false,
+  alturaGrid = "62vh",
 }) {
   const ocupadas = new Map(casillas.map((c) => [c.numero, c]));
   const destacados = new Set(numerosDestacados);
@@ -16,7 +17,20 @@ export default function SorteoGrid({
   return (
     <div style={estilos.contenedor}>
       {titulo && <h3 style={estilos.titulo}>{titulo}</h3>}
-      <div style={{ ...estilos.grid, gap: compacto ? 4 : 8 }}>
+      <div
+        style={{
+          ...estilos.grid,
+          gap: compacto ? 4 : 8,
+          // Altura fija en vez de aspect-ratio: en una TV ancha, si cada
+          // celda fuera cuadrada (alto = ancho de columna), las 10 filas
+          // no cabían en la pantalla y se cortaban a mitad. Con alto y
+          // ancho de celda independientes (filas y columnas por
+          // separado), las 10 filas caben siempre, sea cual sea el ancho.
+          height: compacto ? undefined : alturaGrid,
+          maxHeight: compacto ? undefined : alturaGrid,
+          gridTemplateRows: compacto ? undefined : "repeat(10, 1fr)",
+        }}
+      >
         {Array.from({ length: 100 }, (_, numero) => {
           const casilla = ocupadas.get(numero);
           const esPremiado = numeroPremiado !== null && numero === numeroPremiado;
@@ -27,7 +41,7 @@ export default function SorteoGrid({
               key={numero}
               style={{
                 ...estilos.celda,
-                ...(compacto ? estilos.celdaCompacta : null),
+                ...(compacto ? estilos.celdaCompacta : estilos.celdaAmplia),
                 ...(casilla ? estilos.celdaOcupada : estilos.celdaLibre),
                 ...(esDestacado ? estilos.celdaDestacada : null),
                 ...(esPremiado ? estilos.celdaPremiada : null),
@@ -54,7 +68,6 @@ const estilos = {
     gridTemplateColumns: "repeat(10, 1fr)",
   },
   celda: {
-    aspectRatio: "1 / 1",
     borderRadius: 8,
     display: "grid",
     placeItems: "center",
@@ -62,10 +75,11 @@ const estilos = {
     textAlign: "center",
     overflow: "hidden",
   },
-  celdaCompacta: { borderRadius: 5 },
-  numero: { fontSize: 13, fontWeight: 900, lineHeight: 1 },
+  celdaAmplia: { aspectRatio: "unset" },
+  celdaCompacta: { aspectRatio: "1 / 1", borderRadius: 5 },
+  numero: { fontSize: "clamp(11px, 1.6vw, 20px)", fontWeight: 900, lineHeight: 1 },
   nombre: {
-    fontSize: 8,
+    fontSize: "clamp(7px, 0.85vw, 11px)",
     fontWeight: 700,
     lineHeight: 1.1,
     whiteSpace: "nowrap",
@@ -87,3 +101,4 @@ const estilos = {
     boxShadow: "0 0 0 3px #fff, 0 0 30px 6px #22c55e",
   },
 };
+
