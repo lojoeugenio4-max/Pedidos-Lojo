@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import StoreWheel from "../components/StoreWheel";
 import BingoDrumStage from "../components/BingoDrumStage";
+import SorteoGrid from "../components/sorteo/SorteoGrid";
 import logoLojo from "../assets/logo-lojo.jpg";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
@@ -142,11 +143,44 @@ export default function DisplayPage() {
   const [premiosBingoTV, setPremiosBingoTV] = useState([]);
   const [premioBingoGanado, setPremioBingoGanado] = useState(null);
   const [mensajeVozFinal, setMensajeVozFinal] = useState(null);
+  const [sorteoEntrada, setSorteoEntrada] = useState(null);
+  const [sorteoNumeros, setSorteoNumeros] = useState([]);
+  const [sorteoGrids, setSorteoGrids] = useState([]);
 
   useEffect(() => {
     cargarPremios();
     return escucharEventos();
   }, []);
+
+  useEffect(() => {
+    if (!sorteoNumeros.length) {
+      setSorteoGrids([]);
+      return;
+    }
+
+    const editionIds = [...new Set(sorteoNumeros.map((n) => n.edition_id).filter(Boolean))];
+    let cancelado = false;
+
+    (async () => {
+      const grids = await Promise.all(
+        editionIds.map(async (edicionId) => {
+          const { data, error } = await supabase.rpc("obtener_cuadricula_sorteo", {
+            p_edition_id: edicionId,
+          });
+          if (error) {
+            console.error("No se pudo cargar la cuadrícula del Sorteo:", error);
+            return null;
+          }
+          return data;
+        })
+      );
+      if (!cancelado) setSorteoGrids(grids.filter(Boolean));
+    })();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [sorteoNumeros]);
 
   useEffect(() => {
     if (estado.startsWith("bingo")) cargarPremiosBingoTV();
@@ -349,6 +383,15 @@ export default function DisplayPage() {
     if (event.type === "bingo-mensaje-voz") {
       setMensajeVozFinal(payload.mensaje || null);
     }
+
+    if (event.type === "sorteo") {
+      setEstado("sorteo");
+      setSorteoEntrada(payload.entrada || null);
+      setSorteoNumeros(payload.numeros || []);
+      // No se revierte sola a "waiting": igual que Ruleta/Bingo, se queda
+      // en pantalla hasta el siguiente evento del TPV.
+      return;
+    }
   }
 
   function escucharEventos() {
@@ -400,6 +443,34 @@ export default function DisplayPage() {
         mensajeVozFinal={mensajeVozFinal}
         fastMode={bingoModoRapido}
       />
+    );
+  }
+
+  if (estado === "sorteo") {
+    const numerosNuevos = sorteoNumeros.map((n) => n.numero);
+    return (
+      <main style={styles.sorteoPage}>
+        <section style={styles.header}>
+          <div style={styles.kicker}>CASH LOJO</div>
+          <h1 style={styles.title}>🎟️ SORTEO</h1>
+          <p style={styles.subtitle}>
+            {sorteoEntrada?.customer_name
+              ? `Número asignado a ${sorteoEntrada.customer_name}`
+              : "Número asignado"}
+          </p>
+        </section>
+        <div style={styles.sorteoGridsWrap}>
+          {sorteoGrids.map((grid) => (
+            <SorteoGrid
+              key={grid.edition_id}
+              titulo={grid.edition_nombre}
+              casillas={grid.casillas}
+              numeroPremiado={grid.numero_premiado}
+              numerosDestacados={numerosNuevos}
+            />
+          ))}
+        </div>
+      </main>
     );
   }
 
@@ -666,6 +737,28 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     position: "relative",
+  },
+  sorteoPage: {
+    minHeight: "100dvh",
+    height: "100dvh",
+    maxHeight: "100dvh",
+    background:
+      "radial-gradient(circle at 50% 0%, rgba(5,150,105,.45), transparent 36%), radial-gradient(circle at 0% 100%, rgba(250,204,21,.13), transparent 38%), #030712",
+    color: "#ffffff",
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    padding: "clamp(8px, 1.4vh, 20px)",
+    boxSizing: "border-box",
+    overflow: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: 16,
+  },
+  sorteoGridsWrap: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 24,
+    justifyContent: "center",
+    flex: 1,
   },
   confettiLayer: {
     position: "absolute",
