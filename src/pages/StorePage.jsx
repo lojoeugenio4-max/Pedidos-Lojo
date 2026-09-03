@@ -996,17 +996,26 @@ export default function StorePage() {
     setMensaje("");
 
     try {
-      const { error } = await supabase.rpc("marcar_sorteo_revelado", {
+      const { data, error } = await supabase.rpc("revelar_numeros_sorteo", {
         p_code: entitlement.code,
       });
       if (error) throw error;
 
-      setEntitlement((current) => (current ? { ...current, sorteo_available: false } : current));
+      const resultado = Array.isArray(data) ? data[0] : data;
+      if (!resultado?.ok) {
+        throw new Error("No se pudieron sortear los números de Sorteo para este código.");
+      }
+
+      const numeros = resultado.numbers || [];
+
+      setEntitlement((current) =>
+        current ? { ...current, sorteo_available: false, sorteo_numbers: numeros } : current
+      );
       setEstado("sorteo-result");
 
       enviarEventoDisplay("sorteo", {
         entrada: entitlement,
-        numeros: entitlement.sorteo_numbers || [],
+        numeros,
       });
     } catch (error) {
       console.error("No se pudo revelar el Sorteo:", error);
