@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Ruleta from "./Ruleta";
 import Bingo from "./Bingo";
+import Sorteo from "./Sorteo";
 
 export default function Promociones() {
   const [seccion, setSeccion] = useState("inicio");
@@ -41,6 +42,14 @@ export default function Promociones() {
           />
 
           <Tarjeta
+            icono="🎟️"
+            titulo="Sorteo"
+            descripcion="Cuadrícula 00-99, número por cada X artículos distintos y número premiado."
+            textoBoton="Configurar Sorteo"
+            onClick={() => setSeccion("sorteo")}
+          />
+
+          <Tarjeta
             icono="🎁"
             titulo="Regalos"
             descripcion="Gestión de regalos disponibles, stock y activación."
@@ -69,6 +78,8 @@ export default function Promociones() {
       {seccion === "ruleta" && <Ruleta />}
 
       {seccion === "bingo" && <Bingo />}
+
+      {seccion === "sorteo" && <Sorteo />}
 
       {seccion === "regalos" && (
         <PanelSeccion
