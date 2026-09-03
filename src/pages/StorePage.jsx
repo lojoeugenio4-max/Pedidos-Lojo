@@ -311,6 +311,7 @@ export default function StorePage() {
   const [entitlement, setEntitlement] = useState(null);
   const [bolaBingo, setBolaBingo] = useState(null);
   const [procesandoBingo, setProcesandoBingo] = useState(false);
+  const [procesandoSorteo, setProcesandoSorteo] = useState(false);
   const [bomboGirando, setBomboGirando] = useState(false);
   // Además del estado (que solo sirve para pintar la UI), guardamos el
   // mismo valor en una ref. El estado, al leerse dentro de una función
@@ -388,7 +389,7 @@ export default function StorePage() {
       }
 
       setMensaje(`Bola ${message.ball_number} registrada correctamente.`);
-      setEstado(entitlement?.roulette_available ? "game-choice" : "bingo-result");
+      setEstado((entitlement?.roulette_available || entitlement?.sorteo_available) ? "game-choice" : "bingo-result");
     }
 
     let channel;
@@ -521,12 +522,20 @@ export default function StorePage() {
         setPremios(premiosData);
       }
 
+      const juegosDisponibles = [
+        unified.roulette_available,
+        unified.bingo_available,
+        unified.sorteo_available,
+      ].filter(Boolean).length;
+
       setEstado(
-        unified.bingo_available && unified.roulette_available
+        juegosDisponibles > 1
           ? "game-choice"
           : unified.bingo_available
             ? "bingo-ready"
-            : "ready"
+            : unified.sorteo_available
+              ? "sorteo-ready"
+              : "ready"
       );
       return;
     }
@@ -955,8 +964,20 @@ export default function StorePage() {
     setPremioObjetivo(null);
     setMensaje("");
 
-    if (entitlement?.bingo_available) {
-      setEstado(entitlement?.roulette_available ? "game-choice" : "bingo-ready");
+    if (entitlement?.bingo_available || entitlement?.sorteo_available) {
+      const juegosDisponibles = [
+        entitlement?.roulette_available,
+        entitlement?.bingo_available,
+        entitlement?.sorteo_available,
+      ].filter(Boolean).length;
+
+      setEstado(
+        juegosDisponibles > 1
+          ? "game-choice"
+          : entitlement?.bingo_available
+            ? "bingo-ready"
+            : "sorteo-ready"
+      );
       return;
     }
 
@@ -966,6 +987,34 @@ export default function StorePage() {
     }
 
     reset();
+  }
+
+  async function consumirSorteo() {
+    if (!entitlement?.id || !entitlement?.code) return;
+
+    setProcesandoSorteo(true);
+    setMensaje("");
+
+    try {
+      const { error } = await supabase.rpc("marcar_sorteo_revelado", {
+        p_code: entitlement.code,
+      });
+      if (error) throw error;
+
+      setEntitlement((current) => (current ? { ...current, sorteo_available: false } : current));
+      setEstado("sorteo-result");
+
+      enviarEventoDisplay("sorteo", {
+        entrada: entitlement,
+        numeros: entitlement.sorteo_numbers || [],
+      });
+    } catch (error) {
+      console.error("No se pudo revelar el Sorteo:", error);
+      setMensaje(error?.message || "No se pudo mostrar el número de Sorteo.");
+      setEstado("error");
+    } finally {
+      setProcesandoSorteo(false);
+    }
   }
 
   function reset() {
@@ -1126,13 +1175,13 @@ export default function StorePage() {
         </section>
       )}
 
-      {(estado === "game-choice" || estado === "bingo-ready" || estado === "bingo-result" || estado === "bingo-result-with-roulette") && entitlement && (
+      {(estado === "game-choice" || estado === "bingo-ready" || estado === "sorteo-ready" || estado === "bingo-result" || estado === "bingo-result-with-roulette" || estado === "sorteo-result") && entitlement && (
         <section style={styles.card}>
           <h2 style={styles.cardTitle}>QR válido · Pedido identificado</h2>
           <p style={styles.info}>Cliente: <strong>{entitlement.customer_name || "sin nombre"}</strong></p>
           <p style={styles.info}>Pedido: <strong>{entitlement.order_id || "sin referencia"}</strong></p>
 
-          {(estado === "game-choice" || estado === "bingo-ready") && (
+          {(estado === "game-choice" || estado === "bingo-ready" || estado === "sorteo-ready") && (
             <div style={styles.gameChoiceGrid}>
               {entitlement.bingo_available && (
                 <button type="button" onClick={consumirBingo} disabled={procesandoBingo} style={styles.bingoActionButton}>
@@ -1144,6 +1193,11 @@ export default function StorePage() {
                   🎡 ABRIR RULETA
                 </button>
               )}
+              {entitlement.sorteo_available && (
+                <button type="button" onClick={consumirSorteo} disabled={procesandoSorteo} style={styles.sorteoActionButton}>
+                  🎟️ {procesandoSorteo ? "REVELANDO NÚMERO..." : "VER NÚMERO DE SORTEO"}
+                </button>
+              )}
             </div>
           )}
 
@@ -1153,6 +1207,28 @@ export default function StorePage() {
               <h2 style={{ margin: 0 }}>Bola registrada</h2>
               <p style={styles.info}>El cartón del cliente se actualizará en tiempo real si contiene este número.</p>
               {estado === "bingo-result-with-roulette" ? (
+                <button type="button" onClick={() => setEstado("game-choice")} style={styles.rouletteActionButton}>ELEGIR SIGUIENTE JUEGO ›</button>
+              ) : (
+                <button type="button" onClick={reset} style={styles.nextButton}>FINALIZAR ›</button>
+              )}
+            </div>
+          )}
+
+          {estado === "sorteo-result" && (
+            <div style={styles.bingoResultBox}>
+              <h2 style={{ margin: 0 }}>
+                {(entitlement.sorteo_numbers || []).length === 1 ? "Número de Sorteo asignado" : "Números de Sorteo asignados"}
+              </h2>
+              <div style={styles.sorteoNumerosFila}>
+                {(entitlement.sorteo_numbers || []).map((n, i) => (
+                  <div key={i} style={styles.sorteoBall}>
+                    <span style={styles.sorteoBallEdicion}>{n.edition_nombre}</span>
+                    <span style={styles.sorteoBallNumero}>{String(n.numero).padStart(2, "0")}</span>
+                  </div>
+                ))}
+              </div>
+              <p style={styles.info}>Ya se ve reflejado en la cuadrícula de la pantalla grande.</p>
+              {(entitlement.roulette_available || entitlement.bingo_available) ? (
                 <button type="button" onClick={() => setEstado("game-choice")} style={styles.rouletteActionButton}>ELEGIR SIGUIENTE JUEGO ›</button>
               ) : (
                 <button type="button" onClick={reset} style={styles.nextButton}>FINALIZAR ›</button>
@@ -1288,6 +1364,44 @@ const styles = {
     fontSize: 20,
     fontWeight: 900,
     cursor: "pointer",
+  },
+  sorteoActionButton: {
+    border: 0,
+    borderRadius: 16,
+    padding: "20px 18px",
+    background: "linear-gradient(135deg, #059669, #064e3b)",
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+  sorteoNumerosFila: {
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 14,
+  },
+  sorteoBall: {
+    display: "grid",
+    justifyItems: "center",
+    gap: 4,
+    width: 120,
+    padding: "14px 10px",
+    borderRadius: 16,
+    background: "#fff",
+    color: "#111827",
+    border: "6px solid #059669",
+    boxShadow: "0 18px 45px rgba(5,150,105,.45)",
+  },
+  sorteoBallEdicion: {
+    fontSize: 12,
+    fontWeight: 800,
+    color: "#065f46",
+    textTransform: "uppercase",
+  },
+  sorteoBallNumero: {
+    fontSize: 40,
+    fontWeight: 1000,
   },
   bingoDrum: {
     position: "relative",
