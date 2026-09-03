@@ -97,14 +97,12 @@ function construirBloqueParticipacion({
     : Math.max(0, Number(tiradasRuleta || 0));
 
   // Sorteo: participacionSorteo es el resultado de registrar_pedido_sorteo
-  // (matched/required), y los números YA asignados (si los hubo) quedan en
-  // participacionJuegos.sorteo_numbers (jsonb devuelto por
-  // create_or_update_game_entitlement). No hay "tiradas" que gastar: si se
-  // concedió, los números ya están fijados desde el envío del pedido.
-  const numerosSorteo = Array.isArray(participacionJuegosNormalizada?.sorteo_numbers)
-    ? participacionJuegosNormalizada.sorteo_numbers
-    : [];
-  const sorteoConseguido = Boolean(participacionJuegosNormalizada?.sorteo_eligible) && numerosSorteo.length > 0;
+  // (matched/required). El número EN SÍ no se sortea hasta que se pasa el
+  // QR en caja (revelar_numeros_sorteo) — igual que la Ruleta/Bingo no
+  // "gastan" nada hasta el QR — así que aquí solo se sabe CUÁNTOS números
+  // le corresponden (sorteo_plays_total), nunca cuáles.
+  const sorteoPlaysTotal = Math.max(0, Number(participacionJuegosNormalizada?.sorteo_plays_total ?? 0));
+  const sorteoConseguido = Boolean(participacionJuegosNormalizada?.sorteo_eligible) && sorteoPlaysTotal > 0;
 
   // El QR se crea siempre que el pedido consiga Ruleta, Bingo o Sorteo (para
   // que el lector de caja funcione), pero "conseguir Bingo" a nivel de
@@ -140,11 +138,8 @@ function construirBloqueParticipacion({
       bannerLineas.push("🟠 Bingo ya conseguido hoy con otro pedido.");
     }
     if (sorteoConseguido) {
-      const listaNumeros = numerosSorteo
-        .map((n) => `${n.edition_nombre || "Sorteo"} · ${String(n.numero).padStart(2, "0")}`)
-        .join(", ");
       bannerLineas.push(
-        `🎟️ Sorteo: *${numerosSorteo.length === 1 ? "número asignado" : "números asignados"}* (${listaNumeros})`
+        `🎟️ Sorteo: *${sorteoPlaysTotal} ${sorteoPlaysTotal === 1 ? "número" : "números"}* (se sortean al pasar el QR en caja)`
       );
     }
 
