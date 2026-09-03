@@ -14,9 +14,36 @@ const Admin = lazy(() => import("./admin"));
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch((error) => {
-      console.error("No se pudo registrar la aplicación instalable:", error);
-    });
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then((registration) => {
+        // Cada vez que el cliente vuelve a poner la app en primer plano
+        // (abre el icono de pantalla de inicio sin haberla cerrado del
+        // todo, o cambia de otra app a esta), se comprueba activamente
+        // si hay una versión nueva en el servidor. Sin esto, si el móvil
+        // mantiene la app "viva" en segundo plano indefinidamente, podría
+        // no comprobarlo por su cuenta durante mucho tiempo.
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") {
+            registration.update().catch(() => {});
+          }
+        });
+      })
+      .catch((error) => {
+        console.error("No se pudo registrar la aplicación instalable:", error);
+      });
+  });
+
+  // Si mientras la app está abierta (o en segundo plano, en el móvil
+  // instalado en pantalla de inicio) se activa una versión nueva del
+  // Service Worker, la pestaña se recarga sola una vez para que se
+  // apliquen los archivos nuevos sin que el cliente tenga que cerrar y
+  // volver a abrir la app manualmente.
+  let recargando = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (recargando) return;
+    recargando = true;
+    window.location.reload();
   });
 }
 
