@@ -8,7 +8,7 @@ import {
 
 const ACTIVO = "activo";
 const INACTIVO = "inactivo";
-const FORMULARIO_VACIO = { nombre: "", telefono: "", estado: ACTIVO, mensaje_bingo_voz: "", codigo_lojo: "" };
+const FORMULARIO_VACIO = { nombre: "", telefono: "", estado: ACTIVO, mensaje_bingo_voz: "", codigo_lojo: "", es_pruebas: false };
 const PLANTILLA_WHATSAPP_KEY = "lojo_admin_plantilla_whatsapp_clientes";
 const PLANTILLA_WHATSAPP_ANTERIOR = `Hola 👋
 
@@ -187,6 +187,7 @@ export default function Clientes() {
       estado: cliente.estado === INACTIVO ? INACTIVO : ACTIVO,
       mensaje_bingo_voz: cliente.mensaje_bingo_voz || "",
       codigo_lojo: cliente.codigo_lojo || "",
+      es_pruebas: Boolean(cliente.es_pruebas),
     });
     setErrores({});
     setModalAbierto(true);
@@ -227,6 +228,7 @@ export default function Clientes() {
         estado: formulario.estado,
         mensaje_bingo_voz: formulario.mensaje_bingo_voz.trim() || null,
         codigo_lojo: formulario.codigo_lojo.trim() || null,
+        es_pruebas: Boolean(formulario.es_pruebas),
         updated_at: new Date().toISOString(),
       };
 
@@ -566,7 +568,14 @@ export default function Clientes() {
                           title={tieneWhatsApp ? "" : "Sin teléfono válido"}
                         />
                       </td>
-                      <td style={styles.td}><strong>{cliente.nombre}</strong></td>
+                      <td style={styles.td}>
+                        <strong>{cliente.nombre}</strong>
+                        {cliente.es_pruebas && (
+                          <span style={styles.badgePruebas} title="Cliente de pruebas: exento de límites de Bingo/Sorteo">
+                            PRUEBAS
+                          </span>
+                        )}
+                      </td>
                       <td style={styles.td}>{cliente.codigo_lojo || "—"}</td>
                       <td style={styles.td}>{cliente.telefono || "—"}</td>
                       <td style={styles.td}>
@@ -628,6 +637,16 @@ export default function Clientes() {
                 <option value={ACTIVO}>Activo</option>
                 <option value={INACTIVO}>Inactivo</option>
               </select>
+            </Campo>
+            <Campo titulo="Cliente de pruebas">
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 500 }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(formulario.es_pruebas)}
+                  onChange={(e) => cambiarCampo("es_pruebas", e.target.checked)}
+                />
+                Exento de límites de Bingo/Sorteo, para probar sin hacer pedidos reales
+              </label>
             </Campo>
             <Campo titulo="Mensaje de voz al jugar al Bingo (opcional)">
               <input
@@ -778,6 +797,16 @@ const styles = {
   estado: { display: "inline-block", borderRadius: 999, padding: "5px 9px", fontSize: 12, fontWeight: 800 },
   activo: { background: "#dcfce7", color: "#166534" },
   inactivo: { background: "#f3f4f6", color: "#4b5563" },
+  badgePruebas: {
+    marginLeft: 8,
+    padding: "2px 7px",
+    borderRadius: 999,
+    background: "#7c3aed",
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: 800,
+    letterSpacing: 0.3,
+  },
   fondoModal: { position: "fixed", inset: 0, zIndex: 5000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "rgba(15,23,42,.58)" },
   modal: { width: "100%", maxWidth: 520, background: "white", borderRadius: 16, padding: 22, boxShadow: "0 25px 70px rgba(0,0,0,.3)" },
   modalTitulo: { margin: "0 0 18px", fontSize: 22 },
