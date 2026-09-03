@@ -3652,7 +3652,7 @@ export default function App() {
       {mostrarJuegos && clienteIdentificado && (
         <div style={styles.bingoOverlay} onClick={() => setMostrarJuegos(false)} role="presentation">
           <div
-            style={{ ...styles.bingoModal, maxWidth: 380 }}
+            style={{ ...styles.bingoModal, maxWidth: 420 }}
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -3661,27 +3661,36 @@ export default function App() {
             <button type="button" onClick={() => setMostrarJuegos(false)} style={styles.bingoCloseButton} aria-label="Cerrar Juegos">
               <X size={24} />
             </button>
-            <div style={{ ...styles.bingoModalBody, display: "grid", gap: 14 }}>
-              <h2 style={{ margin: 0 }}>Juegos</h2>
-              {configuracionBingoCliente && (
-                <button
-                  type="button"
-                  onClick={() => { setMostrarJuegos(false); abrirMiBingo(); }}
-                  style={styles.bingoButton}
-                >
-                  <Grid3X3 size={17} />
-                  Mi Bingo{fechaLimiteBingoPropia ? ` · hasta ${new Date(fechaLimiteBingoPropia).toLocaleDateString("es-ES")}` : ""}
-                </button>
-              )}
-              {configuracionSorteoCliente && (
-                <button
-                  type="button"
-                  onClick={() => { setMostrarJuegos(false); abrirMiSorteo(); }}
-                  style={styles.bingoButton}
-                >
-                  🎟️ Mi Sorteo
-                </button>
-              )}
+            <div style={styles.juegosSelectorBody}>
+              <h2 style={styles.juegosSelectorTitulo}>🎮 Juegos</h2>
+              <p style={styles.juegosSelectorSubtitulo}>Elige a cuál quieres entrar</p>
+              <div style={styles.juegosSelectorGrid}>
+                {configuracionBingoCliente && (
+                  <button
+                    type="button"
+                    onClick={() => { setMostrarJuegos(false); abrirMiBingo(); }}
+                    style={styles.juegoTarjeta}
+                  >
+                    <span style={styles.juegoTarjetaIcono}>🎱</span>
+                    <span style={styles.juegoTarjetaTitulo}>Bingo</span>
+                    {fechaLimiteBingoPropia && (
+                      <span style={styles.juegoTarjetaSubtitulo}>
+                        hasta {new Date(fechaLimiteBingoPropia).toLocaleDateString("es-ES")}
+                      </span>
+                    )}
+                  </button>
+                )}
+                {configuracionSorteoCliente && (
+                  <button
+                    type="button"
+                    onClick={() => { setMostrarJuegos(false); abrirMiSorteo(); }}
+                    style={{ ...styles.juegoTarjeta, ...styles.juegoTarjetaSorteo }}
+                  >
+                    <span style={styles.juegoTarjetaIcono}>🎟️</span>
+                    <span style={styles.juegoTarjetaTitulo}>Sorteo</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -3896,17 +3905,13 @@ export default function App() {
                       Mi Bingo{fechaLimiteBingoPropia ? ` · hasta ${new Date(fechaLimiteBingoPropia).toLocaleDateString("es-ES")}` : ""}
                     </button>
                   )}
-                  {/* Pestaña "Juegos" (Bingo + Sorteo agrupados): de momento solo
-                      para el cliente de pruebas, mientras se valida el Sorteo en
-                      real sin que el resto de clientes vea nada nuevo. Cuando se
-                      confirme, basta con quitar la condición es_pruebas de aquí
-                      y del bloque de arriba para que sustituya a "Mi Bingo" para todos. */}
+                  {/* Pestaña "Juegos" (Bingo + Sorteo en pantalla de selección):
+                      de momento solo para el cliente de pruebas, mientras se
+                      valida el Sorteo en real. Cuando se confirme, basta con
+                      quitar la condición es_pruebas de aquí y del bloque de
+                      arriba para que sustituya a "Mi Bingo" para todos. */}
                   {clienteIdentificado?.es_pruebas && (configuracionBingoCliente || configuracionSorteoCliente) && (
-                    <button
-                      type="button"
-                      onClick={() => setMostrarJuegos(true)}
-                      style={styles.bingoButton}
-                    >
+                    <button type="button" onClick={() => setMostrarJuegos(true)} style={styles.bingoButton}>
                       <Grid3X3 size={17} />
                       Juegos
                     </button>
@@ -6829,6 +6834,45 @@ const styles = {
     WebkitOverflowScrolling: "touch",
     padding: "0",
   },
+
+  juegosSelectorBody: {
+    padding: "28px 20px",
+    textAlign: "center",
+  },
+  juegosSelectorTitulo: {
+    margin: "0 0 4px",
+    fontSize: 24,
+    color: "#0b1220",
+  },
+  juegosSelectorSubtitulo: {
+    margin: "0 0 22px",
+    color: "#6b7280",
+    fontSize: 14,
+  },
+  juegosSelectorGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+    gap: 16,
+  },
+  juegoTarjeta: {
+    display: "grid",
+    justifyItems: "center",
+    gap: 8,
+    border: 0,
+    borderRadius: 20,
+    padding: "28px 14px",
+    background: "linear-gradient(135deg, #7c3aed, #4c1d95)",
+    color: "#fff",
+    cursor: "pointer",
+    boxShadow: "0 10px 26px rgba(124,58,237,.35)",
+  },
+  juegoTarjetaSorteo: {
+    background: "linear-gradient(135deg, #059669, #064e3b)",
+    boxShadow: "0 10px 26px rgba(5,150,105,.35)",
+  },
+  juegoTarjetaIcono: { fontSize: 40, lineHeight: 1 },
+  juegoTarjetaTitulo: { fontSize: 19, fontWeight: 900 },
+  juegoTarjetaSubtitulo: { fontSize: 12, opacity: 0.85 },
 
   bingoStatusBox: {
     padding: "34px 18px",
