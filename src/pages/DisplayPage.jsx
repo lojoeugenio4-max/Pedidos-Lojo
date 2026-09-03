@@ -3,6 +3,7 @@ import { supabase } from "../supabaseClient";
 import StoreWheel from "../components/StoreWheel";
 import BingoDrumStage from "../components/BingoDrumStage";
 import SorteoGrid from "../components/sorteo/SorteoGrid";
+import { cantarNumeroSorteo, playSorteoDing } from "../utils/sorteoSound";
 import logoLojo from "../assets/logo-lojo.jpg";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
@@ -388,6 +389,24 @@ export default function DisplayPage() {
       setEstado("sorteo");
       setSorteoEntrada(payload.entrada || null);
       setSorteoNumeros(payload.numeros || []);
+
+      // Solo se anuncia con sonido/voz si es un aviso recién llegado del
+      // TPV (no al recargar la TV, que vuelve a aplicar el último evento
+      // guardado y no debe repetir el anuncio de algo ya pasado).
+      const esEventoReciente = Date.now() - (event.createdAt || 0) < 5000;
+      if (esEventoReciente && Array.isArray(payload.numeros) && payload.numeros.length > 0) {
+        playSorteoDing();
+        payload.numeros.forEach((numeroAsignado, indice) => {
+          window.setTimeout(() => {
+            cantarNumeroSorteo({
+              numero: numeroAsignado.numero,
+              clienteNombre: payload.entrada?.customer_name || "",
+              edicionNombre: numeroAsignado.edition_nombre,
+            });
+          }, indice * 1600);
+        });
+      }
+
       // No se revierte sola a "waiting": igual que Ruleta/Bingo, se queda
       // en pantalla hasta el siguiente evento del TPV.
       return;
