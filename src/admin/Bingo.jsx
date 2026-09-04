@@ -1,6 +1,7 @@
 import BingoConfiguracion from "./BingoConfiguracion";
 import BingoArticulos from "./BingoArticulos";
 import BingoPruebas from "./BingoPruebas";
+import ReactivarCodigo from "./ReactivarCodigo";
 
 export default function Bingo() {
   return (
@@ -12,6 +13,7 @@ export default function Bingo() {
       <div style={aviso}>
         Guardar o activar el Bingo no crea cartones automáticamente. El cartón se entrega únicamente tras validar un pedido que cumpla las condiciones.
       </div>
+      <ReactivarCodigo />
       <BingoConfiguracion />
       <BingoPruebas />
       <BingoArticulos />
