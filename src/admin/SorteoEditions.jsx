@@ -26,6 +26,7 @@ export default function SorteoEditions() {
   const [numeroPremiadoInput, setNumeroPremiadoInput] = useState("");
   const [premioTextoInput, setPremioTextoInput] = useState("");
   const [resolviendo, setResolviendo] = useState(false);
+  const [guardandoPremioTexto, setGuardandoPremioTexto] = useState(false);
   const [creandoCuadricula, setCreandoCuadricula] = useState(false);
   const [eliminandoId, setEliminandoId] = useState(null);
   const [cola, setCola] = useState(null); // { edicionNombre, mensajes: [{nombre, telefono, texto, enviado}] }
@@ -95,6 +96,14 @@ export default function SorteoEditions() {
   }
 
   async function verCuadricula(edicion) {
+    if (edicionAbierta?.id === edicion.id) {
+      // Ya estaba abierta esta misma: actúa como "ocultar".
+      setEdicionAbierta(null);
+      setCuadricula(null);
+      setCola(null);
+      return;
+    }
+
     setEdicionAbierta(edicion);
     setCuadricula(null);
     setCola(null);
@@ -211,6 +220,25 @@ export default function SorteoEditions() {
     }
   }
 
+  async function guardarPremioTexto() {
+    if (!edicionAbierta) return;
+    setGuardandoPremioTexto(true);
+    try {
+      const { error: updateError } = await supabase
+        .from("sorteo_editions")
+        .update({ premio_texto: premioTextoInput.trim() || null })
+        .eq("id", edicionAbierta.id);
+      if (updateError) throw updateError;
+      setEdicionAbierta((actual) => (actual ? { ...actual, premio_texto: premioTextoInput.trim() || null } : actual));
+      await cargarEdiciones();
+    } catch (err) {
+      console.error(err);
+      alert(err?.message || "No se ha podido guardar el premio.");
+    } finally {
+      setGuardandoPremioTexto(false);
+    }
+  }
+
   function marcarEnviado(index) {
     setCola((actual) => {
       if (!actual) return actual;
@@ -255,7 +283,7 @@ export default function SorteoEditions() {
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button type="button" style={botonSecundario} onClick={() => verCuadricula(ed)}>
-                Ver cuadrícula
+                {edicionAbierta?.id === ed.id ? "Ocultar cuadrícula" : "Ver cuadrícula"}
               </button>
               {ed.estado === "resuelta" && (
                 <button
@@ -274,6 +302,16 @@ export default function SorteoEditions() {
 
       {edicionAbierta && cuadricula && (
         <div style={panelDetalle}>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={() => verCuadricula(edicionAbierta)}
+              style={botonCerrarPanel}
+              aria-label="Ocultar cuadrícula"
+            >
+              Ocultar ✕
+            </button>
+          </div>
           <SorteoGrid
             titulo={`Sorteo ${edicionAbierta.numero}`}
             casillas={cuadricula.casillas}
@@ -306,6 +344,24 @@ export default function SorteoEditions() {
               </label>
               <button type="button" style={boton} onClick={resolverEdicion} disabled={resolviendo}>
                 {resolviendo ? "Resolviendo..." : "Resolver y preparar mensaje"}
+              </button>
+            </div>
+          )}
+
+          {edicionAbierta.estado === "resuelta" && (
+            <div style={resolverBox}>
+              <label style={{ ...campo, flex: 1 }}>
+                <span>Qué ha ganado (se le mostrará al cliente ganador)</span>
+                <input
+                  style={{ ...input, width: "100%" }}
+                  type="text"
+                  placeholder="Ej: Cesta de Navidad, 50€ en productos..."
+                  value={premioTextoInput}
+                  onChange={(e) => setPremioTextoInput(e.target.value)}
+                />
+              </label>
+              <button type="button" style={boton} onClick={guardarPremioTexto} disabled={guardandoPremioTexto}>
+                {guardandoPremioTexto ? "Guardando..." : "Guardar premio"}
               </button>
             </div>
           )}
@@ -354,6 +410,7 @@ const titulo = { margin: 0, fontSize: 17, color: "#111827" };
 const filaEdicion = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderRadius: 12, border: "1px solid #e5e7eb", background: "#fff" };
 const botonSecundario = { border: "1px solid #d1d5db", borderRadius: 9, padding: "8px 14px", background: "#fff", color: "#111827", fontWeight: 700, fontSize: 13, cursor: "pointer", textDecoration: "none" };
 const botonPeligro = { border: "1px solid #fecaca", borderRadius: 9, padding: "8px 14px", background: "#fef2f2", color: "#991b1b", fontWeight: 700, fontSize: 13, cursor: "pointer" };
+const botonCerrarPanel = { border: "1px solid rgba(255,255,255,.3)", borderRadius: 999, padding: "5px 12px", background: "rgba(255,255,255,.08)", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" };
 const botonEnviado = { background: "#dcfce7", borderColor: "#16a34a", color: "#166534" };
 const panelDetalle = { display: "grid", gap: 14, padding: 16, borderRadius: 14, border: "1px solid #e5e7eb", background: "#0b1220" };
 const resolverBox = { display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap", background: "#fff", padding: 14, borderRadius: 12 };
