@@ -34,7 +34,17 @@ import { calcularVentanaPedido, puedeEditarPedido } from "./utils/pedidoEdicion"
 import { compararDepartamentosPedido } from "./utils/ordenDepartamentosPedido";
 
 const WHATSAPP_NUMBER = "34670716744";
-const ORDER_STORAGE_KEY = "cash-lojo-pedido"; 
+const ORDER_STORAGE_KEY = "cash-lojo-pedido";
+
+// El carrito se guarda por cliente (según el token de su enlace personal),
+// no en una única clave global. Antes, si en el mismo navegador/dispositivo
+// se probaban dos clientes distintos (dos enlaces personales seguidos),
+// el carrito de uno se colaba en el del otro al recargar, porque ambos
+// leían y escribían la misma clave de localStorage.
+function obtenerClaveOrderStorage(clienteToken) {
+  return `${ORDER_STORAGE_KEY}:${clienteToken || "sin-cliente"}`;
+}
+
 const LANGUAGE_STORAGE_KEY = "cash-lojo-language";
 const APP_INSTALLED_STORAGE_KEY = "cash-lojo-app-instalada";
 const ORDER_STORAGE_VERSION = 3;
@@ -47,29 +57,33 @@ const ORDER_STORAGE_VERSION = 3;
 // sigue avisando con normalidad.
 const PEDIDO_IGNORADO_STORAGE_KEY = "cash-lojo-pedido-ignorado";
 
-function leerPedidoIgnorado() {
+function obtenerClavePedidoIgnorado(clienteToken) {
+  return `${PEDIDO_IGNORADO_STORAGE_KEY}:${clienteToken || "sin-cliente"}`;
+}
+
+function leerPedidoIgnorado(clienteToken) {
   try {
-    return localStorage.getItem(PEDIDO_IGNORADO_STORAGE_KEY) || null;
+    return localStorage.getItem(obtenerClavePedidoIgnorado(clienteToken)) || null;
   } catch (error) {
     return null;
   }
 }
 
-function guardarPedidoIgnorado(pedidoStatsId) {
+function guardarPedidoIgnorado(clienteToken, pedidoStatsId) {
   try {
     if (pedidoStatsId) {
-      localStorage.setItem(PEDIDO_IGNORADO_STORAGE_KEY, pedidoStatsId);
+      localStorage.setItem(obtenerClavePedidoIgnorado(clienteToken), pedidoStatsId);
     } else {
-      localStorage.removeItem(PEDIDO_IGNORADO_STORAGE_KEY);
+      localStorage.removeItem(obtenerClavePedidoIgnorado(clienteToken));
     }
   } catch (error) {
     console.warn("No se pudo guardar el pedido ignorado:", error);
   }
 }
 
-function readSavedOrder() {
+function readSavedOrder(clienteToken) {
   try {
-    const saved = localStorage.getItem(ORDER_STORAGE_KEY);
+    const saved = localStorage.getItem(obtenerClaveOrderStorage(clienteToken));
     if (!saved) return {};
 
     const parsed = JSON.parse(saved);
@@ -97,6 +111,7 @@ function readSavedOrder() {
 }
 
 function savePendingOrder({
+  clienteToken,
   quantities,
   customerName,
   notes,
@@ -106,7 +121,7 @@ function savePendingOrder({
 }) {
   try {
     localStorage.setItem(
-      ORDER_STORAGE_KEY,
+      obtenerClaveOrderStorage(clienteToken),
       JSON.stringify({
         version: ORDER_STORAGE_VERSION,
         updatedAt: new Date().toISOString(),
@@ -537,7 +552,7 @@ export default function App() {
   const stickyCardRef = useRef(null);
   const searchInputRef = useRef(null);
 
-  const [savedOrder] = useState(() => readSavedOrder());
+  const [savedOrder] = useState(() => readSavedOrder(clienteToken));
 
   const [articulos, setArticulos] = useState([]);
   const [departamentos, setDepartamentos] = useState([]);
@@ -852,7 +867,7 @@ export default function App() {
       // Pedido concreto que el cliente ya descartó explícitamente
       // (botón "Hacer un pedido nuevo"). Si es el mismo que encontramos
       // aquí, no se recupera ni se vuelve a avisar de él.
-      const pedidoIgnoradoId = leerPedidoIgnorado();
+      const pedidoIgnoradoId = leerPedidoIgnorado(clienteToken);
 
       if (savedOrder.enviadoEn && !puedeEditarPedido(savedOrder.fechaLimiteEdicion, ahora)) {
         limpiarPedidoDespuesEnvio();
@@ -1361,6 +1376,7 @@ export default function App() {
 
   useEffect(() => {
     savePendingOrder({
+      clienteToken,
       quantities,
       customerName,
       notes,
@@ -1369,6 +1385,7 @@ export default function App() {
       pedidoStatsId: pedidoStatsIdActual,
     });
   }, [
+    clienteToken,
     quantities,
     customerName,
     notes,
@@ -1380,6 +1397,7 @@ export default function App() {
   useEffect(() => {
     const guardarAntesDeSalir = () => {
       savePendingOrder({
+        clienteToken,
         quantities,
         customerName,
         notes,
@@ -2769,7 +2787,7 @@ export default function App() {
     setPushCerrado(false);
     setMostrarVolverPush(false);
     setHeaderCollapsed(false);
-    localStorage.removeItem(ORDER_STORAGE_KEY);
+    localStorage.removeItem(obtenerClaveOrderStorage(clienteToken));
 
     window.scrollTo({ top: 0, behavior: "auto" });
   };
@@ -2839,7 +2857,7 @@ export default function App() {
   }
 
   function limpiarPedidoDespuesEnvio() {
-    localStorage.removeItem(ORDER_STORAGE_KEY);
+    localStorage.removeItem(obtenerClaveOrderStorage(clienteToken));
     setQuantities({});
     // Si el cliente está identificado por su enlace personal, dejamos su
     // nombre puesto para el siguiente pedido (evita que un pedido
@@ -2887,7 +2905,7 @@ export default function App() {
     // pedido_stats_id), para que si recarga la página antes de llegar a
     // enviar el pedido nuevo, no se le recupere desde Supabase el pedido
     // que acaba de descartar ni se le vuelva a mostrar el aviso.
-    guardarPedidoIgnorado(pedidoStatsIdActual || pedidoEnviadoEn);
+    guardarPedidoIgnorado(clienteToken, pedidoStatsIdActual || pedidoEnviadoEn);
     limpiarPedidoDespuesEnvio();
   }
 
@@ -3226,7 +3244,7 @@ export default function App() {
     // "actual" del cliente (sustituye al registro de pedidos_actuales),
     // así que ya no hace falta seguir protegiendo del aviso a ningún
     // pedido anterior que hubiera descartado antes.
-    guardarPedidoIgnorado(null);
+    guardarPedidoIgnorado(clienteToken, null);
 
     if (!ventana.editable) {
       limpiarPedidoDespuesEnvio();
@@ -3249,6 +3267,7 @@ export default function App() {
     // el QR del pedido modificado). Por eso este guardado no puede
     // depender de un ciclo de render.
     savePendingOrder({
+      clienteToken,
       quantities,
       customerName: customerNamePedido,
       notes: notesPedido,
