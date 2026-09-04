@@ -591,10 +591,13 @@ export default function App() {
     () => savedOrder.pedidoStatsId || null
   );
   const [avisoPedidoPrevio, setAvisoPedidoPrevio] = useState(null);
+  const [confirmarPedidoNuevo, setConfirmarPedidoNuevo] = useState(false);
   const [comprobandoPedidoPrevio, setComprobandoPedidoPrevio] = useState(false);
-  // Aviso destacado (tipo push, con botón "Aceptar") que recuerda al
-  // cliente que tiene un pedido enviado y puede seguir añadiendo
-  // artículos. Sustituye al pequeño aviso permanente en pantalla.
+  // Aviso destacado (tipo push, con botón "Aceptar") que confirma al
+  // cliente, justo después de ENVIAR una modificación, que su pedido
+  // sigue pudiéndose seguir editando. (No se muestra al elegir "seguir
+  // modificando" en el aviso de pedido previo — sería repetir la misma
+  // información dos veces seguidas.)
   const [pushRecordatorioModificacion, setPushRecordatorioModificacion] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -2930,10 +2933,11 @@ export default function App() {
 
   function continuarEditandoPedidoPrevio() {
     // Los datos del pedido (cantidades, nombre, notas) ya están cargados
-    // en el estado, solo cerramos el aviso y mostramos el recordatorio
-    // destacado en su lugar.
+    // en el estado; solo cerramos el aviso y le dejamos editar
+    // directamente. Antes aquí se mostraba un segundo aviso ("Tienes un
+    // pedido enviado...") justo después de este mismo aviso — repetía la
+    // misma información dos veces seguidas, así que se quitó.
     setAvisoPedidoPrevio(null);
-    setPushRecordatorioModificacion(true);
   }
 
   function empezarPedidoNuevoTrasAviso() {
@@ -2951,6 +2955,7 @@ export default function App() {
     // que acaba de descartar ni se le vuelva a mostrar el aviso.
     guardarPedidoIgnorado(clienteToken, pedidoStatsIdActual || pedidoEnviadoEn);
     limpiarPedidoDespuesEnvio();
+    setConfirmarPedidoNuevo(false);
   }
 
   function normalizarCodigoRuleta(codigo) {
@@ -4276,7 +4281,8 @@ export default function App() {
               <div style={styles.ruletaProgressHeader}>
                 <span style={styles.ruletaProgressTitle}>🎟️ Progreso Sorteo</span>
                 <strong>
-                  {resumenSorteoPedido.variedadActual}/{resumenSorteoPedido.variedadMinima}
+                  {resumenSorteoPedido.variedadMinima - resumenSorteoPedido.variedadRestanteSiguiente}/
+                  {resumenSorteoPedido.variedadMinima}
                 </strong>
               </div>
               <div style={styles.ruletaProgressTrack}>
@@ -4860,10 +4866,38 @@ export default function App() {
 
             <button
               type="button"
-              onClick={empezarPedidoNuevoTrasAviso}
+              onClick={() => setConfirmarPedidoNuevo(true)}
               style={styles.avisoModificacionBotonSecundario}
             >
               {t.avisoModificacionNuevo}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {avisoPedidoPrevio && confirmarPedidoNuevo && (
+        <div style={styles.avisoModificacionOverlay}>
+          <div style={styles.avisoModificacionPanel}>
+            <h2 style={styles.avisoModificacionTitulo}>¿Empezar un pedido nuevo?</h2>
+            <p style={styles.avisoModificacionTexto}>
+              Se vaciará el pedido que tienes ahora en pantalla. Tu pedido ya enviado no se toca ni se
+              cancela, sigue como lo mandaste.
+            </p>
+
+            <button
+              type="button"
+              onClick={empezarPedidoNuevoTrasAviso}
+              style={styles.avisoModificacionBotonPrimario}
+            >
+              Sí, empezar pedido nuevo
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setConfirmarPedidoNuevo(false)}
+              style={styles.avisoModificacionBotonSecundario}
+            >
+              Cancelar
             </button>
           </div>
         </div>
