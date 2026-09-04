@@ -2,6 +2,7 @@ import { useState } from "react";
 import Ruleta from "./Ruleta";
 import Bingo from "./Bingo";
 import Sorteo from "./Sorteo";
+import ReactivarCodigo from "./ReactivarCodigo";
 
 export default function Promociones() {
   const [seccion, setSeccion] = useState("inicio");
@@ -50,6 +51,14 @@ export default function Promociones() {
           />
 
           <Tarjeta
+            icono="🔓"
+            titulo="Reactivación de Códigos"
+            descripcion="Busca un código de pedido y reactiva el Bingo si se bloqueó por error (1 pedido al día)."
+            textoBoton="Reactivar un código"
+            onClick={() => setSeccion("reactivacion")}
+          />
+
+          <Tarjeta
             icono="🎁"
             titulo="Regalos"
             descripcion="Gestión de regalos disponibles, stock y activación."
@@ -80,6 +89,17 @@ export default function Promociones() {
       {seccion === "bingo" && <Bingo />}
 
       {seccion === "sorteo" && <Sorteo />}
+
+      {seccion === "reactivacion" && (
+        <div>
+          <h3 style={{ margin: "0 0 8px", fontSize: "22px", color: "#111827" }}>🔓 Reactivación de Códigos</h3>
+          <p style={{ margin: "0 0 16px", color: "#6b7280", fontSize: "15px" }}>
+            Busca el código de un pedido (Ruleta, Bingo o Sorteo) por si hace falta reactivarlo manualmente,
+            por ejemplo cuando se bloquea el Bingo por error con "1 pedido de Bingo al día".
+          </p>
+          <ReactivarCodigo />
+        </div>
+      )}
 
       {seccion === "regalos" && (
         <PanelSeccion
