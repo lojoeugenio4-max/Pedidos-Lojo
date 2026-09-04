@@ -470,6 +470,7 @@ export default function DisplayPage() {
     return (
       <main style={styles.sorteoPage}>
         <section style={styles.header}>
+          <img src={logoLojo} alt="Cash Lojo" style={styles.sorteoLogo} />
           <div style={styles.kicker}>CASH LOJO</div>
           <h1 style={styles.title}>🎟️ SORTEO</h1>
           <p style={styles.subtitle}>
@@ -761,8 +762,10 @@ const styles = {
     minHeight: "100dvh",
     height: "100dvh",
     maxHeight: "100dvh",
+    // Colores corporativos Cash Lojo (rojo + azul marino, igual que el
+    // resto de la app), con un toque dorado para lo que ya está premiado.
     background:
-      "radial-gradient(circle at 50% 0%, rgba(5,150,105,.45), transparent 36%), radial-gradient(circle at 0% 100%, rgba(250,204,21,.13), transparent 38%), #030712",
+      "radial-gradient(circle at 50% 0%, rgba(255,30,30,.35), transparent 40%), radial-gradient(circle at 0% 100%, rgba(250,204,21,.12), transparent 38%), #050818",
     color: "#ffffff",
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     padding: "clamp(8px, 1.4vh, 20px)",
@@ -771,6 +774,16 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: 16,
+  },
+  sorteoLogo: {
+    width: 72,
+    height: 72,
+    objectFit: "contain",
+    borderRadius: 16,
+    background: "#ffffff",
+    padding: 6,
+    boxShadow: "0 8px 24px rgba(0,0,0,.35)",
+    marginBottom: 6,
   },
   sorteoGridsWrap: {
     display: "flex",
