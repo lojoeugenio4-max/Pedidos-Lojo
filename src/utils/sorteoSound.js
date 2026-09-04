@@ -59,11 +59,10 @@ function decirEnVoz(texto) {
 
 // No cancela lo que se esté diciendo (como encolarMensajeVoz en Bingo): si
 // un pedido da varios números seguidos, se cantan uno detrás de otro en
-// vez de cortarse entre sí.
-export function cantarNumeroSorteo({ numero, clienteNombre, edicionNombre }) {
+// vez de cortarse entre sí. Solo dice el número, nada más (ni la
+// cuadrícula ni el nombre del cliente, y sin deletrear dígito a dígito
+// para que no suene como si lo repitiera).
+export function cantarNumeroSorteo({ numero }) {
   if (!Number.isFinite(Number(numero))) return;
-  const numeroTexto = String(numero).padStart(2, "0").split("").join(" ");
-  const partes = [`${edicionNombre || "Sorteo"}, número ${numeroTexto}`];
-  if (clienteNombre) partes.push(`para ${clienteNombre}`);
-  decirEnVoz(partes.join(", "));
+  decirEnVoz(String(Number(numero)));
 }
