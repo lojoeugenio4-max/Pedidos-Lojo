@@ -8,8 +8,6 @@ const configuracionVacia = {
   modo: "todos",
   variedad_minima: 10,
   mensaje_cliente: "Tu pedido cumple las condiciones para participar en el Sorteo.",
-  fecha_inicio: "",
-  fecha_fin: "",
 };
 
 export default function SorteoConfiguracion() {
@@ -50,8 +48,6 @@ export default function SorteoConfiguracion() {
         modo: promo.modo || "todos",
         variedad_minima: promo.variedad_minima ?? 10,
         mensaje_cliente: promo.mensaje_cliente || "",
-        fecha_inicio: promo.fecha_inicio || "",
-        fecha_fin: promo.fecha_fin || "",
       });
 
       const { data: depsPromo, error: depsPromoError } = await supabase
@@ -92,8 +88,6 @@ export default function SorteoConfiguracion() {
         modo: configuracion.modo,
         variedad_minima: Math.max(1, Number(configuracion.variedad_minima || 10)),
         mensaje_cliente: configuracion.mensaje_cliente || "",
-        fecha_inicio: configuracion.fecha_inicio || null,
-        fecha_fin: configuracion.fecha_fin || null,
       };
 
       let promocionId = configuracion.id;
@@ -220,17 +214,6 @@ export default function SorteoConfiguracion() {
           onChange={(e) => cambiarCampo("mensaje_cliente", e.target.value)}
         />
       </label>
-
-      <div style={{ display: "flex", gap: 12 }}>
-        <label style={campo}>
-          <span>Fecha inicio (opcional)</span>
-          <input style={input} type="date" value={configuracion.fecha_inicio} onChange={(e) => cambiarCampo("fecha_inicio", e.target.value)} />
-        </label>
-        <label style={campo}>
-          <span>Fecha fin (opcional)</span>
-          <input style={input} type="date" value={configuracion.fecha_fin} onChange={(e) => cambiarCampo("fecha_fin", e.target.value)} />
-        </label>
-      </div>
 
       <button type="button" style={boton} onClick={guardar} disabled={guardando}>
         {guardando ? "Guardando..." : "Guardar configuración"}
