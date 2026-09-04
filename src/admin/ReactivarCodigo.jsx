@@ -11,7 +11,7 @@ export default function ReactivarCodigo() {
   const [error, setError] = useState("");
 
   async function buscar() {
-    const codigoLimpio = codigo.trim().toUpperCase();
+    const codigoLimpio = codigo.trim();
     if (!codigoLimpio) return;
 
     setBuscando(true);
@@ -20,24 +20,23 @@ export default function ReactivarCodigo() {
     setEntitlement(null);
 
     try {
-      const { data, error: buscarError } = await supabase
-        .from("game_entitlements")
-        .select("*")
-        .ilike("code", codigoLimpio)
-        .maybeSingle();
+      const { data, error: buscarError } = await supabase.rpc("buscar_entitlement_por_codigo", {
+        p_code: codigoLimpio,
+      });
 
       if (buscarError) throw buscarError;
-      if (!data) {
+      const fila = Array.isArray(data) ? data[0] : data;
+      if (!fila) {
         setError("No se ha encontrado ningún pedido con ese código.");
         return;
       }
 
-      setEntitlement(data);
+      setEntitlement(fila);
 
-      const matched = Number(data.bingo_reference?.matched ?? 0);
-      const required = Number(data.bingo_reference?.required ?? 0);
+      const matched = Number(fila.bingo_reference?.matched ?? 0);
+      const required = Number(fila.bingo_reference?.required ?? 0);
       const bolasSugeridas = required > 0 ? Math.max(1, Math.floor(matched / required)) : "";
-      setBolasInput(String(bolasSugeridas || data.bingo_plays_total || 3));
+      setBolasInput(String(bolasSugeridas || fila.bingo_plays_total || 3));
     } catch (err) {
       console.error(err);
       setError(err?.message || "No se ha podido buscar el código.");
