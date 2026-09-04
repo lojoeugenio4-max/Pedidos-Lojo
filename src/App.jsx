@@ -4116,10 +4116,14 @@ export default function App() {
               style={styles.departmentButton}
               onClick={() => setDepartmentDropdownOpen((open) => !open)}
             >
-              <span>
-                <strong>{getDepartmentLabel(selectedDepartment, language)}</strong>
+              <span style={styles.departmentButtonLeft}>
+                <Grid3X3 size={18} />
+                <span style={styles.departmentButtonLabel}>
+                  <span style={styles.departmentButtonCaption}>{t.department}</span>
+                  <strong>{getDepartmentLabel(selectedDepartment, language)}</strong>
+                </span>
               </span>
-              <ChevronDown size={17} />
+              <ChevronDown size={19} strokeWidth={3} />
             </button>
 
             {departmentDropdownOpen && createPortal(
@@ -5498,17 +5502,42 @@ const styles = {
 
   departmentButton: {
     width: "100%",
-    border: "1px solid #aeb7ff",
-    borderRadius: "9px",
-    padding: "7px 10px",
-    background: "#fff",
+    border: "2px solid #ff1e1e",
+    borderRadius: "12px",
+    padding: "9px 12px",
+    background: "linear-gradient(180deg, #fff5f5, #ffffff)",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    fontSize: "14px",
+    fontSize: "15px",
     fontWeight: "900",
     color: "#06145f",
-    height: "34px",
+    height: "48px",
+    boxShadow: "0 3px 10px rgba(255,30,30,.18)",
+    cursor: "pointer",
+  },
+
+  departmentButtonLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "9px",
+    color: "#ff1e1e",
+  },
+
+  departmentButtonLabel: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    lineHeight: 1.15,
+    color: "#06145f",
+  },
+
+  departmentButtonCaption: {
+    fontSize: "10px",
+    fontWeight: "800",
+    letterSpacing: "0.04em",
+    color: "#ff1e1e",
+    textTransform: "uppercase",
   },
 
   departmentHint: {
