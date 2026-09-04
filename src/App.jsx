@@ -24,6 +24,7 @@ import BingoDemo from "./pages/bingo/BingoDemo";
 import BingoShow from "./pages/bingo/BingoShow";
 import BingoCard from "./components/bingo/BingoCard";
 import BingoDrum from "./components/bingo/BingoDrum";
+import CelebracionPremio from "./components/sorteo/CelebracionPremio";
 import logoLojo from "./assets/logo-lojo.jpg";
 import {
   construirTextoPedidoWhatsApp,
@@ -612,6 +613,7 @@ export default function App() {
   // El acceso identificado es opcional. Sin token, la aplicación sigue
   // funcionando exactamente igual para clientes anónimos.
   const [clienteIdentificado, setClienteIdentificado] = useState(null);
+  const [premioSorteoPendiente, setPremioSorteoPendiente] = useState(null);
   const [cargandoCliente, setCargandoCliente] = useState(Boolean(clienteToken));
   const [favoritos, setFavoritos] = useState(() => new Set());
   const [cargandoFavoritos, setCargandoFavoritos] = useState(false);
@@ -750,6 +752,49 @@ export default function App() {
       cancelado = true;
     };
   }, [clienteToken]);
+
+  useEffect(() => {
+    let cancelado = false;
+
+    async function comprobarPremioSorteoPendiente() {
+      if (!clienteIdentificado?.token) return;
+
+      try {
+        const { data, error } = await supabase.rpc("obtener_premio_sorteo_pendiente", {
+          p_token: clienteIdentificado.token,
+        });
+        if (error) throw error;
+        if (cancelado) return;
+
+        const premio = Array.isArray(data) ? data[0] : data;
+        if (premio?.edition_id) setPremioSorteoPendiente(premio);
+      } catch (error) {
+        console.error("No se pudo comprobar si hay un premio de Sorteo pendiente:", error);
+      }
+    }
+
+    comprobarPremioSorteoPendiente();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [clienteIdentificado?.token]);
+
+  async function cerrarCelebracionPremioSorteo() {
+    const premio = premioSorteoPendiente;
+    setPremioSorteoPendiente(null);
+    if (!premio?.edition_id || !clienteIdentificado?.token) return;
+
+    try {
+      const { error } = await supabase.rpc("marcar_premio_sorteo_visto", {
+        p_edition_id: premio.edition_id,
+        p_cliente_token: clienteIdentificado.token,
+      });
+      if (error) throw error;
+    } catch (error) {
+      console.error("No se pudo marcar el premio de Sorteo como visto:", error);
+    }
+  }
 
   useEffect(() => {
     let cancelado = false;
@@ -3577,6 +3622,10 @@ export default function App() {
 
   return (
     <div style={styles.page}>
+      {premioSorteoPendiente && (
+        <CelebracionPremio premio={premioSorteoPendiente} onCerrar={cerrarCelebracionPremioSorteo} />
+      )}
+
       {!appInstalada && clienteToken && (
         <div style={styles.installBanner} role="region" aria-label="Instalar aplicación">
           <div style={styles.installBannerIcon}>
