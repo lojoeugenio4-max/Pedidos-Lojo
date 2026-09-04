@@ -398,11 +398,7 @@ export default function DisplayPage() {
         playSorteoDing();
         payload.numeros.forEach((numeroAsignado, indice) => {
           window.setTimeout(() => {
-            cantarNumeroSorteo({
-              numero: numeroAsignado.numero,
-              clienteNombre: payload.entrada?.customer_name || "",
-              edicionNombre: numeroAsignado.edition_nombre,
-            });
+            cantarNumeroSorteo({ numero: numeroAsignado.numero });
           }, indice * 1600);
         });
       }
@@ -469,15 +465,16 @@ export default function DisplayPage() {
     const numerosNuevos = sorteoNumeros.map((n) => n.numero);
     return (
       <main style={styles.sorteoPage}>
-        <section style={styles.header}>
+        <section style={styles.sorteoHeader}>
           <img src={logoLojo} alt="Cash Lojo" style={styles.sorteoLogo} />
-          <div style={styles.kicker}>CASH LOJO</div>
-          <h1 style={styles.title}>🎟️ SORTEO</h1>
-          <p style={styles.subtitle}>
-            {sorteoEntrada?.customer_name
-              ? `Número asignado a ${sorteoEntrada.customer_name}`
-              : "Número asignado"}
-          </p>
+          <div>
+            <div style={styles.sorteoKicker}>CASH LOJO · 🎟️ SORTEO</div>
+            <p style={styles.sorteoSubtitle}>
+              {sorteoEntrada?.customer_name
+                ? `Número asignado a ${sorteoEntrada.customer_name}`
+                : "Número asignado"}
+            </p>
+          </div>
         </section>
         <div style={styles.sorteoGridsWrap}>
           {sorteoGrids.map((grid) => (
@@ -776,14 +773,36 @@ const styles = {
     gap: 16,
   },
   sorteoLogo: {
-    width: 72,
-    height: 72,
+    width: 52,
+    height: 52,
     objectFit: "contain",
-    borderRadius: 16,
+    borderRadius: 12,
     background: "#ffffff",
-    padding: 6,
-    boxShadow: "0 8px 24px rgba(0,0,0,.35)",
-    marginBottom: 6,
+    padding: 5,
+    boxShadow: "0 6px 16px rgba(0,0,0,.35)",
+    flexShrink: 0,
+  },
+  sorteoHeader: {
+    position: "relative",
+    zIndex: 2,
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: "clamp(4px, 0.8vh, 10px)",
+  },
+  sorteoKicker: {
+    color: "#ff1e1e",
+    fontSize: "clamp(14px, 2vh, 22px)",
+    fontWeight: 1000,
+    letterSpacing: "0.03em",
+    lineHeight: 1.15,
+  },
+  sorteoSubtitle: {
+    margin: 0,
+    color: "rgba(255,255,255,.85)",
+    fontSize: "clamp(11px, 1.4vh, 15px)",
+    fontWeight: 700,
   },
   sorteoGridsWrap: {
     display: "flex",
