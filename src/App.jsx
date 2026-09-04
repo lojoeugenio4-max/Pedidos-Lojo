@@ -886,6 +886,12 @@ export default function App() {
           ? { enviadoEn: savedOrder.enviadoEn }
           : null;
 
+      // Se guarda aparte (no como estado de React) porque este mismo id
+      // puede acabar de determinarse unas líneas más abajo (si venía de
+      // Supabase) y el estado pedidoStatsIdActual todavía no se habría
+      // actualizado en este mismo ciclo de la función.
+      let pedidoStatsIdParaComprobar = pedidoPrevio ? savedOrder.pedidoStatsId || null : null;
+
       if (clienteIdentificado?.id) {
         setComprobandoPedidoPrevio(true);
         try {
@@ -923,11 +929,49 @@ export default function App() {
             setPedidoFechaLimiteEdicion(data.fecha_limite_edicion);
             setPedidoStatsIdActual(data.pedido_stats_id || null);
             pedidoPrevio = { enviadoEn: data.enviado_en };
+            pedidoStatsIdParaComprobar = data.pedido_stats_id || null;
           }
         } catch (error) {
           console.error("No se pudo comprobar si había un pedido previo:", error);
         } finally {
           if (!cancelado) setComprobandoPedidoPrevio(false);
+        }
+      }
+
+      // Aunque el pedido siga dentro del plazo horario de modificación, si
+      // su QR ya se pasó por caja (se jugó Ruleta/Bingo/Sorteo, aunque sea
+      // solo una parte), ya no tiene sentido ofrecer "modificar": el
+      // pedido ya se atendió en tienda, y modificarlo generaría un QR
+      // distinto que no se correspondería con lo que ya se validó en caja.
+      // En ese caso se trata directamente como un pedido nuevo, sin avisar.
+      if (pedidoPrevio && !cancelado) {
+        const pedidoStatsIdParaComprobarFinal = pedidoStatsIdParaComprobar;
+        if (pedidoStatsIdParaComprobarFinal) {
+          try {
+            const { data: entitlement, error: entitlementError } = await supabase
+              .from("game_entitlements")
+              .select("roulette_plays_used, bingo_plays_used, sorteo_revelado")
+              .eq("order_id", pedidoStatsIdParaComprobarFinal)
+              .maybeSingle();
+
+            if (entitlementError) throw entitlementError;
+
+            const yaValidado = Boolean(
+              entitlement &&
+                (Number(entitlement.roulette_plays_used || 0) > 0 ||
+                  Number(entitlement.bingo_plays_used || 0) > 0 ||
+                  entitlement.sorteo_revelado === true)
+            );
+
+            if (yaValidado) {
+              if (!cancelado) limpiarPedidoDespuesEnvio();
+              return;
+            }
+          } catch (error) {
+            console.error("No se pudo comprobar si el QR del pedido previo ya se validó:", error);
+            // Ante la duda (fallo de red, etc.) se sigue ofreciendo modificar,
+            // igual que se hacía antes de esta comprobación.
+          }
         }
       }
 
