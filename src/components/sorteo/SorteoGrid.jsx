@@ -88,7 +88,8 @@ const estilos = {
     maxWidth: "100%",
   },
   celdaLibre: { background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.35)" },
-  celdaOcupada: { background: "#0ea5e9", color: "#fff" },
+  // Rojo corporativo Cash Lojo (mismo tono que el logo y la cabecera de la app)
+  celdaOcupada: { background: "linear-gradient(135deg, #ff1e1e, #a30f0f)", color: "#fff" },
   celdaDestacada: {
     background: "#fbbf24",
     color: "#111827",
