@@ -1198,7 +1198,20 @@ export default function StorePage() {
                 </button>
               )}
               {entitlement.roulette_available && entrada && (
-                <button type="button" onClick={() => setEstado("ready")} style={styles.rouletteActionButton}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEstado("ready");
+                    // El botón antes solo cambiaba la pantalla del TPV: si
+                    // antes se había jugado Bingo en el mismo pedido, la TV
+                    // se quedaba mostrando el bombo del Bingo para siempre,
+                    // porque nunca se le avisaba de que tocaba pasar a la
+                    // Ruleta. Sin este aviso, la Ruleta "gira" en el TPV
+                    // pero el premio nunca se ve en la pantalla grande.
+                    enviarEventoDisplay("ready", { entrada: entitlement, premios });
+                  }}
+                  style={styles.rouletteActionButton}
+                >
                   🎡 ABRIR RULETA
                 </button>
               )}
