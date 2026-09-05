@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { comprimirImagen } from "../utils/comprimirImagen";
 
 const DIAS = [
   { id: "1", label: "Lunes" },
@@ -221,7 +222,9 @@ export default function Pushes() {
     setCargando(true);
 
     try {
-      const extension = file.name.split(".").pop() || "jpg";
+      const fileComprimido = await comprimirImagen(file);
+
+      const extension = fileComprimido.name.split(".").pop() || "jpg";
       const safeName = `${Date.now()}-${Math.random()
         .toString(36)
         .slice(2)}.${extension}`;
@@ -229,7 +232,7 @@ export default function Pushes() {
 
       const { error: uploadError } = await supabase.storage
         .from("push")
-        .upload(path, file, {
+        .upload(path, fileComprimido, {
           cacheControl: "3600",
           upsert: false,
         });
