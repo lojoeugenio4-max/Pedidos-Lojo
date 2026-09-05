@@ -3,6 +3,7 @@ import { supabase } from "../supabaseClient";
 import { supabaseStorage } from "../supabaseStorageClient";
 import FormArticulo from "./FormArticulo";
 import TablaArticulos from "./TablaArticulos";
+import { comprimirImagen } from "../utils/comprimirImagen";
 
 export default function Articulos() {
   const [articulos, setArticulos] = useState([]);
@@ -108,12 +109,17 @@ export default function Articulos() {
     setForm({ ...form, [campo]: valor });
   }
 
-  function seleccionarFoto(e) {
+  async function seleccionarFoto(e) {
     const archivo = e.target.files[0];
     if (!archivo) return;
 
-    setFoto(archivo);
+    // La previsualización se muestra ya (con el archivo original, es
+    // instantáneo); la compresión tarda un instante y no debe bloquear
+    // ver la foto elegida.
     setPreview(URL.createObjectURL(archivo));
+
+    const archivoComprimido = await comprimirImagen(archivo);
+    setFoto(archivoComprimido);
   }
 
   async function nuevoArticulo() {
