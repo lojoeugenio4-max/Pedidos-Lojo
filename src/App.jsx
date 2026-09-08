@@ -2368,92 +2368,92 @@ export default function App() {
     productosBingo,
   ]);
 
+  // Con cientos de artículos (y su foto) en el catálogo, montar TODAS
+  // las tarjetas en el DOM de golpe —o incluso ir montándolas poco a
+  // poco pero dejarlas todas ahí— es lo que hacía que la app fuera
+  // lenta: cuantas más tarjetas llevaba montadas, más trabajo de scroll
+  // y de memoria para el móvil, en CUALQUIER navegador.
+  //
+  // Aquí cada departamento solo "existe" de verdad (con sus fotos) si
+  // está cerca de la pantalla; el resto se queda como un simple hueco
+  // vacío del tamaño aproximado que ocuparía, así el scroll no da
+  // saltos. En cuanto ese hueco se acerca a la pantalla, se rellena con
+  // las tarjetas reales. Una vez rellenado no se vuelve a vaciar (para
+  // no dar tirones al subir y bajar), así que si el cliente hace scroll
+  // por todo el catálogo, todo acaba montado igualmente — la diferencia
+  // es que nunca se monta más de lo que hace falta EN CADA MOMENTO.
+  //
+  // Usamos IntersectionObserver (no una propiedad de CSS moderna) a
+  // propósito: lo soportan prácticamente todos los móviles desde 2019,
+  // no solo los últimos iPhone.
+  const departmentSectionRefs = useRef({});
+  const [seccionesVisibles, setSeccionesVisibles] = useState(() => new Set());
+
   useEffect(() => {
-    // No forzamos scroll automático al primer artículo.
-    // Así evitamos que el primer artículo quede tapado debajo de la cabecera fija.
+    // Al cambiar de departamento, buscar o filtrar, empezamos de nuevo
+    // mostrando solo los 2 primeros grupos (lo que se ve nada más
+    // entrar); el resto se irá rellenando según se haga scroll.
+    setSeccionesVisibles(new Set(filteredDepartments.slice(0, 2).map((d) => d.name)));
   }, [filteredDepartments]);
-
-  // Con cientos de artículos (y su foto) en el catálogo, montar TODAS las
-  // tarjetas de golpe en el DOM (vista "Todos") es lo que bloqueaba la
-  // página al abrir la app: React tenía que crear y pintar de una sola
-  // vez cientos de tarjetas con imagen, y el móvil se quedaba congelado
-  // mientras tanto. Aquí montamos primero un primer lote pequeño (lo que
-  // se ve nada más entrar) y el resto se va añadiendo en lotes, cediendo
-  // el hilo principal entre lote y lote para que el navegador pueda
-  // pintar y responder al usuario. Al final se sigue montando el
-  // catálogo completo (nada deja de estar disponible), así que no afecta
-  // a funciones como saltar a un artículo desde un push.
-  const LOTE_INICIAL = 24;
-  const LOTE_SIGUIENTE = 40;
-  const [productosMontados, setProductosMontados] = useState(LOTE_INICIAL);
-
-  useEffect(() => {
-    setProductosMontados(LOTE_INICIAL);
-  }, [filteredDepartments]);
-
-  useEffect(() => {
-    const totalProductos = filteredDepartments.reduce(
-      (suma, department) => suma + department.products.length,
-      0
-    );
-
-    if (productosMontados >= totalProductos) return undefined;
-
-    let cancelado = false;
-    const idle =
-      typeof window.requestIdleCallback === "function"
-        ? window.requestIdleCallback
-        : (callback) => window.setTimeout(callback, 60);
-
-    const id = idle(() => {
-      if (cancelado) return;
-      setProductosMontados((actual) => actual + LOTE_SIGUIENTE);
-    });
-
-    return () => {
-      cancelado = true;
-      if (typeof window.cancelIdleCallback === "function" && typeof id === "number") {
-        window.cancelIdleCallback(id);
-      } else {
-        window.clearTimeout(id);
-      }
-    };
-  }, [filteredDepartments, productosMontados]);
 
   useEffect(() => {
     // Si se salta a un artículo concreto (por ejemplo desde un push),
-    // montamos el catálogo completo de golpe para que el artículo
-    // exista ya en el DOM y el scroll automático lo encuentre, en vez
-    // de esperar a que le toque su lote.
+    // forzamos a que su departamento esté montado ya, para que el
+    // artículo exista en el DOM y el scroll automático lo encuentre.
     if (!articuloDestacado) return;
-    const totalProductos = filteredDepartments.reduce(
-      (suma, department) => suma + department.products.length,
-      0
+    const department = filteredDepartments.find((d) =>
+      d.products.some((product) => product.id === articuloDestacado)
     );
-    setProductosMontados((actual) => Math.max(actual, totalProductos));
+    if (!department) return;
+    setSeccionesVisibles((actuales) => {
+      if (actuales.has(department.name)) return actuales;
+      const siguientes = new Set(actuales);
+      siguientes.add(department.name);
+      return siguientes;
+    });
   }, [articuloDestacado, filteredDepartments]);
 
-  const departamentosParaMostrar = useMemo(() => {
-    let restante = productosMontados;
-    const resultado = [];
-
-    for (const department of filteredDepartments) {
-      if (restante <= 0) break;
-
-      if (department.products.length <= restante) {
-        resultado.push(department);
-        restante -= department.products.length;
-      } else {
-        resultado.push({
-          ...department,
-          products: department.products.slice(0, restante),
-        });
-        restante = 0;
-      }
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") {
+      // Navegador muy antiguo sin soporte: mostramos todo directamente
+      // en vez de dejar huecos vacíos que nunca se rellenarían.
+      setSeccionesVisibles(new Set(filteredDepartments.map((d) => d.name)));
+      return undefined;
     }
 
-    return resultado;
-  }, [filteredDepartments, productosMontados]);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setSeccionesVisibles((actuales) => {
+          let siguientes = actuales;
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            const nombre = entry.target.dataset.departmentName;
+            if (nombre && !siguientes.has(nombre)) {
+              if (siguientes === actuales) siguientes = new Set(actuales);
+              siguientes.add(nombre);
+            }
+          });
+          return siguientes;
+        });
+      },
+      // Empezamos a montar un poco antes de que la sección entre en
+      // pantalla, para que al llegar el usuario ya la vea lista.
+      { rootMargin: "600px 0px 600px 0px" }
+    );
+
+    Object.values(departmentSectionRefs.current).forEach((element) => {
+      if (element) observer.observe(element);
+    });
+
+    return () => observer.disconnect();
+  }, [filteredDepartments]);
+
+  const ALTURA_FILA_ESTIMADA = 268;
+  const alturaEstimadaSeccion = (department) => {
+    const filas = Math.ceil(department.products.length / 2);
+    const alturaCabecera = soloFavoritos && clienteIdentificado ? 0 : 46;
+    return alturaCabecera + filas * ALTURA_FILA_ESTIMADA;
+  };
 
   const orderedItems = useMemo(() => {
     return Object.entries(quantities)
@@ -4571,48 +4571,61 @@ export default function App() {
         {errorCatalogo && <p style={styles.error}>{errorCatalogo}</p>}
 
         {!cargando &&
-          departamentosParaMostrar.map((department) => (
-            <section key={department.name} style={styles.departmentSection}>
-              {!(soloFavoritos && clienteIdentificado) && (
-                <h2
-                  style={{
-                    ...styles.departmentTitle,
-                    ...(["RULETA", "BINGO"].includes(department.name)
-                      ? styles.departmentTitlePromo
-                      : {}),
-                  }}
-                >
-                  {getDepartmentLabel(department.name, language)}
-                  <span style={styles.departmentTitleCount}>
-                    {department.products.length} {t.articles}
-                  </span>
-                </h2>
-              )}
+          filteredDepartments.map((department) => {
+            const visible = seccionesVisibles.has(department.name);
 
-              {department.products.length === 0 ? (
-                <div style={styles.emptyBox}>{t.noItems}</div>
-              ) : (
-                <div style={styles.productsGrid}>
-                {department.products.map((product) => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    quantity={quantities[product.id] || EMPTY_QUANTITY}
-                    isHighlighted={articuloDestacado === product.id}
-                    isFavorite={favoritos.has(String(product.id))}
-                    estaIdentificado={Boolean(clienteIdentificado)}
-                    t={t}
-                    onOpenFicha={setFichaProductoId}
-                    onToggleFavorite={alternarFavorito}
-                    cardRef={(element) => {
-                      rowRefs.current[product.id] = element;
+            return (
+              <section
+                key={department.name}
+                ref={(element) => {
+                  departmentSectionRefs.current[department.name] = element;
+                }}
+                data-department-name={department.name}
+                style={styles.departmentSection}
+              >
+                {!(soloFavoritos && clienteIdentificado) && (
+                  <h2
+                    style={{
+                      ...styles.departmentTitle,
+                      ...(["RULETA", "BINGO"].includes(department.name)
+                        ? styles.departmentTitlePromo
+                        : {}),
                     }}
-                  />
-                ))}
-                </div>
-              )}
-            </section>
-          ))}
+                  >
+                    {getDepartmentLabel(department.name, language)}
+                    <span style={styles.departmentTitleCount}>
+                      {department.products.length} {t.articles}
+                    </span>
+                  </h2>
+                )}
+
+                {department.products.length === 0 ? (
+                  <div style={styles.emptyBox}>{t.noItems}</div>
+                ) : !visible ? (
+                  <div style={{ height: `${alturaEstimadaSeccion(department)}px` }} />
+                ) : (
+                  <div style={styles.productsGrid}>
+                    {department.products.map((product) => (
+                      <ProductCard
+                        key={product.id}
+                        product={product}
+                        quantity={quantities[product.id] || EMPTY_QUANTITY}
+                        isHighlighted={articuloDestacado === product.id}
+                        isFavorite={favoritos.has(String(product.id))}
+                        estaIdentificado={Boolean(clienteIdentificado)}
+                        t={t}
+                        onOpenFicha={setFichaProductoId}
+                        onToggleFavorite={alternarFavorito}
+                        cardRef={(element) => {
+                          rowRefs.current[product.id] = element;
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
       </main>
 
       {(() => {
@@ -6207,6 +6220,19 @@ const styles = {
     overflow: "hidden",
     scrollMarginTop: "150px",
     transition: "background 180ms ease, border 180ms ease, box-shadow 180ms ease",
+    // Con cientos de tarjetas montadas en el catálogo, el navegador
+    // seguía calculando diseño y pintura para TODAS ellas en cada
+    // scroll, aunque la mayoría estuvieran fuera de la pantalla — eso
+    // es lo que se notaba como "va lentísimo" al desplazarse por el
+    // catálogo. "contentVisibility: auto" le dice al navegador que se
+    // salte ese trabajo para las tarjetas que no se ven, y solo lo
+    // haga cuando entran en pantalla. "containIntrinsicSize" es una
+    // altura aproximada para que reserve el hueco correcto mientras
+    // tanto y no dé saltos al hacer scroll. Los móviles antiguos que no
+    // conozcan esta propiedad simplemente la ignoran (siguen
+    // funcionando igual que antes, sin la mejora).
+    contentVisibility: "auto",
+    containIntrinsicSize: "auto 280px",
   },
 
   productCardHighlighted: {
