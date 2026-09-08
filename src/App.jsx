@@ -2877,15 +2877,51 @@ export default function App() {
     });
   };
 
-  // Botones +/- del catálogo (estilo Yollgo). No es una vía nueva de
-  // negocio: simplemente calcula el siguiente número y se lo pasa a
-  // updateQuantity de toda la vida, así que hereda gratis la exclusividad
-  // cajas/unidades y el aviso de "solo cajas" que ya tenía updateQuantity.
+  // Botones +/- del catálogo (estilo Yollgo). Antes calculaba "cuánto
+  // sumar" a partir de "quantities" tal cual estaba en el momento de
+  // pintar el botón (fuera del propio setQuantities). Si el cliente
+  // pulsaba dos veces seguidas, esos dos toques podían usar el mismo
+  // valor de partida (React aún no había aplicado el primero), y las
+  // dos pulsaciones acababan sumando UNA sola vez en vez de dos — el
+  // cliente veía que "hacía falta pulsar varias veces para que
+  // subiera". Ahora el siguiente valor se calcula DENTRO del propio
+  // setQuantities, así que cada pulsación parte siempre del valor más
+  // reciente de verdad, aunque lleguen varias casi a la vez.
   const stepQuantity = (productId, field, delta) => {
-    const current = quantities[productId] || {};
-    const currentValue = Number(current[field] || 0) || 0;
-    const nextValue = Math.max(0, currentValue + delta);
-    updateQuantity(productId, field, String(nextValue));
+    const product = productos.find((item) => item.id === productId);
+
+    if (field === "units" && product && !product.permite_unidades) {
+      avisarSoloCajas(productId);
+      return;
+    }
+
+    setQuantities((current) => {
+      const previous = current[productId] || {};
+      const currentValue = Number(previous[field] || 0) || 0;
+      const nextValue = Math.max(0, currentValue + delta);
+      const hasValue = nextValue > 0;
+
+      return {
+        ...current,
+        [productId]: {
+          boxes:
+            field === "boxes"
+              ? String(nextValue)
+              : hasValue
+                ? ""
+                : previous.boxes || "",
+          units:
+            field === "units"
+              ? String(nextValue)
+              : hasValue
+                ? ""
+                : product?.permite_unidades
+                  ? previous.units || ""
+                  : "",
+          notes: previous.notes || "",
+        },
+      };
+    });
   };
 
   const updateNotes = (productId, value) => {
@@ -5951,6 +5987,8 @@ const styles = {
     alignItems: "flex-end",
     justifyContent: "center",
     zIndex: 60,
+    cursor: "pointer",
+    touchAction: "manipulation",
   },
 
   fichaPanel: {
@@ -5992,6 +6030,8 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     cursor: "pointer",
+    touchAction: "manipulation",
+    WebkitTapHighlightColor: "transparent",
   },
 
   fichaFavoriteButton: {
@@ -6190,6 +6230,9 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
+    cursor: "pointer",
+    touchAction: "manipulation",
+    WebkitTapHighlightColor: "transparent",
   },
 
   productImage: {
