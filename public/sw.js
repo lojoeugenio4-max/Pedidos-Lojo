@@ -78,7 +78,18 @@ self.addEventListener("fetch", (event) => {
           .then((response) => {
             if (response.ok) {
               cache.put(event.request, response.clone());
-              limitarTamanoCache(IMAGES_CACHE_NAME, MAX_IMAGENES_EN_CACHE);
+              // Comprobar y recortar el tamaño de la caché (cache.keys()
+              // recorre TODAS las entradas, hasta 1200) es trabajo de
+              // sobra si se hace en cada foto que llega. Justo cuando
+              // más fotos llegan a la vez (al abrir el catálogo, con
+              // cientos de tarjetas) es cuando más pesa este recorrido,
+              // y es lo que más notaba el cliente como bloqueo. Basta
+              // con comprobarlo de vez en cuando: el límite es solo
+              // para no crecer sin fin, no hace falta vigilarlo al
+              // milisegundo.
+              if (Math.random() < 0.05) {
+                limitarTamanoCache(IMAGES_CACHE_NAME, MAX_IMAGENES_EN_CACHE);
+              }
             }
             return response;
           })
