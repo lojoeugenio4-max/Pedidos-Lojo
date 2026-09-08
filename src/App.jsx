@@ -695,6 +695,21 @@ export default function App() {
   // indica que el pedido actual en pantalla ya se mandó por WhatsApp y,
   // si se envía de nuevo, sustituye al anterior. "avisoPedidoPrevio"
   // controla el aviso que se muestra antes de dejar editar.
+  // Bloqueo contra doble envío: un doble toque en "Enviar" (muy fácil en
+  // móvil, sobre todo mientras se esperan las llamadas a Ruleta/Bingo antes
+  // de abrir WhatsApp) disparaba sendByWhatsApp() dos veces casi a la vez.
+  // pedidoEnviadoActivo NO sirve para evitarlo porque solo se pone a true
+  // al final de todo el proceso (en marcarPedidoComoEnviado), así que las
+  // dos llamadas veían esModificacion=false y creaban CADA UNA su propio
+  // pedidoIdEstable con crearPedidoId(): dos pedidos distintos, mismo
+  // cliente, misma hora, y con Bingo distinto entre sí porque el límite
+  // "1 pedido de Bingo al día" en el servidor solo dejaba pasar al primero.
+  // enviandoPedidoRef se comprueba de forma síncrona (a diferencia de un
+  // useState) para que la segunda llamada, aunque llegue milisegundos
+  // después, se corte antes de generar nada.
+  const enviandoPedidoRef = useRef(false);
+  const [enviandoPedido, setEnviandoPedido] = useState(false);
+
   const [pedidoEnviadoActivo, setPedidoEnviadoActivo] = useState(() =>
     Boolean(
       savedOrder.enviadoEn &&
@@ -3667,6 +3682,21 @@ export default function App() {
   }
 
   const sendByWhatsApp = async () => {
+    // Corte inmediato y síncrono si ya hay un envío en curso (doble toque).
+    if (enviandoPedidoRef.current) {
+      return;
+    }
+    enviandoPedidoRef.current = true;
+    setEnviandoPedido(true);
+    try {
+      await sendByWhatsAppInterno();
+    } finally {
+      enviandoPedidoRef.current = false;
+      setEnviandoPedido(false);
+    }
+  };
+
+  const sendByWhatsAppInterno = async () => {
     if (!orderedItems.length) {
       alert(t.alertEmpty);
       return;
@@ -3878,7 +3908,7 @@ export default function App() {
       }
     }
 
-    enviarPedidoFinal({
+    await enviarPedidoFinal({
       itemsPedido,
       customerNamePedido,
       notesPedido,
@@ -5177,9 +5207,17 @@ export default function App() {
             />
 
             <div style={styles.summaryActions}>
-              <button type="button" onClick={sendByWhatsApp} style={styles.sendButton}>
+              <button
+                type="button"
+                onClick={sendByWhatsApp}
+                disabled={enviandoPedido}
+                style={{
+                  ...styles.sendButton,
+                  ...(enviandoPedido ? { opacity: 0.6, pointerEvents: "none" } : null),
+                }}
+              >
                 <Send size={18} />
-                {t.sendByWhatsApp}
+                {enviandoPedido ? "Enviando..." : t.sendByWhatsApp}
               </button>
 
               <button type="button" onClick={resetToInitialState} style={styles.clearButton}>
