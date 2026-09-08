@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync, createPortal } from "react-dom";
 import {
   ShoppingCart,
@@ -444,6 +444,128 @@ function MiniPromocionesBadge({
     </div>
   );
 }
+
+
+// Con cientos de artículos en el catálogo, cada tarjeta se repetía
+// dentro del mismo componente App: cualquier cambio de estado (abrir la
+// ficha, sumar una unidad, marcar un favorito...) hacía que React
+// tuviera que volver a comprobar cientos de tarjetas, aunque solo una
+// hubiera cambiado. En un móvil con la app cargada eso se notaba como
+// "hay que tocar varias veces" - el primer toque sí llegaba, pero la
+// pantalla tardaba en reaccionar y el usuario, al no ver respuesta,
+// tocaba otra vez.
+//
+// Al sacar la tarjeta a su propio componente con React.memo, cada
+// tarjeta solo se vuelve a dibujar cuando cambian SUS propios datos
+// (su cantidad, si está destacada, si es favorita...), no cuando
+// cambia cualquier cosa en el resto de la app.
+const ProductCard = React.memo(function ProductCard({
+  product,
+  quantity,
+  isHighlighted,
+  isFavorite,
+  estaIdentificado,
+  t,
+  onOpenFicha,
+  onToggleFavorite,
+  cardRef,
+}) {
+  const tieneCantidad = Number(quantity.boxes) > 0 || Number(quantity.units) > 0;
+
+  return (
+    <article
+      ref={cardRef}
+      style={{
+        ...styles.productCard,
+        ...(isHighlighted ? styles.productCardHighlighted : {}),
+      }}
+    >
+      <div style={styles.photoBox} onClick={() => onOpenFicha(product.id)}>
+        {product.image ? (
+          <img
+            src={product.image}
+            alt=""
+            style={styles.productImage}
+            loading="lazy"
+            decoding="async"
+          />
+        ) : (
+          <span style={styles.noPhoto}>{t.noPhoto}</span>
+        )}
+
+        {tieneCantidad && (
+          <span style={styles.quantityBadge}>
+            {Number(quantity.boxes) > 0
+              ? `${quantity.boxes} ${t.boxes}`
+              : `${quantity.units} ${t.units}`}
+          </span>
+        )}
+      </div>
+
+      <div style={styles.productContent}>
+        <div style={styles.productTop}>
+          <div style={styles.productTitleBlock}>
+            <h3 style={styles.productName}>
+              {product.codigo ? `${product.codigo} · ` : ""}
+              {product.name}
+            </h3>
+
+            <div style={styles.badges}>
+              {product.novedad && (
+                <span style={styles.newsBadge}>⭐ {t.news}</span>
+              )}
+
+              {product.offerText && (
+                <span style={styles.offerBadge}>
+                  🏷️ {product.offerText}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div style={styles.productTopActions}>
+            {(product.participaRuleta || (product.participaBingo && estaIdentificado)) && (
+              <MiniPromocionesBadge
+                participaRuleta={product.participaRuleta}
+                cantidadMinimaRuleta={product.cantidadMinimaRuleta}
+                permiteUnidadesRuleta={product.permite_unidades}
+                participaBingo={product.participaBingo}
+                cantidadMinimaBingo={product.cantidadMinimaBingo}
+                permiteUnidadesBingo={product.permite_unidades}
+                mostrarBingo={Boolean(estaIdentificado)}
+              />
+            )}
+
+            {estaIdentificado && (
+              <button
+                type="button"
+                onClick={() => onToggleFavorite(product.id, isFavorite)}
+                style={{
+                  ...styles.favoriteButton,
+                  ...(isFavorite ? styles.favoriteButtonActive : {}),
+                }}
+                aria-label={isFavorite ? "Quitar de favoritos" : "Añadir a favoritos"}
+                title={isFavorite ? "Quitar de favoritos" : "Añadir a favoritos"}
+              >
+                <Star size={20} fill={isFavorite ? "currentColor" : "none"} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onOpenFicha(product.id)}
+          style={tieneCantidad ? styles.addButtonActive : styles.addButton}
+        >
+          {tieneCantidad ? "Editar cantidad" : "Añadir"}
+        </button>
+      </div>
+    </article>
+  );
+});
+
+const EMPTY_QUANTITY = {};
 
 
 function crearCartonBingo90() {
@@ -991,11 +1113,16 @@ export default function App() {
     };
   }, [cargandoCliente, clienteIdentificado?.id]);
 
-  async function alternarFavorito(articuloId) {
+  // No lee "favoritos" del cierre a propósito: recibe si ya era favorito
+  // como segundo parámetro (quien la llama ya lo sabe, se lo pasa). Así
+  // esta función mantiene siempre la misma identidad entre renders
+  // (solo cambia si cambia el cliente), lo que permite que las
+  // tarjetas de producto (React.memo) no tengan que volver a dibujarse
+  // solo porque este favorito o aquel haya cambiado en OTRA tarjeta.
+  const alternarFavorito = useCallback(async (articuloId, yaEsFavorito) => {
     if (!clienteIdentificado?.id) return;
 
     const idArticulo = String(articuloId);
-    const yaEsFavorito = favoritos.has(idArticulo);
 
     setErrorFavoritos("");
     setFavoritos((actuales) => {
@@ -1030,7 +1157,7 @@ export default function App() {
       });
       setErrorFavoritos("No se pudo guardar el favorito. Inténtalo de nuevo.");
     }
-  }
+  }, [clienteIdentificado]);
 
 
   useEffect(() => {
@@ -4430,132 +4557,22 @@ export default function App() {
                 <div style={styles.emptyBox}>{t.noItems}</div>
               ) : (
                 <div style={styles.productsGrid}>
-                {department.products.map((product) => {
-                  const quantity = quantities[product.id] || {};
-
-                  return (
-                    <article
-                      key={product.id}
-                      ref={(element) => {
-                        rowRefs.current[product.id] = element;
-                      }}
-                      style={{
-                        ...styles.productCard,
-                        ...(articuloDestacado === product.id
-                          ? styles.productCardHighlighted
-                          : {}),
-                      }}
-                    >
-                      <div
-                        style={styles.photoBox}
-                        onClick={() => setFichaProductoId(product.id)}
-                      >
-                        {product.image ? (
-                          <img
-                            src={product.image}
-                            alt=""
-                            style={styles.productImage}
-                            loading="lazy"
-                            decoding="async"
-                          />
-                        ) : (
-                          <span style={styles.noPhoto}>{t.noPhoto}</span>
-                        )}
-
-                        {(Number(quantity.boxes) > 0 || Number(quantity.units) > 0) && (
-                          <span style={styles.quantityBadge}>
-                            {Number(quantity.boxes) > 0
-                              ? `${quantity.boxes} ${t.boxes}`
-                              : `${quantity.units} ${t.units}`}
-                          </span>
-                        )}
-                      </div>
-
-                      <div style={styles.productContent}>
-                        <div style={styles.productTop}>
-                          <div style={styles.productTitleBlock}>
-                            <h3 style={styles.productName}>
-                              {product.codigo ? `${product.codigo} · ` : ""}
-                              {product.name}
-                            </h3>
-
-                            <div style={styles.badges}>
-                              {product.novedad && (
-                                <span style={styles.newsBadge}>⭐ {t.news}</span>
-                              )}
-
-                              {product.offerText && (
-                                <span style={styles.offerBadge}>
-                                  🏷️ {product.offerText}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div style={styles.productTopActions}>
-                            {(product.participaRuleta || (product.participaBingo && clienteIdentificado)) && (
-                              <MiniPromocionesBadge
-                                participaRuleta={product.participaRuleta}
-                                cantidadMinimaRuleta={product.cantidadMinimaRuleta}
-                                permiteUnidadesRuleta={product.permite_unidades}
-                                participaBingo={product.participaBingo}
-                                cantidadMinimaBingo={product.cantidadMinimaBingo}
-                                permiteUnidadesBingo={product.permite_unidades}
-                                mostrarBingo={Boolean(clienteIdentificado)}
-                              />
-                            )}
-
-                            {clienteIdentificado && (
-                              <button
-                                type="button"
-                                onClick={() => alternarFavorito(product.id)}
-                                style={{
-                                  ...styles.favoriteButton,
-                                  ...(favoritos.has(String(product.id))
-                                    ? styles.favoriteButtonActive
-                                    : {}),
-                                }}
-                                aria-label={
-                                  favoritos.has(String(product.id))
-                                    ? "Quitar de favoritos"
-                                    : "Añadir a favoritos"
-                                }
-                                title={
-                                  favoritos.has(String(product.id))
-                                    ? "Quitar de favoritos"
-                                    : "Añadir a favoritos"
-                                }
-                              >
-                                <Star
-                                  size={20}
-                                  fill={
-                                    favoritos.has(String(product.id))
-                                      ? "currentColor"
-                                      : "none"
-                                  }
-                                />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => setFichaProductoId(product.id)}
-                          style={
-                            Number(quantity.boxes) > 0 || Number(quantity.units) > 0
-                              ? styles.addButtonActive
-                              : styles.addButton
-                          }
-                        >
-                          {Number(quantity.boxes) > 0 || Number(quantity.units) > 0
-                            ? "Editar cantidad"
-                            : "Añadir"}
-                        </button>
-                      </div>
-                    </article>
-                  );
-                })}
+                {department.products.map((product) => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    quantity={quantities[product.id] || EMPTY_QUANTITY}
+                    isHighlighted={articuloDestacado === product.id}
+                    isFavorite={favoritos.has(String(product.id))}
+                    estaIdentificado={Boolean(clienteIdentificado)}
+                    t={t}
+                    onOpenFicha={setFichaProductoId}
+                    onToggleFavorite={alternarFavorito}
+                    cardRef={(element) => {
+                      rowRefs.current[product.id] = element;
+                    }}
+                  />
+                ))}
                 </div>
               )}
             </section>
@@ -4614,7 +4631,7 @@ export default function App() {
                 {clienteIdentificado && (
                   <button
                     type="button"
-                    onClick={() => alternarFavorito(fichaProducto.id)}
+                    onClick={() => alternarFavorito(fichaProducto.id, favoritos.has(String(fichaProducto.id)))}
                     style={{
                       ...styles.fichaFavoriteButton,
                       ...(favoritos.has(String(fichaProducto.id))
