@@ -2246,6 +2246,88 @@ export default function App() {
     // Así evitamos que el primer artículo quede tapado debajo de la cabecera fija.
   }, [filteredDepartments]);
 
+  // Con cientos de artículos (y su foto) en el catálogo, montar TODAS las
+  // tarjetas de golpe en el DOM (vista "Todos") es lo que bloqueaba la
+  // página al abrir la app: React tenía que crear y pintar de una sola
+  // vez cientos de tarjetas con imagen, y el móvil se quedaba congelado
+  // mientras tanto. Aquí montamos primero un primer lote pequeño (lo que
+  // se ve nada más entrar) y el resto se va añadiendo en lotes, cediendo
+  // el hilo principal entre lote y lote para que el navegador pueda
+  // pintar y responder al usuario. Al final se sigue montando el
+  // catálogo completo (nada deja de estar disponible), así que no afecta
+  // a funciones como saltar a un artículo desde un push.
+  const LOTE_INICIAL = 24;
+  const LOTE_SIGUIENTE = 40;
+  const [productosMontados, setProductosMontados] = useState(LOTE_INICIAL);
+
+  useEffect(() => {
+    setProductosMontados(LOTE_INICIAL);
+  }, [filteredDepartments]);
+
+  useEffect(() => {
+    const totalProductos = filteredDepartments.reduce(
+      (suma, department) => suma + department.products.length,
+      0
+    );
+
+    if (productosMontados >= totalProductos) return undefined;
+
+    let cancelado = false;
+    const idle =
+      typeof window.requestIdleCallback === "function"
+        ? window.requestIdleCallback
+        : (callback) => window.setTimeout(callback, 60);
+
+    const id = idle(() => {
+      if (cancelado) return;
+      setProductosMontados((actual) => actual + LOTE_SIGUIENTE);
+    });
+
+    return () => {
+      cancelado = true;
+      if (typeof window.cancelIdleCallback === "function" && typeof id === "number") {
+        window.cancelIdleCallback(id);
+      } else {
+        window.clearTimeout(id);
+      }
+    };
+  }, [filteredDepartments, productosMontados]);
+
+  useEffect(() => {
+    // Si se salta a un artículo concreto (por ejemplo desde un push),
+    // montamos el catálogo completo de golpe para que el artículo
+    // exista ya en el DOM y el scroll automático lo encuentre, en vez
+    // de esperar a que le toque su lote.
+    if (!articuloDestacado) return;
+    const totalProductos = filteredDepartments.reduce(
+      (suma, department) => suma + department.products.length,
+      0
+    );
+    setProductosMontados((actual) => Math.max(actual, totalProductos));
+  }, [articuloDestacado, filteredDepartments]);
+
+  const departamentosParaMostrar = useMemo(() => {
+    let restante = productosMontados;
+    const resultado = [];
+
+    for (const department of filteredDepartments) {
+      if (restante <= 0) break;
+
+      if (department.products.length <= restante) {
+        resultado.push(department);
+        restante -= department.products.length;
+      } else {
+        resultado.push({
+          ...department,
+          products: department.products.slice(0, restante),
+        });
+        restante = 0;
+      }
+    }
+
+    return resultado;
+  }, [filteredDepartments, productosMontados]);
+
   const orderedItems = useMemo(() => {
     return Object.entries(quantities)
       .map(([productId, quantity]) => {
@@ -4326,7 +4408,7 @@ export default function App() {
         {errorCatalogo && <p style={styles.error}>{errorCatalogo}</p>}
 
         {!cargando &&
-          filteredDepartments.map((department) => (
+          departamentosParaMostrar.map((department) => (
             <section key={department.name} style={styles.departmentSection}>
               {!(soloFavoritos && clienteIdentificado) && (
                 <h2
