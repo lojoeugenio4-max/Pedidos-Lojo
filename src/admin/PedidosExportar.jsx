@@ -471,9 +471,9 @@ export default function PedidosExportar() {
 
         <button
           type="button"
-          style={botonPrimario}
+          style={botonPrimario2(exportando || seleccionados.size === 0)}
           onClick={exportarSeleccionados}
-          disabled={exportando || seleccionados.size === 0 || !carpetaHandle || !carpetaConcedida}
+          disabled={exportando || seleccionados.size === 0}
         >
           {exportando ? "Exportando…" : `⬇️ Exportar seleccionados (${seleccionados.size})`}
         </button>
@@ -642,6 +642,12 @@ const botonSecundario = {
   fontSize: "13px",
   cursor: "pointer",
 };
+
+const botonPrimario2 = (deshabilitado) => ({
+  ...botonPrimario,
+  opacity: deshabilitado ? 0.5 : 1,
+  cursor: deshabilitado ? "not-allowed" : "pointer",
+});
 
 const botonTexto = {
   padding: "6px 10px",
