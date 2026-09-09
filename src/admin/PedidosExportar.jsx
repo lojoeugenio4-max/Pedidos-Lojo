@@ -469,6 +469,21 @@ export default function PedidosExportar() {
 
         <span style={{ flex: 1 }} />
 
+        {(!carpetaHandle || !carpetaConcedida) && (
+          <span style={avisoCarpetaFalta}>⚠️ Falta elegir la carpeta →</span>
+        )}
+
+        {!carpetaHandle && (
+          <button type="button" style={botonSecundario} onClick={manejarElegirCarpeta} disabled={!soportado}>
+            📁 Elegir carpeta
+          </button>
+        )}
+        {carpetaHandle && !carpetaConcedida && (
+          <button type="button" style={botonSecundario} onClick={manejarConfirmarPermiso}>
+            Confirmar permiso
+          </button>
+        )}
+
         <button
           type="button"
           style={botonPrimario2(exportando || seleccionados.size === 0)}
@@ -641,6 +656,12 @@ const botonSecundario = {
   fontWeight: 700,
   fontSize: "13px",
   cursor: "pointer",
+};
+
+const avisoCarpetaFalta = {
+  color: "#b91c1c",
+  fontWeight: 800,
+  fontSize: "12px",
 };
 
 const botonPrimario2 = (deshabilitado) => ({
