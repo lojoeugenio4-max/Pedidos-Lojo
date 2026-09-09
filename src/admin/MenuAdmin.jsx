@@ -49,6 +49,12 @@ export default function MenuAdmin({
       descripcion: "Resumen y actividad",
     },
     {
+      id: "pedidos",
+      icono: "📥",
+      titulo: "Pedidos recibidos",
+      descripcion: "Exportar pedidos a CSV",
+    },
+    {
       id: "configuracion",
       icono: "⚙️",
       titulo: "Configuración",
