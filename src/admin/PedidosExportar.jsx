@@ -116,6 +116,34 @@ export default function PedidosExportar() {
   const [exportando, setExportando] = useState(false);
   const [mensajeExport, setMensajeExport] = useState("");
 
+  const [pedidoDetalle, setPedidoDetalle] = useState(null);
+  const [pedidosParaImprimir, setPedidosParaImprimir] = useState([]);
+
+  useEffect(() => {
+    if (!pedidosParaImprimir.length) return;
+    const id = setTimeout(() => window.print(), 60);
+    return () => clearTimeout(id);
+  }, [pedidosParaImprimir]);
+
+  useEffect(() => {
+    const alTerminar = () => setPedidosParaImprimir([]);
+    window.addEventListener("afterprint", alTerminar);
+    return () => window.removeEventListener("afterprint", alTerminar);
+  }, []);
+
+  function verPedido(pedido) {
+    setPedidoDetalle(pedido);
+  }
+
+  function imprimirPedido(pedido) {
+    setPedidosParaImprimir([pedido]);
+  }
+
+  function imprimirSeleccionados() {
+    const lista = pedidos.filter((p) => seleccionados.has(p.pedido_id));
+    if (lista.length) setPedidosParaImprimir(lista);
+  }
+
   const soportado = soportaCarpetaEscritorio();
 
   useEffect(() => {
@@ -486,6 +514,15 @@ export default function PedidosExportar() {
 
         <button
           type="button"
+          style={botonSecundario}
+          onClick={imprimirSeleccionados}
+          disabled={seleccionados.size === 0}
+        >
+          🖨️ Imprimir seleccionados ({seleccionados.size})
+        </button>
+
+        <button
+          type="button"
           style={botonPrimario2(exportando || seleccionados.size === 0)}
           onClick={exportarSeleccionados}
           disabled={exportando || seleccionados.size === 0}
@@ -509,6 +546,7 @@ export default function PedidosExportar() {
                 <th style={th}>Cajas</th>
                 <th style={th}>Unidades</th>
                 <th style={th}>Estado</th>
+                <th style={th}></th>
               </tr>
             </thead>
             <tbody>
@@ -536,11 +574,16 @@ export default function PedidosExportar() {
                       <span style={estadoPendiente}>⏳ Pendiente</span>
                     )}
                   </td>
+                  <td style={td}>
+                    <button type="button" style={botonTexto} onClick={() => verPedido(pedido)}>
+                      👁 Ver
+                    </button>
+                  </td>
                 </tr>
               ))}
               {pedidosFiltrados.length === 0 && (
                 <tr>
-                  <td style={td} colSpan={8}>
+                  <td style={td} colSpan={9}>
                     No hay pedidos en este periodo con este filtro.
                   </td>
                 </tr>
@@ -549,6 +592,119 @@ export default function PedidosExportar() {
           </table>
         </div>
       )}
+
+      {pedidoDetalle && (
+        <div style={overlayModal} onClick={() => setPedidoDetalle(null)}>
+          <div style={cajaModal} onClick={(e) => e.stopPropagation()}>
+            <div style={cabeceraModal}>
+              <div>
+                <h3 style={tituloModal}>{pedidoDetalle.customer_name || "Sin nombre"}</h3>
+                <p style={subtituloModal}>
+                  Código Lojo: {pedidoDetalle.codigoLojo || "—"} · {formatearFechaHora(pedidoDetalle.fecha)}
+                </p>
+              </div>
+              <button type="button" style={botonCerrarModal} onClick={() => setPedidoDetalle(null)}>
+                ✕
+              </button>
+            </div>
+
+            <div style={tablaEnvoltorio}>
+              <table style={tabla}>
+                <thead>
+                  <tr>
+                    <th style={th}>Departamento</th>
+                    <th style={th}>Código</th>
+                    <th style={th}>Artículo</th>
+                    <th style={th}>Cajas</th>
+                    <th style={th}>Unidades</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pedidoDetalle.lineas.map((linea) => (
+                    <tr key={linea.id} style={tr}>
+                      <td style={td}>{linea.departamento || "—"}</td>
+                      <td style={td}>{linea.codigo_articulo || "—"}</td>
+                      <td style={td}>{linea.nombre_articulo || "—"}</td>
+                      <td style={td}>{formatearNumero(linea.cajas)}</td>
+                      <td style={td}>{formatearNumero(linea.unidades)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={piePresupuestoModal}>
+              <span>
+                Total: {pedidoDetalle.totalLineas} líneas · {formatearNumero(pedidoDetalle.totalCajas)} cajas ·{" "}
+                {formatearNumero(pedidoDetalle.totalUnidades)} unidades
+              </span>
+              <button type="button" style={botonPrimario} onClick={() => imprimirPedido(pedidoDetalle)}>
+                🖨️ Imprimir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @media screen {
+          #zona-impresion-pedidos { display: none; }
+        }
+        @media print {
+          body * { visibility: hidden; }
+          #zona-impresion-pedidos, #zona-impresion-pedidos * { visibility: visible; }
+          #zona-impresion-pedidos { position: absolute; top: 0; left: 0; width: 100%; }
+          .pedido-impresion { page-break-after: always; padding: 24px; font-family: Arial, sans-serif; }
+          .pedido-impresion table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+          .pedido-impresion th, .pedido-impresion td {
+            border: 1px solid #999; padding: 6px 8px; font-size: 12px; text-align: left;
+          }
+        }
+      `}</style>
+
+      <div id="zona-impresion-pedidos">
+        {pedidosParaImprimir.map((pedido) => (
+          <div className="pedido-impresion" key={pedido.pedido_id}>
+            <h2 style={{ margin: 0 }}>Pedido — Lojo</h2>
+            <p style={{ margin: "4px 0" }}>
+              <strong>Cliente:</strong> {pedido.customer_name || "Sin nombre"} &nbsp;·&nbsp;
+              <strong>Código Lojo:</strong> {pedido.codigoLojo || "—"}
+            </p>
+            <p style={{ margin: "4px 0" }}>
+              <strong>Fecha:</strong> {formatearFechaHora(pedido.fecha)}
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Departamento</th>
+                  <th>Código</th>
+                  <th>Artículo</th>
+                  <th>Cajas</th>
+                  <th>Unidades</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pedido.lineas
+                  .slice()
+                  .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+                  .map((linea) => (
+                    <tr key={linea.id}>
+                      <td>{linea.departamento || "—"}</td>
+                      <td>{linea.codigo_articulo || "—"}</td>
+                      <td>{linea.nombre_articulo || "—"}</td>
+                      <td>{formatearNumero(linea.cajas)}</td>
+                      <td>{formatearNumero(linea.unidades)}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+            <p style={{ marginTop: "12px", fontWeight: "bold" }}>
+              Total: {pedido.totalLineas} líneas · {formatearNumero(pedido.totalCajas)} cajas ·{" "}
+              {formatearNumero(pedido.totalUnidades)} unidades
+            </p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -708,3 +864,55 @@ const td = { padding: "9px 12px", color: "#111827", whiteSpace: "nowrap" };
 const estadoPendiente = { color: "#92400e", fontWeight: 700 };
 const estadoExportado = { color: "#166534", fontWeight: 700 };
 const estadoModificado = { color: "#b91c1c", fontWeight: 700 };
+
+const overlayModal = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15, 23, 42, 0.55)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "20px",
+  zIndex: 1000,
+};
+
+const cajaModal = {
+  background: "#ffffff",
+  borderRadius: "14px",
+  padding: "20px",
+  maxWidth: "720px",
+  width: "100%",
+  maxHeight: "85vh",
+  overflowY: "auto",
+  display: "flex",
+  flexDirection: "column",
+  gap: "14px",
+};
+
+const cabeceraModal = { display: "flex", justifyContent: "space-between", alignItems: "flex-start" };
+
+const tituloModal = { margin: 0, fontSize: "18px", color: "#111827" };
+
+const subtituloModal = { margin: "4px 0 0", color: "#6b7280", fontSize: "13px" };
+
+const botonCerrarModal = {
+  border: "none",
+  background: "#f3f4f6",
+  borderRadius: "8px",
+  width: "30px",
+  height: "30px",
+  cursor: "pointer",
+  fontWeight: 700,
+  color: "#374151",
+};
+
+const piePresupuestoModal = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "10px",
+  flexWrap: "wrap",
+  fontSize: "13px",
+  fontWeight: 700,
+  color: "#111827",
+};
