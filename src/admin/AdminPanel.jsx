@@ -8,9 +8,38 @@ import Estadisticas from "./Estadisticas";
 import Configuracion from "./Configuracion";
 import Promociones from "./Promociones";
 import Clientes from "./Clientes";
+import PedidosExportar from "./PedidosExportar";
+
+// Opciones de menú válidas como destino directo por URL, p.ej.
+// "?admin&seccion=pedidos" para abrir el Admin ya en Pedidos recibidos.
+const OPCIONES_VALIDAS = [
+  "clientes",
+  "articulos",
+  "departamentos",
+  "ofertas",
+  "promociones",
+  "pushes",
+  "estadisticas",
+  "pedidos",
+  "configuracion",
+];
+
+function leerParametrosURL() {
+  if (typeof window === "undefined") return { seccionInicial: null, modoAlmacen: false };
+  const parametros = new URLSearchParams(window.location.search);
+  const seccion = parametros.get("seccion");
+  return {
+    seccionInicial: OPCIONES_VALIDAS.includes(seccion) ? seccion : null,
+    // "?admin&seccion=pedidos&modo=almacen": acceso directo del almacén,
+    // pensado para un acceso directo de Windows en otro ordenador — abre
+    // solo la pantalla de Pedidos recibidos, sin el menú completo del Admin.
+    modoAlmacen: parametros.get("modo") === "almacen",
+  };
+}
 
 export default function AdminPanel() {
-  const [opcion, setOpcion] = useState("articulos");
+  const [{ seccionInicial, modoAlmacen }] = useState(leerParametrosURL);
+  const [opcion, setOpcion] = useState(seccionInicial || "articulos");
   const [tamano, setTamano] = useState({
     ancho: typeof window !== "undefined" ? window.innerWidth : 1440,
     alto: typeof window !== "undefined" ? window.innerHeight : 900,
@@ -32,6 +61,23 @@ export default function AdminPanel() {
   const esMovil = tamano.ancho < 860;
   const esTablet = tamano.ancho >= 860 && tamano.ancho < 1280;
   const esBajo = tamano.alto < 820;
+
+  if (modoAlmacen) {
+    return (
+      <div id="lojo-admin-panel" style={layoutAlmacen}>
+        <div style={topBarAlmacen}>
+          <div style={logoAlmacen}>L</div>
+          <div>
+            <h1 style={tituloAlmacen}>Pedidos recibidos — Almacén</h1>
+            <p style={subtituloAlmacen}>Lojo</p>
+          </div>
+        </div>
+        <main style={contenidoAlmacen}>
+          <PedidosExportar />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div id="lojo-admin-panel" style={layout(esMovil)}>
@@ -115,6 +161,7 @@ export default function AdminPanel() {
             {opcion === "promociones" && <Promociones />}
             {opcion === "pushes" && <Pushes />}
             {opcion === "estadisticas" && <Estadisticas />}
+            {opcion === "pedidos" && <PedidosExportar />}
             {opcion === "configuracion" && <Configuracion />}
           </div>
         </section>
@@ -178,6 +225,45 @@ const subtitle = {
   color: "#6b7280",
   fontSize: "13px",
 };
+
+// Estilos del modo almacén: pantalla mínima sin menú lateral, pensada para
+// el acceso directo que abren los operarios en otro ordenador.
+const layoutAlmacen = {
+  minHeight: "100dvh",
+  width: "100%",
+  background: "#f3f4f6",
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif',
+  boxSizing: "border-box",
+};
+
+const topBarAlmacen = {
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+  padding: "16px 22px",
+  background: "linear-gradient(180deg, #0f172a 0%, #111827 48%, #1e1b4b 100%)",
+  color: "#ffffff",
+};
+
+const logoAlmacen = {
+  width: "40px",
+  height: "40px",
+  borderRadius: "14px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "linear-gradient(135deg, #ef4444, #f97316)",
+  color: "#ffffff",
+  fontWeight: 900,
+  fontSize: "18px",
+  flexShrink: 0,
+};
+
+const tituloAlmacen = { margin: 0, fontSize: "18px", color: "#ffffff" };
+
+const subtituloAlmacen = { margin: "2px 0 0", color: "#cbd5e1", fontSize: "12px" };
+
+const contenidoAlmacen = { padding: "18px", maxWidth: "1400px", margin: "0 auto" };
 
 const card = (esMovil, esBajo) => ({
   background: "#ffffff",
