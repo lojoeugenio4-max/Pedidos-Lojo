@@ -30,7 +30,7 @@ import {
   construirTextoPedidoWhatsApp,
   abrirPedidoEnWhatsApp,
 } from "./utils/whatsappPedido";
-import { calcularVentanaPedido, puedeEditarPedido } from "./utils/pedidoEdicion";
+import { calcularVentanaPedido, pedidoEstaExportado } from "./utils/pedidoEdicion";
 import { compararDepartamentosPedido } from "./utils/ordenDepartamentosPedido";
 
 const WHATSAPP_NUMBER = "34670716744";
@@ -690,8 +690,9 @@ export default function App() {
   const [soloCajasAviso, setSoloCajasAviso] = useState(null);
   const [notes, setNotes] = useState(() => savedOrder.notes || "");
 
-  // Modificación de un pedido ya enviado (mientras siga dentro de plazo,
-  // hasta las 4:00 AM del día de preparación). "pedidoEnviadoActivo"
+  // Modificación de un pedido ya enviado (mientras el almacén no lo haya
+  // exportado a CSV desde el ADMIN, ver pedidoEstaExportado en
+  // utils/pedidoEdicion.js). "pedidoEnviadoActivo"
   // indica que el pedido actual en pantalla ya se mandó por WhatsApp y,
   // si se envía de nuevo, sustituye al anterior. "avisoPedidoPrevio"
   // controla el aviso que se muestra antes de dejar editar.
@@ -711,10 +712,9 @@ export default function App() {
   const [enviandoPedido, setEnviandoPedido] = useState(false);
 
   const [pedidoEnviadoActivo, setPedidoEnviadoActivo] = useState(() =>
-    Boolean(
-      savedOrder.enviadoEn &&
-        puedeEditarPedido(savedOrder.fechaLimiteEdicion, new Date())
-    )
+    // Optimista: se confirma (o se corrige) enseguida en el efecto que
+    // comprueba contra Supabase si el pedido ya fue exportado.
+    Boolean(savedOrder.enviadoEn)
   );
   const [pedidoEnviadoEn, setPedidoEnviadoEn] = useState(() => savedOrder.enviadoEn || null);
   const [pedidoFechaLimiteEdicion, setPedidoFechaLimiteEdicion] = useState(
@@ -994,8 +994,8 @@ export default function App() {
   }, [clienteIdentificado]);
 
   // Al cargar, comprobamos si ya había un pedido enviado hoy y todavía
-  // dentro de plazo para modificarse. Si es así, avisamos al cliente
-  // antes de dejarle tocar nada. Si el plazo ya pasó, lo limpiamos en
+  // no exportado por el almacén. Si es así, avisamos al cliente
+  // antes de dejarle tocar nada. Si ya se exportó, lo limpiamos en
   // silencio y se comporta como un pedido nuevo, igual que antes.
   useEffect(() => {
     if (cargandoCliente) return;
@@ -1003,13 +1003,21 @@ export default function App() {
     let cancelado = false;
 
     async function comprobarPedidoPrevio() {
-      const ahora = new Date();
       // Pedido concreto que el cliente ya descartó explícitamente
       // (botón "Hacer un pedido nuevo"). Si es el mismo que encontramos
       // aquí, no se recupera ni se vuelve a avisar de él.
       const pedidoIgnoradoId = leerPedidoIgnorado(clienteToken);
 
-      if (savedOrder.enviadoEn && !puedeEditarPedido(savedOrder.fechaLimiteEdicion, ahora)) {
+      // Ahora el único criterio para saber si un pedido sigue siendo
+      // modificable es si el almacén ya lo exportó (ADMIN > Pedidos
+      // recibidos), sea la hora o el día que sea.
+      const savedOrderExportado = savedOrder.enviadoEn
+        ? await pedidoEstaExportado(savedOrder.pedidoStatsId)
+        : true;
+
+      if (cancelado) return;
+
+      if (savedOrder.enviadoEn && savedOrderExportado) {
         limpiarPedidoDespuesEnvio();
         return;
       }
@@ -1020,9 +1028,7 @@ export default function App() {
           savedOrder.enviadoEn === pedidoIgnoradoId);
 
       let pedidoPrevio =
-        !savedOrderIgnorado &&
-        savedOrder.enviadoEn &&
-        puedeEditarPedido(savedOrder.fechaLimiteEdicion, ahora)
+        !savedOrderIgnorado && savedOrder.enviadoEn && !savedOrderExportado
           ? { enviadoEn: savedOrder.enviadoEn }
           : null;
 
@@ -1051,12 +1057,10 @@ export default function App() {
             (data?.pedido_stats_id === pedidoIgnoradoId ||
               data?.enviado_en === pedidoIgnoradoId);
 
-          if (
-            data &&
-            !dataIgnorada &&
-            puedeEditarPedido(data.fecha_limite_edicion, ahora) &&
-            !pedidoPrevio
-          ) {
+          const dataExportado = data ? await pedidoEstaExportado(data.pedido_stats_id) : true;
+          if (cancelado) return;
+
+          if (data && !dataIgnorada && !dataExportado && !pedidoPrevio) {
             // No había nada guardado en este navegador: recuperamos el
             // pedido desde Supabase para poder seguir editándolo aquí
             // (por ejemplo, si lo envió desde otro dispositivo).
@@ -1078,8 +1082,8 @@ export default function App() {
         }
       }
 
-      // Aunque el pedido siga dentro del plazo horario de modificación, si
-      // su QR ya se pasó por caja (se jugó Ruleta/Bingo/Sorteo, aunque sea
+      // Aunque el pedido todavía no se haya exportado, si su QR ya se
+      // pasó por caja (se jugó Ruleta/Bingo/Sorteo, aunque sea
       // solo una parte), ya no tiene sentido ofrecer "modificar": el
       // pedido ya se atendió en tienda, y modificarlo generaría un QR
       // distinto que no se correspondería con lo que ya se validó en caja.
@@ -3534,11 +3538,9 @@ export default function App() {
   }
 
   // Registra el pedido como "ya enviado" sin borrar el carrito, para que
-  // el cliente pueda reabrirlo y modificarlo mientras siga dentro de
-  // plazo (hasta las 4:00 AM del día de preparación). Si el pedido se ha
-  // hecho fuera de la franja modificable (por la mañana, antes del
-  // corte), no hay nada que guardar: se comporta como antes, limpiando
-  // el carrito tras el envío. Si el cliente está identificado por su
+  // el cliente pueda reabrirlo y modificarlo mientras el almacén no lo
+  // haya exportado a CSV (ver pedidoEstaExportado). Si el cliente está
+  // identificado por su
   // enlace personal, además dejamos constancia en Supabase (un único
   // registro por cliente, se sobrescribe en cada modificación) para que
   // también pueda retomarlo desde otro dispositivo y quede accesible
