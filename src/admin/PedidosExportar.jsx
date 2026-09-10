@@ -271,7 +271,13 @@ export default function PedidosExportar() {
           .order("created_at", { ascending: true })
           .range(desdeMov, desdeMov + TAMANO_PAGINA - 1);
 
-        if (idsExportados.length) consulta = consulta.not("pedido_id", "in", idsExportados);
+        if (idsExportados.length) {
+          // .not() no formatea arrays automáticamente como sí hace .in();
+          // hay que darle ya el literal de lista de PostgREST entre
+          // paréntesis, o falla con "failed to parse filter".
+          const listaExcluidos = `(${idsExportados.map((id) => `"${id}"`).join(",")})`;
+          consulta = consulta.not("pedido_id", "in", listaExcluidos);
+        }
 
         const { data, error: movError } = await consulta;
         if (movError) throw movError;
