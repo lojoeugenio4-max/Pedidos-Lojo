@@ -1,23 +1,13 @@
 // Reglas de la ventana de modificación de un pedido ya enviado.
 //
-// Resumen del negocio (confirmado con el cliente):
-// - Entre semana (lunes a viernes): lo recibido antes de las 7:00 se
-//   prepara ESE MISMO día y NO es modificable. Lo recibido desde las
-//   7:00 se prepara al día siguiente -> editable hasta las 4:00 AM del
-//   día siguiente.
-// - Sábado: lo recibido antes de las 13:00 se prepara ESE MISMO sábado y
-//   NO es modificable. Lo recibido desde las 13:00 se prepara el LUNES
-//   (el domingo no cuenta) -> editable hasta las 4:00 AM del lunes.
-// - Domingo: no hay preparación propia; todo lo recibido el domingo se
-//   prepara el lunes -> editable hasta las 4:00 AM del lunes.
-// - Pedidos de madrugada (antes de las 4:00 AM): pertenecen todavía a la
-//   ventana editable abierta la tarde/noche anterior, así que mantienen
-//   el límite de esa ventana (aunque sean solo un par de horas).
-//
-// En resumen, SOLO son modificables los pedidos hechos dentro de estas
-// dos franjas: de 7:00 a 4:00 AM (entre semana) y de 13:00 del sábado a
-// 4:00 AM del lunes. Los pedidos hechos "de mañana muy temprano" (antes
-// del corte) no se pueden modificar en ningún caso.
+// IMPORTANTE (actualizado): la ventana horaria de abajo YA NO decide si un
+// pedido se puede modificar. Ahora un pedido sigue siendo modificable
+// mientras el almacén no lo haya exportado a CSV desde el ADMIN > Pedidos
+// recibidos (ver pedidoEstaExportado más abajo). calcularVentanaPedido()
+// se conserva solo para calcular "diaPreparacion" (con qué día de
+// preparación se guarda el pedido en pedidos_actuales / estadísticas),
+// no para bloquear la edición.
+import { supabase } from "../supabaseClient";
 
 const CUATRO_AM_MINUTOS = 4 * 60;
 
@@ -55,7 +45,10 @@ export function calcularVentanaPedido(ahora = new Date()) {
   const minutosActuales = ahora.getHours() * 60 + ahora.getMinutes();
 
   // Caso 1: dentro del horario "de mañana" (>=4:00 y antes del corte del
-  // día). Se prepara hoy y NO se puede modificar.
+  // día). Se prepara hoy. Antes esto bloqueaba la edición por completo;
+  // ahora ya no hay corte horario, así que sigue siendo editable (lo único
+  // que decide si se puede seguir modificando es si el almacén ya lo
+  // exportó o no, ver pedidoEstaExportado).
   if (
     cutoffHoy !== null &&
     minutosActuales >= CUATRO_AM_MINUTOS &&
@@ -64,7 +57,7 @@ export function calcularVentanaPedido(ahora = new Date()) {
     return {
       diaPreparacion: soloFecha(ahora),
       fechaLimiteEdicion: null,
-      editable: false,
+      editable: true,
     };
   }
 
@@ -93,8 +86,9 @@ export function calcularVentanaPedido(ahora = new Date()) {
 
 /**
  * ¿Sigue dentro de plazo para modificar un pedido cuyo límite de edición
- * es `fechaLimiteEdicion`? Si es null (pedido "de mañana", no
- * modificable), siempre devuelve false.
+ * es `fechaLimiteEdicion`? Se conserva por compatibilidad, pero YA NO se
+ * usa para decidir si un pedido es modificable (ver pedidoEstaExportado).
+ * Si es null (pedido "de mañana", no modificable), siempre devuelve false.
  */
 export function puedeEditarPedido(fechaLimiteEdicion, ahora = new Date()) {
   if (!fechaLimiteEdicion) return false;
@@ -102,5 +96,35 @@ export function puedeEditarPedido(fechaLimiteEdicion, ahora = new Date()) {
     fechaLimiteEdicion instanceof Date ? fechaLimiteEdicion : new Date(fechaLimiteEdicion);
   if (Number.isNaN(limite.getTime())) return false;
   return ahora.getTime() < limite.getTime();
+}
+
+/**
+ * Comprueba en Supabase si un pedido (identificado por su pedido_stats_id,
+ * que es el mismo id que pedido_id en estadisticas_movimientos) ya fue
+ * exportado desde el ADMIN > Pedidos recibidos. Ese es ahora el único
+ * criterio para saber si un pedido sigue siendo modificable: mientras no
+ * se haya exportado, el cliente puede seguir editándolo, sea la hora que
+ * sea y aunque haya pasado a un día de preparación distinto.
+ *
+ * Sin id (pedidos antiguos guardados antes de tener pedidoStatsId) o ante
+ * un fallo de red, se responde con cautela: sin id no hay forma de saber
+ * si sigue vigente, así que se trata como exportado (ya no editable); un
+ * fallo de red, en cambio, no debe bloquear al cliente, así que se trata
+ * como no exportado (sigue editable).
+ */
+export async function pedidoEstaExportado(pedidoStatsId) {
+  if (!pedidoStatsId) return true;
+  try {
+    const { data, error } = await supabase
+      .from("pedidos_exportados")
+      .select("pedido_id")
+      .eq("pedido_id", pedidoStatsId)
+      .maybeSingle();
+    if (error) throw error;
+    return Boolean(data);
+  } catch (error) {
+    console.error("No se pudo comprobar si el pedido ya fue exportado:", error);
+    return false;
+  }
 }
 
