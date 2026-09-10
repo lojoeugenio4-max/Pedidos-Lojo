@@ -5146,7 +5146,14 @@ export default function App() {
 
             <button
               type="button"
-              onClick={() => setPushRecordatorioModificacion(false)}
+              onClick={() => {
+                // Cierra también el resumen del pedido: tras enviarlo, si
+                // el cliente quiere seguir añadiendo artículos (de eso
+                // trata este aviso), tiene que aterrizar en el catálogo,
+                // no quedarse en la pantalla de resumen/revisión.
+                setPushRecordatorioModificacion(false);
+                setShowOrderSummary(false);
+              }}
               style={styles.avisoModificacionBotonPrimario}
             >
               {t.pushRecordatorioAceptar}
