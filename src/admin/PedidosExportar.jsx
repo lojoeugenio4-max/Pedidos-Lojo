@@ -119,6 +119,10 @@ export default function PedidosExportar() {
   const [pedidoDetalle, setPedidoDetalle] = useState(null);
   const [pedidosParaImprimir, setPedidosParaImprimir] = useState([]);
 
+  const [borrando, setBorrando] = useState(false);
+  const [modoTodasFechas, setModoTodasFechas] = useState(false);
+  const [buscandoTodos, setBuscandoTodos] = useState(false);
+
   useEffect(() => {
     if (!pedidosParaImprimir.length) return;
     const id = setTimeout(() => window.print(), 60);
@@ -170,6 +174,7 @@ export default function PedidosExportar() {
   }, []);
 
   async function cargarPedidos(desdeFiltro = desde, hastaFiltro = hasta) {
+    setModoTodasFechas(false);
     setCargando(true);
     setError("");
     setMensajeExport("");
@@ -223,6 +228,68 @@ export default function PedidosExportar() {
     setDesde(nuevaDesde);
     setHasta(hoyEstadistico);
     cargarPedidos(nuevaDesde, hoyEstadistico);
+  }
+
+  // Localiza TODOS los pedidos pendientes de exportar, sea cual sea su
+  // fecha, para no dejar nunca un pedido antiguo olvidado fuera del rango
+  // de fechas que se esté mirando en cada momento. Pagina en bloques de
+  // 1000 filas (límite por defecto de Supabase) tanto para
+  // "pedidos_exportados" como para "estadisticas_movimientos".
+  async function cargarTodosPendientes() {
+    setBuscandoTodos(true);
+    setCargando(true);
+    setError("");
+    setMensajeExport("");
+    setModoTodasFechas(true);
+
+    const TAMANO_PAGINA = 1000;
+
+    try {
+      const idsExportados = [];
+      let desdeExp = 0;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { data, error: expError } = await supabase
+          .from("pedidos_exportados")
+          .select("pedido_id")
+          .range(desdeExp, desdeExp + TAMANO_PAGINA - 1);
+        if (expError) throw expError;
+        idsExportados.push(...(data || []).map((f) => f.pedido_id));
+        if (!data || data.length < TAMANO_PAGINA) break;
+        desdeExp += TAMANO_PAGINA;
+      }
+
+      const todasLasLineas = [];
+      let desdeMov = 0;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        let consulta = supabase
+          .from("estadisticas_movimientos")
+          .select(
+            "id, pedido_id, created_at, codigo_articulo, nombre_articulo, departamento, cajas, unidades, customer_name, cliente_token"
+          )
+          .order("created_at", { ascending: true })
+          .range(desdeMov, desdeMov + TAMANO_PAGINA - 1);
+
+        if (idsExportados.length) consulta = consulta.not("pedido_id", "in", idsExportados);
+
+        const { data, error: movError } = await consulta;
+        if (movError) throw movError;
+        todasLasLineas.push(...(data || []));
+        if (!data || data.length < TAMANO_PAGINA) break;
+        desdeMov += TAMANO_PAGINA;
+      }
+
+      setMovimientos(todasLasLineas);
+      setExportados({});
+      setFiltro("pendientes");
+      setSeleccionados(new Set());
+    } catch (err) {
+      setError(err.message || "No se pudieron buscar los pedidos pendientes.");
+    } finally {
+      setCargando(false);
+      setBuscandoTodos(false);
+    }
   }
 
   const pedidos = useMemo(() => {
@@ -381,13 +448,60 @@ export default function PedidosExportar() {
     }
 
     setExportando(false);
-    await cargarPedidos(desde, hasta);
+    if (modoTodasFechas) await cargarTodosPendientes();
+    else await cargarPedidos(desde, hasta);
 
     if (fallidos.length) {
       setError(`No se pudieron exportar ${fallidos.length} pedido(s): ${fallidos.join(", ")}`);
     }
     if (exportadosOk) {
       setMensajeExport(`${exportadosOk} pedido(s) exportado(s) a la carpeta "Pedidos Recibidos".`);
+    }
+  }
+
+  async function borrarSeleccionados() {
+    const pedidosABorrar = pedidos.filter((p) => seleccionados.has(p.pedido_id));
+    if (!pedidosABorrar.length) return;
+
+    const listado = pedidosABorrar
+      .slice(0, 6)
+      .map((p) => `- ${p.customer_name || "Sin nombre"} (${formatearFechaHora(p.fecha)})`)
+      .join("\n");
+    const resto = pedidosABorrar.length > 6 ? `\n…y ${pedidosABorrar.length - 6} más` : "";
+
+    const confirmado = window.confirm(
+      `¿Seguro que quieres borrar ${pedidosABorrar.length} pedido(s)? Esta acción no se puede deshacer.\n\n${listado}${resto}`
+    );
+    if (!confirmado) return;
+
+    setBorrando(true);
+    setError("");
+    setMensajeExport("");
+
+    const ids = pedidosABorrar.map((p) => p.pedido_id);
+
+    try {
+      const { error: errorLineas } = await supabase
+        .from("estadisticas_movimientos")
+        .delete()
+        .in("pedido_id", ids);
+      if (errorLineas) throw errorLineas;
+
+      const { error: errorExportados } = await supabase
+        .from("pedidos_exportados")
+        .delete()
+        .in("pedido_id", ids);
+      if (errorExportados) throw errorExportados;
+
+      setSeleccionados(new Set());
+      setMensajeExport(`${ids.length} pedido(s) borrado(s).`);
+
+      if (modoTodasFechas) await cargarTodosPendientes();
+      else await cargarPedidos(desde, hasta);
+    } catch (err) {
+      setError(err.message || "No se pudieron borrar los pedidos seleccionados.");
+    } finally {
+      setBorrando(false);
     }
   }
 
@@ -459,7 +573,28 @@ export default function PedidosExportar() {
         <button type="button" style={botonPrimario} onClick={() => cargarPedidos(desde, hasta)}>
           🔎 Buscar
         </button>
+
+        <span style={separadorFecha} />
+
+        <button
+          type="button"
+          style={botonFiltro(modoTodasFechas)}
+          onClick={cargarTodosPendientes}
+          disabled={buscandoTodos}
+        >
+          {buscandoTodos ? "Buscando…" : "🕵️ Ver TODOS los pendientes (cualquier fecha)"}
+        </button>
       </div>
+
+      {modoTodasFechas && (
+        <div style={avisoModoTodasFechas}>
+          Mostrando todos los pedidos pendientes de exportar, sin importar la fecha — el filtro de
+          fechas de arriba está desactivado mientras tanto.{" "}
+          <button type="button" style={botonTexto} onClick={() => cargarPedidos(desde, hasta)}>
+            Volver al filtro por fecha
+          </button>
+        </div>
+      )}
 
       <div style={filtrosEstado}>
         <button
@@ -473,6 +608,7 @@ export default function PedidosExportar() {
           type="button"
           style={botonFiltro(filtro === "exportados")}
           onClick={() => setFiltro("exportados")}
+          disabled={modoTodasFechas}
         >
           Exportados ({exportadosCount})
         </button>
@@ -511,6 +647,15 @@ export default function PedidosExportar() {
             Confirmar permiso
           </button>
         )}
+
+        <button
+          type="button"
+          style={botonBorrar(borrando || seleccionados.size === 0)}
+          onClick={borrarSeleccionados}
+          disabled={borrando || seleccionados.size === 0}
+        >
+          {borrando ? "Borrando…" : `🗑️ Borrar seleccionados (${seleccionados.size})`}
+        </button>
 
         <button
           type="button"
@@ -819,6 +964,31 @@ const avisoCarpetaFalta = {
   fontWeight: 800,
   fontSize: "12px",
 };
+
+const avisoModoTodasFechas = {
+  padding: "10px 14px",
+  borderRadius: "10px",
+  background: "#eef2ff",
+  color: "#3730a3",
+  fontSize: "13px",
+  fontWeight: 600,
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  flexWrap: "wrap",
+};
+
+const botonBorrar = (deshabilitado) => ({
+  padding: "9px 16px",
+  borderRadius: "10px",
+  border: "1px solid #fca5a5",
+  background: "#fef2f2",
+  color: "#b91c1c",
+  fontWeight: 700,
+  fontSize: "13px",
+  opacity: deshabilitado ? 0.5 : 1,
+  cursor: deshabilitado ? "not-allowed" : "pointer",
+});
 
 const botonPrimario2 = (deshabilitado) => ({
   ...botonPrimario,
