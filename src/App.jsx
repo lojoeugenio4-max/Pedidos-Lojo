@@ -1122,6 +1122,9 @@ export default function App() {
       if (pedidoPrevio && !cancelado) {
         setPedidoEnviadoActivo(true);
         setAvisoPedidoPrevio(pedidoPrevio);
+        // El catálogo debe quedar debajo del aviso (no el resumen), por
+        // si el cliente lo cierra sin pasar por "Continuar modificando".
+        setShowOrderSummary(false);
       }
     }
 
@@ -1142,8 +1145,9 @@ export default function App() {
   // transición "ya se exportó -> bloquear"; no vuelve a mostrar el aviso
   // inicial si el cliente ya lo había aceptado y está editando a gusto.
   useEffect(() => {
+    if (!pedidoEnviadoActivo || !pedidoStatsIdActual) return;
+
     async function revisarSiSigueExportable() {
-      if (!pedidoEnviadoActivo || !pedidoStatsIdActual) return;
       const exportado = await pedidoEstaExportado(pedidoStatsIdActual);
       if (exportado) limpiarPedidoDespuesEnvio();
     }
@@ -1154,10 +1158,24 @@ export default function App() {
 
     document.addEventListener("visibilitychange", alVolverVisible);
     window.addEventListener("focus", alVolverVisible);
+    window.addEventListener("pageshow", alVolverVisible);
+
+    // Red de seguridad además de los eventos de arriba: en el modo
+    // "añadir a pantalla de inicio" de algunos móviles (sobre todo iOS),
+    // los eventos de visibilidad/foco no siempre se disparan al volver a
+    // la app, así que también se comprueba solo, cada 20 segundos,
+    // mientras haya un pedido enviado activo en pantalla.
+    const intervalo = setInterval(revisarSiSigueExportable, 20000);
+
+    // Comprobación inmediata también al activarse este efecto (por si el
+    // pedido ya estaba exportado desde antes de que se montara).
+    revisarSiSigueExportable();
 
     return () => {
       document.removeEventListener("visibilitychange", alVolverVisible);
       window.removeEventListener("focus", alVolverVisible);
+      window.removeEventListener("pageshow", alVolverVisible);
+      clearInterval(intervalo);
     };
   }, [pedidoEnviadoActivo, pedidoStatsIdActual]);
 
@@ -3230,6 +3248,14 @@ export default function App() {
     // directamente. Antes aquí se mostraba un segundo aviso ("Tienes un
     // pedido enviado...") justo después de este mismo aviso — repetía la
     // misma información dos veces seguidas, así que se quitó.
+    //
+    // Siempre se aterriza en el catálogo (igual que al empezar un pedido
+    // nuevo), nunca en la vista de resumen/revisión: si el cliente había
+    // dejado la app en segundo plano con el resumen abierto (p.ej. justo
+    // después de enviar por WhatsApp), showOrderSummary se queda en true
+    // de la sesión anterior y, al recuperar el pedido para modificarlo,
+    // se quedaba anclado ahí en vez de abrir el listado de artículos.
+    setShowOrderSummary(false);
     setAvisoPedidoPrevio(null);
   }
 
