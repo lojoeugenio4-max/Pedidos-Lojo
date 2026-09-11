@@ -2142,6 +2142,7 @@ export default function App() {
           name: articulo.nombre,
           foto: articulo.foto,
           image: getPublicPhotoUrl(articulo.foto),
+          precio: articulo.precio,
           permite_unidades: articulo.permite_unidades,
           novedad: articulo.novedad,
           oculto: articulo.oculto,
@@ -4852,6 +4853,21 @@ export default function App() {
 
                 <p style={styles.fichaSectionLabel}>Cantidad</p>
                 <div style={styles.fichaQuantityCard}>
+                {fichaProducto.precio !== null &&
+                  fichaProducto.precio !== undefined &&
+                  fichaProducto.precio !== "" &&
+                  Number(fichaProducto.precio) > 0 && (
+                    <div style={styles.fichaPriceWrap}>
+                      <span style={styles.fichaPriceOfferLabel}>Oferta</span>
+                      <span style={styles.fichaPriceValue}>
+                        {Number(fichaProducto.precio).toLocaleString("es-ES", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}{" "}
+                        €
+                      </span>
+                    </div>
+                  )}
                 <div style={styles.quantityGrid}>
                   <div style={styles.quantityRow}>
                     <span style={styles.quantityLabel}>{t.boxes}</span>
@@ -6226,6 +6242,29 @@ const styles = {
     borderRadius: "14px",
     padding: "12px",
     boxSizing: "border-box",
+  },
+
+  fichaPriceWrap: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    margin: "0 0 12px",
+  },
+
+  fichaPriceOfferLabel: {
+    fontSize: "13px",
+    fontWeight: "800",
+    color: "#dc2626",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    margin: "0 0 2px",
+  },
+
+  fichaPriceValue: {
+    fontSize: "30px",
+    fontWeight: "800",
+    color: "#000000",
+    lineHeight: "1.1",
   },
 
   // Hueco fijo para los avisos de Ruleta/Bingo dentro de la ficha. Igual
