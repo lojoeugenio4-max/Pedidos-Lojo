@@ -251,7 +251,7 @@ export default function PedidosExportar() {
     const TAMANO_PAGINA = 1000;
 
     try {
-      const idsExportados = [];
+      const idsExportados = new Set();
       let desdeExp = 0;
       // eslint-disable-next-line no-constant-condition
       while (true) {
@@ -260,16 +260,20 @@ export default function PedidosExportar() {
           .select("pedido_id")
           .range(desdeExp, desdeExp + TAMANO_PAGINA - 1);
         if (expError) throw expError;
-        idsExportados.push(...(data || []).map((f) => f.pedido_id));
+        (data || []).forEach((f) => idsExportados.add(f.pedido_id));
         if (!data || data.length < TAMANO_PAGINA) break;
         desdeExp += TAMANO_PAGINA;
       }
 
+      // La exclusión se hace aquí (en JS), no en la consulta: con muchos
+      // pedidos ya exportados, meterlos todos en el filtro "not in" de la
+      // URL la hace demasiado larga y Supabase la rechaza con "Bad
+      // Request". Así no hay límite de tamaño.
       const todasLasLineas = [];
       let desdeMov = 0;
       // eslint-disable-next-line no-constant-condition
       while (true) {
-        let consulta = supabase
+        const { data, error: movError } = await supabase
           .from("estadisticas_movimientos")
           .select(
             "id, pedido_id, created_at, codigo_articulo, nombre_articulo, departamento, cajas, unidades, customer_name, cliente_token"
@@ -277,17 +281,12 @@ export default function PedidosExportar() {
           .order("created_at", { ascending: true })
           .range(desdeMov, desdeMov + TAMANO_PAGINA - 1);
 
-        if (idsExportados.length) {
-          // .not() no formatea arrays automáticamente como sí hace .in();
-          // hay que darle ya el literal de lista de PostgREST entre
-          // paréntesis, o falla con "failed to parse filter".
-          const listaExcluidos = `(${idsExportados.map((id) => `"${id}"`).join(",")})`;
-          consulta = consulta.not("pedido_id", "in", listaExcluidos);
-        }
-
-        const { data, error: movError } = await consulta;
         if (movError) throw movError;
-        todasLasLineas.push(...(data || []));
+
+        (data || []).forEach((fila) => {
+          if (!idsExportados.has(fila.pedido_id)) todasLasLineas.push(fila);
+        });
+
         if (!data || data.length < TAMANO_PAGINA) break;
         desdeMov += TAMANO_PAGINA;
       }
