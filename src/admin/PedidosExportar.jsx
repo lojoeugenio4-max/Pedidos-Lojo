@@ -120,6 +120,7 @@ export default function PedidosExportar() {
   const [pedidosParaImprimir, setPedidosParaImprimir] = useState([]);
 
   const [borrando, setBorrando] = useState(false);
+  const [revirtiendo, setRevirtiendo] = useState(false);
   const [modoTodasFechas, setModoTodasFechas] = useState(false);
   const [buscandoTodos, setBuscandoTodos] = useState(false);
 
@@ -151,7 +152,12 @@ export default function PedidosExportar() {
   const soportado = soportaCarpetaEscritorio();
 
   useEffect(() => {
-    cargarPedidos(hoyEstadistico, hoyEstadistico);
+    // Por defecto se muestran SIEMPRE todos los pedidos pendientes de
+    // exportar, sin importar su fecha, para que nunca se quede ninguno
+    // atrás fuera del rango "Hoy/Ayer/…" que se esté mirando. Los
+    // filtros de fecha de arriba quedan disponibles para consultar el
+    // histórico (exportados) cuando se necesite.
+    cargarTodosPendientes();
 
     (async () => {
       const { data } = await supabase.from("clientes").select("token, codigo_lojo");
@@ -341,6 +347,10 @@ export default function PedidosExportar() {
       .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
   }, [movimientos, codigoLojoPorToken, exportados]);
 
+  const seleccionadosExportadosCount = pedidos.filter(
+    (p) => seleccionados.has(p.pedido_id) && p.exportado
+  ).length;
+
   const pendientesCount = pedidos.filter((p) => !p.exportado || p.modificadoTrasExportar).length;
   const exportadosCount = pedidos.length - pendientesCount;
 
@@ -463,6 +473,37 @@ export default function PedidosExportar() {
     if (exportadosOk) {
       setMensajeExport(`${exportadosOk} pedido(s) exportado(s) a la carpeta "Pedidos Recibidos".`);
     }
+  }
+
+  async function revertirPedidos(ids) {
+    if (!ids.length) return;
+
+    setRevirtiendo(true);
+    setError("");
+    setMensajeExport("");
+
+    try {
+      const { error: revertError } = await supabase
+        .from("pedidos_exportados")
+        .delete()
+        .in("pedido_id", ids);
+      if (revertError) throw revertError;
+
+      setSeleccionados(new Set());
+      setMensajeExport(`${ids.length} pedido(s) revertido(s) a pendientes.`);
+
+      if (modoTodasFechas) await cargarTodosPendientes();
+      else await cargarPedidos(desde, hasta);
+    } catch (err) {
+      setError(err.message || "No se pudieron revertir los pedidos seleccionados.");
+    } finally {
+      setRevirtiendo(false);
+    }
+  }
+
+  function revertirSeleccionados() {
+    const ids = pedidos.filter((p) => seleccionados.has(p.pedido_id) && p.exportado).map((p) => p.pedido_id);
+    revertirPedidos(ids);
   }
 
   async function borrarSeleccionados() {
@@ -588,16 +629,23 @@ export default function PedidosExportar() {
           onClick={cargarTodosPendientes}
           disabled={buscandoTodos}
         >
-          {buscandoTodos ? "Buscando…" : "🕵️ Ver TODOS los pendientes (cualquier fecha)"}
+          {buscandoTodos ? "Buscando…" : "🔄 Actualizar pendientes (todas las fechas)"}
         </button>
       </div>
 
-      {modoTodasFechas && (
+      {modoTodasFechas ? (
         <div style={avisoModoTodasFechas}>
-          Mostrando todos los pedidos pendientes de exportar, sin importar la fecha — el filtro de
-          fechas de arriba está desactivado mientras tanto.{" "}
+          Mostrando siempre todos los pedidos pendientes de exportar, sin importar la fecha, para que
+          no se quede ninguno atrás.{" "}
           <button type="button" style={botonTexto} onClick={() => cargarPedidos(desde, hasta)}>
-            Volver al filtro por fecha
+            Consultar histórico por fecha
+          </button>
+        </div>
+      ) : (
+        <div style={avisoModoTodasFechas}>
+          Consultando por fecha — los pedidos pendientes de otras fechas no se ven aquí.{" "}
+          <button type="button" style={botonTexto} onClick={cargarTodosPendientes}>
+            Volver a ver todos los pendientes
           </button>
         </div>
       )}
@@ -618,7 +666,12 @@ export default function PedidosExportar() {
         >
           Exportados ({exportadosCount})
         </button>
-        <button type="button" style={botonFiltro(filtro === "todos")} onClick={() => setFiltro("todos")}>
+        <button
+          type="button"
+          style={botonFiltro(filtro === "todos")}
+          onClick={() => setFiltro("todos")}
+          disabled={modoTodasFechas}
+        >
           Todos ({pedidos.length})
         </button>
       </div>
@@ -653,6 +706,17 @@ export default function PedidosExportar() {
             Confirmar permiso
           </button>
         )}
+
+        <button
+          type="button"
+          style={botonSecundario2(revirtiendo || seleccionadosExportadosCount === 0)}
+          onClick={revertirSeleccionados}
+          disabled={revirtiendo || seleccionadosExportadosCount === 0}
+        >
+          {revirtiendo
+            ? "Revirtiendo…"
+            : `↩️ Revertir a pendientes (${seleccionadosExportadosCount})`}
+        </button>
 
         <button
           type="button"
@@ -729,6 +793,16 @@ export default function PedidosExportar() {
                     <button type="button" style={botonTexto} onClick={() => verPedido(pedido)}>
                       👁 Ver
                     </button>
+                    {pedido.exportado && (
+                      <button
+                        type="button"
+                        style={botonTexto}
+                        onClick={() => revertirPedidos([pedido.pedido_id])}
+                        disabled={revirtiendo}
+                      >
+                        ↩️ Revertir
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -998,6 +1072,12 @@ const botonBorrar = (deshabilitado) => ({
 
 const botonPrimario2 = (deshabilitado) => ({
   ...botonPrimario,
+  opacity: deshabilitado ? 0.5 : 1,
+  cursor: deshabilitado ? "not-allowed" : "pointer",
+});
+
+const botonSecundario2 = (deshabilitado) => ({
+  ...botonSecundario,
   opacity: deshabilitado ? 0.5 : 1,
   cursor: deshabilitado ? "not-allowed" : "pointer",
 });
