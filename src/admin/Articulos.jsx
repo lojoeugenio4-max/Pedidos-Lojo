@@ -421,6 +421,9 @@ export default function Articulos() {
     const conOferta = articulos.filter(
       (articulo) => Array.isArray(articulo.ofertas) && articulo.ofertas.length > 0
     ).length;
+    const conPrecio = articulos.filter(
+      (articulo) => articulo.precio !== null && articulo.precio !== undefined
+    ).length;
 
     return {
       total: articulos.length,
@@ -429,6 +432,7 @@ export default function Articulos() {
       ocultos,
       sinFoto,
       conOferta,
+      conPrecio,
     };
   }, [articulos]);
 
@@ -449,6 +453,9 @@ export default function Articulos() {
       (filtro === "novedades" && articulo.novedad) ||
       (filtro === "sin_foto" && !articulo.foto) ||
       (filtro === "con_oferta" && tieneOferta) ||
+      (filtro === "con_precio" &&
+        articulo.precio !== null &&
+        articulo.precio !== undefined) ||
       (filtro === "visibles" && !articulo.oculto) ||
       (filtro === "ocultos" && articulo.oculto);
 
@@ -478,6 +485,7 @@ export default function Articulos() {
         <StatCard label="Ocultos" value={resumen.ocultos} />
         <StatCard label="Sin foto" value={resumen.sinFoto} />
         <StatCard label="Con oferta" value={resumen.conOferta} />
+        <StatCard label="Con precio" value={resumen.conPrecio} />
       </section>
 
       {mostrarFormulario && (
@@ -552,6 +560,9 @@ export default function Articulos() {
           </FilterButton>
           <FilterButton active={filtro === "con_oferta"} onClick={() => setFiltro("con_oferta")}>
             Con oferta
+          </FilterButton>
+          <FilterButton active={filtro === "con_precio"} onClick={() => setFiltro("con_precio")}>
+            💶 Con precio
           </FilterButton>
           <FilterButton active={filtro === "ocultos"} onClick={() => setFiltro("ocultos")}>
             Ocultos
@@ -669,7 +680,7 @@ const newButton = {
 
 const statsGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+  gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
   gap: "12px",
   marginBottom: "18px",
 };
