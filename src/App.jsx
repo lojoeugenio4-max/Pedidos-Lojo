@@ -3761,6 +3761,17 @@ export default function App() {
     setEnviandoPedido(true);
     try {
       await sendByWhatsAppInterno();
+    } catch (error) {
+      // Antes, cualquier error no controlado aquí se quedaba solo en la
+      // consola del navegador (invisible en el móvil): el botón volvía
+      // a su sitio sin más explicación. Con esto, si algo falla de
+      // verdad, se ve en pantalla el motivo exacto.
+      console.error("Error inesperado al enviar el pedido:", error);
+      alert(
+        `No se ha podido enviar el pedido (error inesperado).\n\n${
+          error?.message || error
+        }`
+      );
     } finally {
       enviandoPedidoRef.current = false;
       setEnviandoPedido(false);
@@ -3773,12 +3784,21 @@ export default function App() {
   // sendByWhatsAppInterno; aquí solo abrimos WhatsApp con el texto que
   // se dejó preparado.
   const abrirWhatsAppPendiente = () => {
-    if (!pedidoListoParaWhatsApp) return;
-    abrirPedidoEnWhatsApp({
-      whatsappNumber: WHATSAPP_NUMBER,
-      texto: pedidoListoParaWhatsApp.texto,
-    });
-    setPedidoListoParaWhatsApp(null);
+    try {
+      if (!pedidoListoParaWhatsApp) return;
+      abrirPedidoEnWhatsApp({
+        whatsappNumber: WHATSAPP_NUMBER,
+        texto: pedidoListoParaWhatsApp.texto,
+      });
+      setPedidoListoParaWhatsApp(null);
+    } catch (error) {
+      console.error("Error inesperado al abrir WhatsApp:", error);
+      alert(
+        `No se ha podido abrir WhatsApp (error inesperado).\n\n${
+          error?.message || error
+        }`
+      );
+    }
   };
 
 
