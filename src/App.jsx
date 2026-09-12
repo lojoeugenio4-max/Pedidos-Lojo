@@ -252,6 +252,7 @@ const departmentTranslations = {
     "REFRESCOS LATAS": "罐装饮料",
     "REFRESCOS 2L / 1.5L": "大瓶饮料 2L / 1.5L",
     ENERGÉTICAS: "能量饮料",
+    "BEBIDAS ENERGÉTICAS": "能量饮料",
     "VINOS Y LICORES": "葡萄酒和烈酒",
     PIZZAS: "披萨",
     "CHARCUTERÍA LONCHEADA": "切片熟食",
