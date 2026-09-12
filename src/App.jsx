@@ -3627,7 +3627,16 @@ export default function App() {
     }
 
     const enviadoEnIso = new Date().toISOString();
-    const fechaLimiteIso = ventana.fechaLimiteEdicion.toISOString();
+    // fechaLimiteEdicion puede venir null (pedido hecho en el tramo de
+    // "mañana": entre semana antes de las 7:00, o en sábado antes de las
+    // 13:00 -justo el caso de este fallo-): significa que ese pedido no
+    // tiene límite de edición por horario, no que haya que tratarlo como
+    // un error. Antes se llamaba a .toISOString() directamente sobre
+    // ese null y la app se caía aquí mismo, sin más explicación,
+    // deteniendo también el envío por WhatsApp.
+    const fechaLimiteIso = ventana.fechaLimiteEdicion
+      ? ventana.fechaLimiteEdicion.toISOString()
+      : null;
 
     // Guardado SÍNCRONO en localStorage, aquí mismo, sin depender del
     // useEffect que vigila estos estados. Justo después de esto se
