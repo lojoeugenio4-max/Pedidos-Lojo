@@ -278,5 +278,21 @@ export function abrirPedidoEnWhatsApp({ whatsappNumber, texto }) {
   const message = encodeURIComponent(texto);
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${message}`;
 
-  window.location.assign(whatsappUrl);
+  // Un enlace real (<a>) "clicado" es, de largo, la forma más compatible
+  // de abrir una URL externa en un toque de usuario en móviles y apps
+  // instaladas en pantalla de inicio -mucho más que cambiar la URL de la
+  // página (window.location) directamente, que en algunos navegadores
+  // instalados como app no se comporta igual que un toque real-.
+  try {
+    const enlace = document.createElement("a");
+    enlace.href = whatsappUrl;
+    enlace.target = "_blank";
+    enlace.rel = "noopener";
+    document.body.appendChild(enlace);
+    enlace.click();
+    document.body.removeChild(enlace);
+  } catch (error) {
+    console.error("No se pudo abrir WhatsApp con el enlace, probando alternativa:", error);
+    window.location.assign(whatsappUrl);
+  }
 }
