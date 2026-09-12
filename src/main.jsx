@@ -12,6 +12,58 @@ import App from "./App.jsx";
 // entra de verdad con ?admin en la URL.
 const Admin = lazy(() => import("./admin"));
 
+// Comprobación DIRECTA de si hay una versión nueva desplegada, aparte de
+// la del Service Worker de más abajo. Motivo: en la app instalada en
+// pantalla de inicio de iOS, volver a tocar el icono muchas veces NO
+// relanza la página desde cero -iOS simplemente saca de segundo plano la
+// misma página que ya tenía cargada en memoria-, así que ni "load" ni
+// "visibilitychange" llegan a disparar ninguna comprobación nueva. Aquí
+// se pide el index.html real del servidor (sin caché) y se compara el
+// archivo .js principal que contiene con el que está cargado ahora
+// mismo en la pantalla: si no coincide, es que hay una versión más
+// reciente y se recarga la página para cogerla.
+function extraerScriptPrincipal(html) {
+  const match = html.match(/<script[^>]*type="module"[^>]*src="([^"]+)"/i);
+  return match ? match[1] : null;
+}
+
+async function comprobarVersionNueva() {
+  try {
+    const scriptActual = document.querySelector('script[type="module"][src]');
+    if (!scriptActual) return;
+
+    const respuesta = await fetch(`/index.html?_=${Date.now()}`, {
+      cache: "no-store",
+    });
+    if (!respuesta.ok) return;
+
+    const htmlServidor = await respuesta.text();
+    const scriptServidor = extraerScriptPrincipal(htmlServidor);
+
+    if (scriptServidor && scriptServidor !== scriptActual.getAttribute("src")) {
+      window.location.reload();
+    }
+  } catch (error) {
+    // Sin conexión o fallo de red: no forzamos nada, se sigue usando la
+    // versión que ya hubiera en el móvil.
+  }
+}
+
+// Se comprueba nada más cargar la página...
+window.addEventListener("load", () => {
+  comprobarVersionNueva();
+});
+
+// ...y también cada vez que la app vuelve a primer plano (tocar el
+// icono con la app ya "abierta" de antes en segundo plano, cambiar de
+// otra app a esta, etc.), que es precisamente el caso que no quedaba
+// cubierto solo con el evento "load".
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    comprobarVersionNueva();
+  }
+});
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
