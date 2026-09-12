@@ -17,6 +17,14 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker
       .register("/sw.js")
       .then((registration) => {
+        // Comprobar aquí mismo, nada más abrir la app (icono de pantalla
+        // de inicio), si hay una versión nueva en el servidor. El
+        // navegador ya lo hace por su cuenta de vez en cuando, pero de
+        // forma bastante espaciada; forzarlo en cada apertura es lo que
+        // hace que cada vez que se abra el enlace se coja la última
+        // versión, sin depender de esa comprobación automática.
+        registration.update().catch(() => {});
+
         // Cada vez que el cliente vuelve a poner la app en primer plano
         // (abre el icono de pantalla de inicio sin haberla cerrado del
         // todo, o cambia de otra app a esta), se comprueba activamente
