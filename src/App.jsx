@@ -711,12 +711,6 @@ export default function App() {
   // después, se corte antes de generar nada.
   const enviandoPedidoRef = useRef(false);
   const [enviandoPedido, setEnviandoPedido] = useState(false);
-  // Cuando el pedido ya está totalmente preparado (guardado, Ruleta,
-  // Bingo...) y solo falta abrir WhatsApp, guardamos aquí el texto ya
-  // construido. Mientras esto tenga valor, en vez del botón normal se
-  // muestra uno que abre WhatsApp con un toque directo del usuario (ver
-  // el comentario en enviarPedidoFinal sobre por qué no se abre solo).
-  const [pedidoListoParaWhatsApp, setPedidoListoParaWhatsApp] = useState(null);
 
   const [pedidoEnviadoActivo, setPedidoEnviadoActivo] = useState(() =>
     // Optimista: se confirma (o se corrige) enseguida en el efecto que
@@ -3153,7 +3147,6 @@ export default function App() {
     setPushCerrado(false);
     setMostrarVolverPush(false);
     setHeaderCollapsed(false);
-    setPedidoListoParaWhatsApp(null);
     localStorage.removeItem(obtenerClaveOrderStorage(clienteToken));
 
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -3749,16 +3742,10 @@ export default function App() {
     // Guardamos estadísticas en segundo plano, sin bloquear WhatsApp.
     guardarEstadisticasPedido(itemsPedido, pedidoIdEstadisticas, customerNamePedido);
 
-    // Abrir WhatsApp aquí mismo, automáticamente, es justo lo que fallaba
-    // en la app instalada en pantalla de inicio (iOS "standalone"): todo
-    // lo de arriba (guardar el pedido, Ruleta, Bingo...) implica esperas
-    // a Supabase, y para cuando se llega aquí iOS ya no considera que la
-    // navegación venga de un toque directo del usuario, así que bloquea
-    // abrir WhatsApp sin avisar de nada. La solución fiable es no
-    // navegar aquí: dejamos el texto ya preparado y pedimos un toque
-    // NUEVO y directo del usuario (botón "Abrir WhatsApp" que aparece a
-    // continuación), que sí cuenta como gesto propio y no se bloquea.
-    setPedidoListoParaWhatsApp({ texto });
+    abrirPedidoEnWhatsApp({
+      whatsappNumber: WHATSAPP_NUMBER,
+      texto,
+    });
   }
 
   const sendByWhatsApp = async () => {
@@ -3787,28 +3774,6 @@ export default function App() {
     }
   };
 
-  // Toque NUEVO y 100% síncrono (sin ningún "await" antes): esto es lo
-  // que permite que iOS, en la app instalada en pantalla de inicio, deje
-  // abrir WhatsApp sin bloquearlo. El pedido ya quedó guardado antes, en
-  // sendByWhatsAppInterno; aquí solo abrimos WhatsApp con el texto que
-  // se dejó preparado.
-  const abrirWhatsAppPendiente = () => {
-    try {
-      if (!pedidoListoParaWhatsApp) return;
-      abrirPedidoEnWhatsApp({
-        whatsappNumber: WHATSAPP_NUMBER,
-        texto: pedidoListoParaWhatsApp.texto,
-      });
-      setPedidoListoParaWhatsApp(null);
-    } catch (error) {
-      console.error("Error inesperado al abrir WhatsApp:", error);
-      alert(
-        `No se ha podido abrir WhatsApp (error inesperado).\n\n${
-          error?.message || error
-        }`
-      );
-    }
-  };
 
 
   const sendByWhatsAppInterno = async () => {
@@ -5211,7 +5176,7 @@ export default function App() {
         </div>
       )}
 
-      {pushRecordatorioModificacion && !pedidoListoParaWhatsApp && (
+      {pushRecordatorioModificacion && (
         <div style={styles.avisoModificacionOverlay}>
           <div style={styles.avisoModificacionPanel}>
             <h2 style={styles.avisoModificacionTitulo}>{t.pushRecordatorioTitulo}</h2>
@@ -5240,10 +5205,7 @@ export default function App() {
           <div style={styles.summaryPanel}>
             <button
               type="button"
-              onClick={() => {
-                setShowOrderSummary(false);
-                setPedidoListoParaWhatsApp(null);
-              }}
+              onClick={() => setShowOrderSummary(false)}
               style={styles.summaryClose}
             >
               ×
@@ -5347,29 +5309,18 @@ export default function App() {
             />
 
             <div style={styles.summaryActions}>
-              {pedidoListoParaWhatsApp ? (
-                <button
-                  type="button"
-                  onClick={abrirWhatsAppPendiente}
-                  style={styles.sendButton}
-                >
-                  <Send size={18} />
-                  📲 Toca aquí para abrir WhatsApp
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={sendByWhatsApp}
-                  disabled={enviandoPedido}
-                  style={{
-                    ...styles.sendButton,
-                    ...(enviandoPedido ? { opacity: 0.6, pointerEvents: "none" } : null),
-                  }}
-                >
-                  <Send size={18} />
-                  {enviandoPedido ? "Enviando..." : t.sendByWhatsApp}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={sendByWhatsApp}
+                disabled={enviandoPedido}
+                style={{
+                  ...styles.sendButton,
+                  ...(enviandoPedido ? { opacity: 0.6, pointerEvents: "none" } : null),
+                }}
+              >
+                <Send size={18} />
+                {enviandoPedido ? "Enviando..." : t.sendByWhatsApp}
+              </button>
 
               <button type="button" onClick={resetToInitialState} style={styles.clearButton}>
                 <Trash2 size={18} />
@@ -5378,10 +5329,7 @@ export default function App() {
 
               <button
                 type="button"
-                onClick={() => {
-                  setShowOrderSummary(false);
-                  setPedidoListoParaWhatsApp(null);
-                }}
+                onClick={() => setShowOrderSummary(false)}
                 style={styles.backButton}
               >
                 {t.back}
