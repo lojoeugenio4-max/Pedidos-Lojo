@@ -23,6 +23,18 @@ export default function TablaArticulos({
     return tr;
   }
 
+  function formatearPrecio(precio) {
+    if (precio === null || precio === undefined || precio === "") return null;
+
+    const numero = Number(precio);
+    if (!Number.isFinite(numero)) return null;
+
+    return numero.toLocaleString("es-ES", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
   function obtenerEstadoOferta(oferta) {
     if (!oferta) return null;
 
@@ -48,6 +60,7 @@ export default function TablaArticulos({
             <th style={{ ...th, width: "100px" }}>Cód. Lojo</th>
             <th style={th}>Artículo</th>
             <th style={{ ...th, width: "140px" }}>Departamento</th>
+            <th style={{ ...th, width: "90px" }}>Precio</th>
             <th style={{ ...th, minWidth: "260px" }}>Oferta</th>
             <th style={{ ...th, width: "110px" }}>Estado</th>
             <th style={{ ...th, width: "150px" }}>Acciones</th>
@@ -62,6 +75,7 @@ export default function TablaArticulos({
             const oferta = tieneOferta ? articulo.ofertas[0] : null;
             const textoOferta = oferta?.texto || "";
             const estadoOferta = obtenerEstadoOferta(oferta);
+            const precioFormateado = formatearPrecio(articulo.precio);
 
             return (
               <tr key={articulo.id} style={estiloFila(articulo)}>
@@ -111,6 +125,14 @@ export default function TablaArticulos({
                   <span style={departmentBadge}>
                     {articulo.departamentos?.nombre || "-"}
                   </span>
+                </td>
+
+                <td style={td}>
+                  {precioFormateado ? (
+                    <span style={priceBadge}>{precioFormateado} €</span>
+                  ) : (
+                    <span style={emptyOffer}>—</span>
+                  )}
                 </td>
 
                 <td style={td}>
@@ -322,6 +344,17 @@ const departmentBadge = {
   maxWidth: "120px",
   overflow: "hidden",
   textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const priceBadge = {
+  background: "#ecfdf5",
+  color: "#047857",
+  padding: "6px 10px",
+  borderRadius: "999px",
+  fontSize: "12px",
+  fontWeight: "900",
+  display: "inline-block",
   whiteSpace: "nowrap",
 };
 
