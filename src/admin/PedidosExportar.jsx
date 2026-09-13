@@ -10,9 +10,6 @@ import {
   nombreArchivoSeguro,
 } from "../utils/carpetaPedidosRecibidos";
 
-const CORTE_HORA = 14;
-const CORTE_MINUTO = 30;
-
 function fechaLocalISO(fecha = new Date()) {
   const year = fecha.getFullYear();
   const month = String(fecha.getMonth() + 1).padStart(2, "0");
@@ -25,24 +22,23 @@ function crearFechaLocal(fechaISO) {
   return new Date(year, month - 1, day);
 }
 
+// El día ya NO se desplaza por ninguna hora de corte: "hoy", "ayer", etc. se
+// calculan siempre con la fecha natural del calendario (medianoche a
+// medianoche), tal cual la marca el reloj del dispositivo. Antes había un
+// corte a las 14:30 que hacía que un pedido de madrugada/mañana contara
+// todavía como "de ayer" hasta esa hora.
 function inicioDiaEstadistico(fechaISO) {
-  const fecha = crearFechaLocal(fechaISO);
-  fecha.setHours(CORTE_HORA, CORTE_MINUTO, 0, 0);
-  return fecha;
+  return crearFechaLocal(fechaISO);
 }
 
 function finDiaEstadistico(fechaISO) {
-  const fecha = inicioDiaEstadistico(fechaISO);
+  const fecha = crearFechaLocal(fechaISO);
   fecha.setDate(fecha.getDate() + 1);
   return fecha;
 }
 
 function diaEstadisticoActualISO() {
-  const ahora = new Date();
-  const corteHoy = new Date();
-  corteHoy.setHours(CORTE_HORA, CORTE_MINUTO, 0, 0);
-  if (ahora < corteHoy) ahora.setDate(ahora.getDate() - 1);
-  return fechaLocalISO(ahora);
+  return fechaLocalISO(new Date());
 }
 
 function sumarDias(fechaISO, dias) {
