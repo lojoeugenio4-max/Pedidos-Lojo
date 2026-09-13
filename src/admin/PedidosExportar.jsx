@@ -179,6 +179,36 @@ export default function PedidosExportar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-refresco: en cuanto llega o se modifica una línea de un pedido en
+  // estadisticas_movimientos (de donde sale esta pantalla), recargamos solos
+  // en vez de esperar a que alguien pulse F5. Realtime es la vía principal;
+  // el intervalo de 20s es un respaldo por si el navegador suspende el
+  // websocket (pestaña en segundo plano, portátil bloqueado, etc.), igual
+  // que se hace ya en otras pantallas de la app con Bingo/Ruleta.
+  useEffect(() => {
+    const recargar = () => {
+      if (modoTodasFechas) cargarTodosPendientes();
+      else cargarPedidos(desde, hasta);
+    };
+
+    const canal = supabase
+      .channel("pedidos-recibidos-live")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "estadisticas_movimientos" },
+        recargar
+      )
+      .subscribe();
+
+    const intervalo = setInterval(recargar, 20000);
+
+    return () => {
+      supabase.removeChannel(canal);
+      clearInterval(intervalo);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modoTodasFechas, desde, hasta]);
+
   async function cargarPedidos(desdeFiltro = desde, hastaFiltro = hasta) {
     setModoTodasFechas(false);
     setCargando(true);
@@ -553,6 +583,19 @@ export default function PedidosExportar() {
 
   return (
     <div style={contenedor}>
+      <style>{`
+        @keyframes lojoPedidoPendienteParpadeo {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.35; transform: scale(0.99); }
+        }
+      `}</style>
+
+      {pendientesCount > 0 && (
+        <div style={avisoPedidoPendienteParpadeante}>
+          ⚠️ PEDIDO PENDIENTE{pendientesCount > 1 ? ` (${pendientesCount})` : ""} ⚠️
+        </div>
+      )}
+
       <div style={cabecera}>
         <div>
           <h2 style={titulo}>Pedidos recibidos</h2>
@@ -936,6 +979,23 @@ export default function PedidosExportar() {
 const contenedor = { display: "flex", flexDirection: "column", gap: "14px" };
 
 const cabecera = { display: "flex", justifyContent: "space-between", alignItems: "flex-start" };
+
+const avisoPedidoPendienteParpadeante = {
+  width: "100%",
+  boxSizing: "border-box",
+  margin: "0 0 20px",
+  padding: "clamp(18px, 4vw, 36px) 16px",
+  borderRadius: 16,
+  textAlign: "center",
+  color: "#fff",
+  background: "#dc2626",
+  fontSize: "clamp(22px, 4.2vw, 46px)",
+  fontWeight: 900,
+  letterSpacing: "0.03em",
+  lineHeight: 1.15,
+  boxShadow: "0 0 0 4px #fff inset, 0 14px 34px rgba(220,38,38,.55)",
+  animation: "lojoPedidoPendienteParpadeo 1s ease-in-out infinite",
+};
 
 const titulo = { margin: 0, fontSize: "20px", color: "#111827" };
 
