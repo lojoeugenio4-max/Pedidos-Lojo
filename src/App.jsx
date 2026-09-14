@@ -752,6 +752,15 @@ export default function App() {
   // useState) para que la segunda llamada, aunque llegue milisegundos
   // después, se corte antes de generar nada.
   const enviandoPedidoRef = useRef(false);
+  // Si el cliente ya resolvió el aviso "pedido enviado, ¿modificar o
+  // empezar uno nuevo?" en esta misma sesión (pulsando "Continuar
+  // modificando"), no hay que volver a molestarle con él cada vez que la
+  // app pasa a segundo plano y vuelve — ver el nuevo efecto de más abajo
+  // que vigila cuándo la app vuelve a primer plano. Se pone a false de
+  // nuevo cada vez que se envía un pedido (nuevo o modificado): tras
+  // enviar, si el cliente vuelve a abrir la app, sí queremos que se le
+  // recuerde otra vez.
+  const avisoPedidoPrevioResueltoRef = useRef(false);
   const [enviandoPedido, setEnviandoPedido] = useState(false);
 
   // Aviso a pantalla completa "No olvides pulsar Enviar en tu WhatsApp":
@@ -1187,6 +1196,48 @@ export default function App() {
       cancelado = true;
     };
   }, [cargandoCliente, clienteIdentificado?.id]);
+
+  // El efecto de arriba (comprobarPedidoPrevio) solo se ejecuta UNA VEZ,
+  // al montar el componente. En el móvil, sobre todo en la app "añadida a
+  // pantalla de inicio" en iOS, tocar el icono para "volver a abrir" la
+  // app muy a menudo NO recarga la página: el sistema simplemente
+  // reanuda la misma sesión que se quedó en segundo plano (por ejemplo,
+  // justo después de enviar el pedido y pasar a WhatsApp). Como no hay
+  // recarga, este efecto de montaje no se vuelve a ejecutar, así que el
+  // aviso de "pedido enviado, ¿modificar o empezar uno nuevo?" no llegaba
+  // nunca a aparecer, y el cliente se quedaba viendo la última pantalla
+  // en la que estuviera (p. ej. el Resumen del pedido) como si nada se
+  // hubiera enviado.
+  //
+  // Este efecto cubre justo ese caso: cada vez que la app vuelve a primer
+  // plano, si hay un pedido enviado activo con artículos en la cesta y
+  // el cliente todavía no ha tomado una decisión sobre él esta sesión
+  // (ver avisoPedidoPrevioResueltoRef), se muestra el aviso de nuevo y se
+  // cierra cualquier vista (Resumen del pedido, ficha de artículo) que
+  // pudiera taparlo.
+  useEffect(() => {
+    function alVolverVisible() {
+      if (document.visibilityState !== "visible") return;
+      if (avisoPedidoPrevioResueltoRef.current) return;
+      if (avisoPedidoPrevio) return;
+      if (!pedidoEnviadoActivo) return;
+      if (!hayCantidadesConArticulos(quantities)) return;
+
+      setAvisoPedidoPrevio({ enviadoEn: pedidoEnviadoEn });
+      setShowOrderSummary(false);
+      setSelectedImage(null);
+    }
+
+    document.addEventListener("visibilitychange", alVolverVisible);
+    window.addEventListener("focus", alVolverVisible);
+    window.addEventListener("pageshow", alVolverVisible);
+
+    return () => {
+      document.removeEventListener("visibilitychange", alVolverVisible);
+      window.removeEventListener("focus", alVolverVisible);
+      window.removeEventListener("pageshow", alVolverVisible);
+    };
+  }, [pedidoEnviadoActivo, avisoPedidoPrevio, pedidoEnviadoEn, quantities]);
 
   // El efecto de arriba solo comprueba si el pedido sigue sin exportar
   // UNA VEZ, al cargar la app. En el móvil es muy habitual dejar la app
@@ -3297,6 +3348,10 @@ export default function App() {
   }
 
   function continuarEditandoPedidoPrevio() {
+    // Ya ha tomado una decisión esta sesión: no hay que volver a
+    // avisarle solo porque la app pase a segundo plano y vuelva mientras
+    // sigue editando.
+    avisoPedidoPrevioResueltoRef.current = true;
     // Los datos del pedido (cantidades, nombre, notas) ya están cargados
     // en el estado; solo cerramos el aviso y le dejamos editar
     // directamente. Antes aquí se mostraba un segundo aviso ("Tienes un
@@ -3665,6 +3720,11 @@ export default function App() {
     // así que ya no hace falta seguir protegiendo del aviso a ningún
     // pedido anterior que hubiera descartado antes.
     guardarPedidoIgnorado(clienteToken, null);
+    // Tras enviar (nuevo pedido o modificación), si el cliente vuelve a
+    // abrir la app más tarde, sí queremos que se le recuerde de nuevo que
+    // tiene un pedido enviado. Ver el efecto de "volver a primer plano"
+    // más abajo.
+    avisoPedidoPrevioResueltoRef.current = false;
 
     if (!ventana.editable) {
       limpiarPedidoDespuesEnvio();
