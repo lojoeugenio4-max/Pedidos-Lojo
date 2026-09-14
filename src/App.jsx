@@ -85,6 +85,23 @@ function obtenerClavePedidoIgnorado(clienteToken) {
   return `${PEDIDO_IGNORADO_STORAGE_KEY}:${clienteToken || "sin-cliente"}`;
 }
 
+// "¿Hay artículos en la cesta?" mirando directamente las cantidades
+// guardadas (quantities), NO el catálogo de productos ya cargado y
+// emparejado (eso es lo que hace orderedItems). Comprobarlo contra
+// orderedItems fallaba justo al reabrir la app con un pedido previo: en
+// ese momento el catálogo (productos) puede todavía no haber terminado de
+// cargarse desde Supabase, así que orderedItems.length daba 0 aunque las
+// cantidades del pedido ya estuvieran guardadas, y el aviso de "pedido
+// enviado, ¿modificar o empezar uno nuevo?" no llegaba a mostrarse nunca.
+function hayCantidadesConArticulos(quantitiesObj) {
+  return Object.values(quantitiesObj || {}).some(
+    (cantidad) =>
+      Number(cantidad?.boxes || 0) > 0 ||
+      Number(cantidad?.units || 0) > 0 ||
+      Boolean((cantidad?.notes || "").trim())
+  );
+}
+
 function leerPedidoIgnorado(clienteToken) {
   try {
     return localStorage.getItem(obtenerClavePedidoIgnorado(clienteToken)) || null;
@@ -1152,9 +1169,15 @@ export default function App() {
       if (pedidoPrevio && !cancelado) {
         setPedidoEnviadoActivo(true);
         setAvisoPedidoPrevio(pedidoPrevio);
-        // El catálogo debe quedar debajo del aviso (no el resumen), por
-        // si el cliente lo cierra sin pasar por "Continuar modificando".
+        // Al reabrir la app con un pedido enviado pendiente, la pantalla
+        // debe "reiniciar" al catálogo normal (con el aviso encima), no
+        // quedarse en ninguna vista previa: ni el resumen del pedido
+        // ("Cesta"), ni la ficha ampliada de un artículo, ni un buscador
+        // con texto de una sesión anterior.
         setShowOrderSummary(false);
+        setSelectedImage(null);
+        setSearchInput("");
+        setSearch("");
       }
     }
 
@@ -5183,7 +5206,7 @@ export default function App() {
         </button>
       </div>
 
-      {avisoPedidoPrevio && orderedItems.length > 0 && (
+      {avisoPedidoPrevio && hayCantidadesConArticulos(quantities) && (
         <div style={styles.avisoModificacionOverlay}>
           <div style={styles.avisoModificacionPanel}>
             <h2 style={styles.avisoModificacionTitulo}>{t.avisoModificacionTitulo}</h2>
@@ -5208,7 +5231,7 @@ export default function App() {
         </div>
       )}
 
-      {avisoPedidoPrevio && orderedItems.length > 0 && confirmarPedidoNuevo && (
+      {avisoPedidoPrevio && hayCantidadesConArticulos(quantities) && confirmarPedidoNuevo && (
         <div style={styles.avisoModificacionOverlay}>
           <div style={styles.avisoModificacionPanel}>
             <h2 style={styles.avisoModificacionTitulo}>¿Empezar un pedido nuevo?</h2>
