@@ -45,6 +45,29 @@ function obtenerClaveOrderStorage(clienteToken) {
   return `${ORDER_STORAGE_KEY}:${clienteToken || "sin-cliente"}`;
 }
 
+// Antes de esto, cada llamada a Supabase entre el toque de "Enviar" y la
+// apertura de WhatsApp (comprobar nombre, Ruleta, Bingo, Sorteo, QR común,
+// guardar el pedido actual) podía quedarse esperando sin límite si el
+// cliente tenía mala cobertura en la tienda. El código nunca fallaba NI
+// terminaba: el .catch() de cada llamada nunca llegaba a dispararse porque
+// la promesa nunca se resolvía ni se rechazaba, así que jamás se alcanzaba
+// la línea que abre WhatsApp y el botón se quedaba en "Enviando..." para
+// siempre, sin ningún aviso. Este helper obliga a que cualquier llamada de
+// red "decida" en como mucho LIMITE_MS: si no lo hace, se trata igual que
+// cualquier otro fallo ya contemplado (se registra y se continúa, sin
+// bloquear el envío del pedido por WhatsApp).
+function conLimiteDeTiempo(promesa, limiteMs = 7000) {
+  return Promise.race([
+    Promise.resolve(promesa),
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`Tiempo de espera agotado (${limiteMs}ms) esperando respuesta del servidor`)),
+        limiteMs
+      )
+    ),
+  ]);
+}
+
 const LANGUAGE_STORAGE_KEY = "cash-lojo-language";
 const APP_INSTALLED_STORAGE_KEY = "cash-lojo-app-instalada";
 const ORDER_STORAGE_VERSION = 3;
@@ -711,6 +734,15 @@ export default function App() {
   // después, se corte antes de generar nada.
   const enviandoPedidoRef = useRef(false);
   const [enviandoPedido, setEnviandoPedido] = useState(false);
+
+  // Enlace de repuesto: si el navegador bloquea la apertura automática de
+  // WhatsApp (algo que puede pasar en navegadores/PWA de móvil cuando la
+  // apertura llega después de varias esperas a Supabase, en vez de justo
+  // en el toque del cliente), este botón queda visible para que el
+  // cliente lo abra él mismo con un toque directo, que ningún navegador
+  // bloquea. Se rellena justo antes de intentar la apertura automática y
+  // se mantiene hasta que el cliente empiece un pedido nuevo.
+  const [whatsappUrlManual, setWhatsappUrlManual] = useState(null);
 
   const [pedidoEnviadoActivo, setPedidoEnviadoActivo] = useState(() =>
     // Optimista: se confirma (o se corrige) enseguida en el efecto que
@@ -3147,6 +3179,7 @@ export default function App() {
     setPushCerrado(false);
     setMostrarVolverPush(false);
     setHeaderCollapsed(false);
+    setWhatsappUrlManual(null);
     localStorage.removeItem(obtenerClaveOrderStorage(clienteToken));
 
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -3662,18 +3695,20 @@ export default function App() {
     if (!clienteIdentificado?.id) return;
 
     try {
-      const { error } = await supabase.from("pedidos_actuales").upsert(
-        {
-          cliente_id: clienteIdentificado.id,
-          quantities,
-          customer_name: customerNamePedido,
-          notes: notesPedido,
-          enviado_en: enviadoEnIso,
-          dia_preparacion: ventana.diaPreparacion.toISOString().slice(0, 10),
-          fecha_limite_edicion: fechaLimiteIso,
-          pedido_stats_id: pedidoStatsId,
-        },
-        { onConflict: "cliente_id" }
+      const { error } = await conLimiteDeTiempo(
+        supabase.from("pedidos_actuales").upsert(
+          {
+            cliente_id: clienteIdentificado.id,
+            quantities,
+            customer_name: customerNamePedido,
+            notes: notesPedido,
+            enviado_en: enviadoEnIso,
+            dia_preparacion: ventana.diaPreparacion.toISOString().slice(0, 10),
+            fecha_limite_edicion: fechaLimiteIso,
+            pedido_stats_id: pedidoStatsId,
+          },
+          { onConflict: "cliente_id" }
+        )
       );
 
       if (error) throw error;
@@ -3742,10 +3777,16 @@ export default function App() {
     // Guardamos estadísticas en segundo plano, sin bloquear WhatsApp.
     guardarEstadisticasPedido(itemsPedido, pedidoIdEstadisticas, customerNamePedido);
 
-    abrirPedidoEnWhatsApp({
+    const whatsappUrlAbierta = abrirPedidoEnWhatsApp({
       whatsappNumber: WHATSAPP_NUMBER,
       texto,
     });
+
+    // Guardamos el enlace de repuesto igualmente, aunque la apertura
+    // automática de arriba "parezca" haber funcionado: no hay forma de
+    // saber desde el código si el navegador la ha bloqueado en silencio,
+    // así que el botón manual queda siempre disponible por si acaso.
+    setWhatsappUrlManual(whatsappUrlAbierta);
   }
 
   const sendByWhatsApp = async () => {
@@ -3756,7 +3797,14 @@ export default function App() {
     enviandoPedidoRef.current = true;
     setEnviandoPedido(true);
     try {
-      await sendByWhatsAppInterno();
+      // Límite de seguridad ADEMÁS de los límites por cada llamada
+      // individual dentro de sendByWhatsAppInterno: así, aunque algo
+      // inesperado se quede esperando sin que su propio conLimiteDeTiempo
+      // lo cubra, el botón "Enviando..." nunca queda bloqueado para
+      // siempre sin explicación (que es justo lo que le pasó a un
+      // cliente: el pedido se guardó en Pedidos recibidos pero WhatsApp
+      // nunca llegó a abrirse ni a mostrar ningún aviso de error).
+      await conLimiteDeTiempo(sendByWhatsAppInterno(), 25000);
     } catch (error) {
       // Antes, cualquier error no controlado aquí se quedaba solo en la
       // consola del navegador (invisible en el móvil): el botón volvía
@@ -3766,7 +3814,7 @@ export default function App() {
       alert(
         `No se ha podido enviar el pedido (error inesperado).\n\n${
           error?.message || error
-        }`
+        }\n\nToca "Enviar" para volver a intentarlo.`
       );
     } finally {
       enviandoPedidoRef.current = false;
@@ -3812,13 +3860,15 @@ export default function App() {
     let nombreClienteEnvio = clienteIdentificado?.nombre || "";
     if (clienteToken && !nombreClienteEnvio) {
       try {
-        const { data } = await supabase
-          .from("clientes")
-          .select("nombre")
-          .eq("token", clienteToken)
-          .maybeSingle();
+        const { data } = await conLimiteDeTiempo(
+          supabase.from("clientes").select("nombre").eq("token", clienteToken).maybeSingle()
+        );
         nombreClienteEnvio = data?.nombre || "";
       } catch (error) {
+        // Con mala cobertura esto puede no llegar nunca a resolverse; con
+        // el límite de tiempo, como mucho tarda conLimiteDeTiempo() en
+        // rendirse, y el pedido sigue enviándose (con el nombre que ya
+        // hubiera en pantalla) en vez de quedarse colgado aquí.
         console.error("No se pudo volver a comprobar el nombre del cliente:", error);
       }
     }
@@ -3849,12 +3899,14 @@ export default function App() {
 
     if (cumplePromocionRuleta) {
       try {
-        participacionRuleta = await crearParticipacionPromocion({
-          promocionId: configuracionRuleta.id,
-          pedidoId: pedidoIdEstable,
-          customerNamePedido,
-          tiradasRuleta: resumenRuletaPedidoEnvio?.tiradasConseguidas || 1,
-        });
+        participacionRuleta = await conLimiteDeTiempo(
+          crearParticipacionPromocion({
+            promocionId: configuracionRuleta.id,
+            pedidoId: pedidoIdEstable,
+            customerNamePedido,
+            tiradasRuleta: resumenRuletaPedidoEnvio?.tiradasConseguidas || 1,
+          })
+        );
       } catch (error) {
         console.error("Error creando participación de ruleta:", error);
         const detalleError = [
@@ -3888,7 +3940,9 @@ export default function App() {
     let participacionBingo = null;
     if (clienteIdentificado?.id) {
       try {
-        participacionBingo = await registrarPedidoParaBingo(itemsPedido, pedidoIdEstable);
+        participacionBingo = await conLimiteDeTiempo(
+          registrarPedidoParaBingo(itemsPedido, pedidoIdEstable)
+        );
       } catch (error) {
         const detalleErrorBingo = [
           error?.code ? `Código: ${error.code}` : null,
@@ -3921,7 +3975,9 @@ export default function App() {
     let participacionSorteo = null;
     if (clienteIdentificado?.es_pruebas) {
       try {
-        participacionSorteo = await registrarPedidoParaSorteo(itemsPedido, pedidoIdEstable);
+        participacionSorteo = await conLimiteDeTiempo(
+          registrarPedidoParaSorteo(itemsPedido, pedidoIdEstable)
+        );
       } catch (error) {
         const detalleErrorSorteo = [
           error?.code ? `Código: ${error.code}` : null,
@@ -3951,14 +4007,16 @@ export default function App() {
       sorteoCumpleVariedad(participacionSorteo)
     ) {
       try {
-        participacionJuegos = await crearParticipacionJuegos({
-          pedidoId: pedidoIdEstable,
-          customerNamePedido,
-          participacionRuleta,
-          tiradasRuleta: resumenRuletaPedidoEnvio?.tiradasConseguidas || 0,
-          participacionBingo,
-          participacionSorteo,
-        });
+        participacionJuegos = await conLimiteDeTiempo(
+          crearParticipacionJuegos({
+            pedidoId: pedidoIdEstable,
+            customerNamePedido,
+            participacionRuleta,
+            tiradasRuleta: resumenRuletaPedidoEnvio?.tiradasConseguidas || 0,
+            participacionBingo,
+            participacionSorteo,
+          })
+        );
       } catch (error) {
         console.error("Error creando la participación común:", error);
         const detalleErrorComun = [
@@ -5321,6 +5379,43 @@ export default function App() {
                 <Send size={18} />
                 {enviandoPedido ? "Enviando..." : t.sendByWhatsApp}
               </button>
+
+              {whatsappUrlManual && (
+                <>
+                  <a
+                    href={whatsappUrlManual}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: "block",
+                      textAlign: "center",
+                      marginTop: 8,
+                      fontSize: 13,
+                      color: "#1f7a3d",
+                      textDecoration: "underline",
+                    }}
+                  >
+                    ¿No se ha abierto WhatsApp? Pulsa aquí
+                  </a>
+                  <p
+                    style={{
+                      marginTop: 6,
+                      fontSize: 12.5,
+                      color: "#8a5a00",
+                      background: "#fff6df",
+                      border: "1px solid #ffe4a3",
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    ⚠️ En WhatsApp, no olvides pulsar el botón de <strong>enviar</strong> (✈️) dentro
+                    del chat: escribir el mensaje aquí no lo manda solo. Si ves un pedido
+                    <strong> distinto o más antiguo</strong> ya escrito en el chat, bórralo primero y
+                    pega/escribe el nuevo antes de enviarlo.
+                  </p>
+                </>
+              )}
 
               <button type="button" onClick={resetToInitialState} style={styles.clearButton}>
                 <Trash2 size={18} />
