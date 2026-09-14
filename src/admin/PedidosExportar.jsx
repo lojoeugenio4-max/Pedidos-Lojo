@@ -177,10 +177,19 @@ export default function PedidosExportar() {
 
   // Auto-refresco: en cuanto llega o se modifica una línea de un pedido en
   // estadisticas_movimientos (de donde sale esta pantalla), recargamos solos
-  // en vez de esperar a que alguien pulse F5. Realtime es la vía principal;
-  // el intervalo de 20s es un respaldo por si el navegador suspende el
-  // websocket (pestaña en segundo plano, portátil bloqueado, etc.), igual
-  // que se hace ya en otras pantallas de la app con Bingo/Ruleta.
+  // en vez de esperar a que alguien pulse F5. Realtime es la vía principal.
+  //
+  // Antes había también un setInterval(recargar, 20000) como respaldo por si
+  // el navegador suspendía el websocket. Se quitó a petición expresa: al
+  // recargar cada 20s SIEMPRE (haya o no pedidos nuevos), además de ser
+  // molesto visualmente, cargarPedidos()/cargarTodosPendientes() vacían la
+  // selección de casillas (setSeleccionados(new Set())) a media faena. En su
+  // lugar, el respaldo ahora solo actúa cuando de verdad hace falta: si la
+  // pestaña estuvo un buen rato en segundo plano (más tiempo del que tardaría
+  // en reconectar un corte breve de websocket) y vuelve a primer plano, se
+  // hace una única recarga silenciosa por si se perdió algún aviso en tiempo
+  // real mientras tanto. No hay ninguna recarga periódica mientras se está
+  // usando la pantalla.
   useEffect(() => {
     const recargar = () => {
       if (modoTodasFechas) cargarTodosPendientes();
@@ -196,11 +205,26 @@ export default function PedidosExportar() {
       )
       .subscribe();
 
-    const intervalo = setInterval(recargar, 20000);
+    let ocultoDesde = null;
+    const UMBRAL_SEGUNDO_PLANO_MS = 60000;
+
+    function alCambiarVisibilidad() {
+      if (document.visibilityState === "hidden") {
+        ocultoDesde = Date.now();
+        return;
+      }
+      if (document.visibilityState === "visible" && ocultoDesde) {
+        const tiempoOculto = Date.now() - ocultoDesde;
+        ocultoDesde = null;
+        if (tiempoOculto >= UMBRAL_SEGUNDO_PLANO_MS) recargar();
+      }
+    }
+
+    document.addEventListener("visibilitychange", alCambiarVisibilidad);
 
     return () => {
       supabase.removeChannel(canal);
-      clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", alCambiarVisibilidad);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modoTodasFechas, desde, hasta]);
