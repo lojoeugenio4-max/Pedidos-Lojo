@@ -274,24 +274,17 @@ export function construirTextoPedidoWhatsApp({
   return lines.join("\n");
 }
 
-export function abrirPedidoEnWhatsApp({ whatsappNumber, texto }) {
+export function construirUrlWhatsapp({ whatsappNumber, texto }) {
   const message = encodeURIComponent(texto);
-  const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${message}`;
+  return `https://wa.me/${whatsappNumber}?text=${message}`;
+}
 
-  // Un enlace real (<a>) "clicado" es, de largo, la forma más compatible
-  // de abrir una URL externa en un toque de usuario en móviles y apps
-  // instaladas en pantalla de inicio -mucho más que cambiar la URL de la
-  // página (window.location) directamente, que en algunos navegadores
-  // instalados como app no se comporta igual que un toque real-.
-  //
-  // Aun así, esta apertura ya NO ocurre en el mismo instante del toque
-  // del cliente en "Enviar": antes ha habido varias esperas a Supabase
-  // (nombre, Ruleta, Bingo, Sorteo, QR, guardar el pedido). Cuantas más
-  // esperas de por medio, más fácil es que el navegador ya no reconozca
-  // esto como una apertura pedida directamente por el cliente y la
-  // bloquee en silencio (sin error visible). Por eso devolvemos siempre
-  // la URL: quien llame a esta función puede ofrecer un enlace manual de
-  // repuesto, que sí es un toque directo y nunca se bloquea.
+// Abre una URL de wa.me ya construida. Separado de abrirPedidoEnWhatsApp
+// para poder reutilizarlo también desde el botón "Aceptar" del aviso "No
+// olvides pulsar Enviar en tu WhatsApp", que se dispara mucho después de
+// construir el texto pero es, en sí mismo, un toque directo y nuevo del
+// cliente.
+export function abrirUrlWhatsapp(whatsappUrl) {
   try {
     const enlace = document.createElement("a");
     enlace.href = whatsappUrl;
@@ -306,4 +299,23 @@ export function abrirPedidoEnWhatsApp({ whatsappNumber, texto }) {
   }
 
   return whatsappUrl;
+}
+
+export function abrirPedidoEnWhatsApp({ whatsappNumber, texto }) {
+  const whatsappUrl = construirUrlWhatsapp({ whatsappNumber, texto });
+
+  // Un enlace real (<a>) "clicado" es, de largo, la forma más compatible
+  // de abrir una URL externa en un toque de usuario en móviles y apps
+  // instaladas en pantalla de inicio -mucho más que cambiar la URL de la
+  // página (window.location) directamente, que en algunos navegadores
+  // instalados como app no se comporta igual que un toque real-.
+  //
+  // Quien llama a esta función debe hacerlo dentro de un manejador de
+  // evento disparado directamente por un toque del cliente (por ejemplo,
+  // el botón "Aceptar" del aviso "No olvides pulsar Enviar en tu
+  // WhatsApp"), sin ningún await de por medio: cuantas más esperas haya
+  // entre el toque real y esta llamada, más fácil es que el navegador deje
+  // de reconocerlo como una apertura pedida por el cliente y la bloquee en
+  // silencio.
+  return abrirUrlWhatsapp(whatsappUrl);
 }
