@@ -283,6 +283,15 @@ export function abrirPedidoEnWhatsApp({ whatsappNumber, texto }) {
   // instaladas en pantalla de inicio -mucho más que cambiar la URL de la
   // página (window.location) directamente, que en algunos navegadores
   // instalados como app no se comporta igual que un toque real-.
+  //
+  // Aun así, esta apertura ya NO ocurre en el mismo instante del toque
+  // del cliente en "Enviar": antes ha habido varias esperas a Supabase
+  // (nombre, Ruleta, Bingo, Sorteo, QR, guardar el pedido). Cuantas más
+  // esperas de por medio, más fácil es que el navegador ya no reconozca
+  // esto como una apertura pedida directamente por el cliente y la
+  // bloquee en silencio (sin error visible). Por eso devolvemos siempre
+  // la URL: quien llame a esta función puede ofrecer un enlace manual de
+  // repuesto, que sí es un toque directo y nunca se bloquea.
   try {
     const enlace = document.createElement("a");
     enlace.href = whatsappUrl;
@@ -295,4 +304,6 @@ export function abrirPedidoEnWhatsApp({ whatsappNumber, texto }) {
     console.error("No se pudo abrir WhatsApp con el enlace, probando alternativa:", error);
     window.location.assign(whatsappUrl);
   }
+
+  return whatsappUrl;
 }
