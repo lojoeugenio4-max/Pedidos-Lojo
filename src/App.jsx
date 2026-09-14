@@ -209,11 +209,9 @@ const translations = {
       "Todavía estás a tiempo de modificarlo. Al continuar vas a editar el pedido que ya enviaste por WhatsApp; al enviarlo de nuevo, sustituirá al anterior. Si lo que quieres es hacer un pedido distinto, puedes empezar uno nuevo en su lugar.",
     avisoModificacionSeguir: "Continuar modificando este pedido",
     avisoModificacionNuevo: "Hacer un pedido nuevo",
-    pushRecordatorioTitulo: "📦 Tienes un pedido enviado",
-    pushRecordatorioTexto:
-      "Todavía no se ha impreso. Si has olvidado algo, puedes seguir añadiendo artículos a tu pedido.",
-    pushRecordatorioAceptar: "Aceptar",
-    avisoAbrirWhatsappTexto: "No olvides pulsar Enviar en tu WhatsApp",
+    avisoAbrirWhatsappAntes: "No olvides pulsar ",
+    avisoAbrirWhatsappResaltado: "Enviar",
+    avisoAbrirWhatsappDespues: " en tu WhatsApp",
     avisoAbrirWhatsappAceptar: "Aceptar",
   },
   zh: {
@@ -261,10 +259,9 @@ const translations = {
       "您仍可以修改该订单。继续操作将修改您已通过 WhatsApp 发送的订单，再次发送后会替换之前的订单。如果您想下一个不同的新订单，也可以选择新建一个订单。",
     avisoModificacionSeguir: "继续修改此订单",
     avisoModificacionNuevo: "新建一个订单",
-    pushRecordatorioTitulo: "📦 您有一个已发送的订单",
-    pushRecordatorioTexto: "该订单尚未打印。如果您忘记添加什么，仍可以继续往订单里添加商品。",
-    pushRecordatorioAceptar: "确定",
-    avisoAbrirWhatsappTexto: "别忘了在 WhatsApp 里点击发送",
+    avisoAbrirWhatsappAntes: "别忘了在 WhatsApp 里点击",
+    avisoAbrirWhatsappResaltado: "发送",
+    avisoAbrirWhatsappDespues: "",
     avisoAbrirWhatsappAceptar: "确定",
   },
 };
@@ -769,12 +766,6 @@ export default function App() {
   const [avisoPedidoPrevio, setAvisoPedidoPrevio] = useState(null);
   const [confirmarPedidoNuevo, setConfirmarPedidoNuevo] = useState(false);
   const [comprobandoPedidoPrevio, setComprobandoPedidoPrevio] = useState(false);
-  // Aviso destacado (tipo push, con botón "Aceptar") que confirma al
-  // cliente, justo después de ENVIAR una modificación, que su pedido
-  // sigue pudiéndose seguir editando. (No se muestra al elegir "seguir
-  // modificando" en el aviso de pedido previo — sería repetir la misma
-  // información dos veces seguidas.)
-  const [pushRecordatorioModificacion, setPushRecordatorioModificacion] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("TODOS");
@@ -3280,7 +3271,6 @@ export default function App() {
     setPedidoFechaLimiteEdicion(null);
     setPedidoStatsIdActual(null);
     setAvisoPedidoPrevio(null);
-    setPushRecordatorioModificacion(false);
   }
 
   function continuarEditandoPedidoPrevio() {
@@ -3696,7 +3686,14 @@ export default function App() {
     setPedidoEnviadoEn(enviadoEnIso);
     setPedidoFechaLimiteEdicion(fechaLimiteIso);
     setPedidoStatsIdActual(pedidoStatsId);
-    setPushRecordatorioModificacion(true);
+    // El push "📦 Tienes un pedido enviado" ya NO se activa aquí: antes se
+    // disparaba en el mismo instante que el aviso "No olvides pulsar
+    // Enviar en tu WhatsApp", y al tener ambos la misma capa (overlay a
+    // pantalla completa) se pisaban entre sí y aparecían en el orden
+    // equivocado (el push tapando al aviso de WhatsApp, que es el más
+    // urgente de los dos). Ahora se activa justo al aceptar ese aviso
+    // (ver el botón "Aceptar" del aviso de WhatsApp), para que salgan uno
+    // detrás de otro y nunca a la vez.
 
     if (!clienteIdentificado?.id) return;
 
@@ -5186,7 +5183,7 @@ export default function App() {
         </button>
       </div>
 
-      {avisoPedidoPrevio && (
+      {avisoPedidoPrevio && orderedItems.length > 0 && (
         <div style={styles.avisoModificacionOverlay}>
           <div style={styles.avisoModificacionPanel}>
             <h2 style={styles.avisoModificacionTitulo}>{t.avisoModificacionTitulo}</h2>
@@ -5211,7 +5208,7 @@ export default function App() {
         </div>
       )}
 
-      {avisoPedidoPrevio && confirmarPedidoNuevo && (
+      {avisoPedidoPrevio && orderedItems.length > 0 && confirmarPedidoNuevo && (
         <div style={styles.avisoModificacionOverlay}>
           <div style={styles.avisoModificacionPanel}>
             <h2 style={styles.avisoModificacionTitulo}>¿Empezar un pedido nuevo?</h2>
@@ -5242,7 +5239,13 @@ export default function App() {
       {avisoAbrirWhatsapp && (
         <div style={styles.avisoModificacionOverlay}>
           <div style={styles.avisoAbrirWhatsappPanel}>
-            <p style={styles.avisoAbrirWhatsappTexto}>{t.avisoAbrirWhatsappTexto}</p>
+            <p style={styles.avisoAbrirWhatsappTexto}>
+              {t.avisoAbrirWhatsappAntes}
+              <span style={styles.avisoAbrirWhatsappResaltado}>
+                {t.avisoAbrirWhatsappResaltado}
+              </span>
+              {t.avisoAbrirWhatsappDespues}
+            </p>
 
             <button
               type="button"
@@ -5256,30 +5259,6 @@ export default function App() {
               style={styles.avisoAbrirWhatsappBoton}
             >
               {t.avisoAbrirWhatsappAceptar}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {pushRecordatorioModificacion && (
-        <div style={styles.avisoModificacionOverlay}>
-          <div style={styles.avisoModificacionPanel}>
-            <h2 style={styles.avisoModificacionTitulo}>{t.pushRecordatorioTitulo}</h2>
-            <p style={styles.avisoModificacionTexto}>{t.pushRecordatorioTexto}</p>
-
-            <button
-              type="button"
-              onClick={() => {
-                // Cierra también el resumen del pedido: tras enviarlo, si
-                // el cliente quiere seguir añadiendo artículos (de eso
-                // trata este aviso), tiene que aterrizar en el catálogo,
-                // no quedarse en la pantalla de resumen/revisión.
-                setPushRecordatorioModificacion(false);
-                setShowOrderSummary(false);
-              }}
-              style={styles.avisoModificacionBotonPrimario}
-            >
-              {t.pushRecordatorioAceptar}
             </button>
           </div>
         </div>
@@ -7742,6 +7721,10 @@ const styles = {
     lineHeight: 1.3,
     fontWeight: "900",
     color: "#111a8f",
+  },
+
+  avisoAbrirWhatsappResaltado: {
+    color: "#dc2626",
   },
 
   avisoAbrirWhatsappBoton: {
