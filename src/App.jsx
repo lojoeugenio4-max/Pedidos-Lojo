@@ -28,7 +28,8 @@ import CelebracionPremio from "./components/sorteo/CelebracionPremio";
 import logoLojo from "./assets/logo-lojo.jpg";
 import {
   construirTextoPedidoWhatsApp,
-  abrirPedidoEnWhatsApp,
+  construirUrlWhatsapp,
+  abrirUrlWhatsapp,
 } from "./utils/whatsappPedido";
 import { calcularVentanaPedido, pedidoEstaExportado } from "./utils/pedidoEdicion";
 import { compararDepartamentosPedido } from "./utils/ordenDepartamentosPedido";
@@ -212,6 +213,8 @@ const translations = {
     pushRecordatorioTexto:
       "Todavía no se ha impreso. Si has olvidado algo, puedes seguir añadiendo artículos a tu pedido.",
     pushRecordatorioAceptar: "Aceptar",
+    avisoAbrirWhatsappTexto: "No olvides pulsar Enviar en tu WhatsApp",
+    avisoAbrirWhatsappAceptar: "Aceptar",
   },
   zh: {
     language: "语言",
@@ -261,6 +264,8 @@ const translations = {
     pushRecordatorioTitulo: "📦 您有一个已发送的订单",
     pushRecordatorioTexto: "该订单尚未打印。如果您忘记添加什么，仍可以继续往订单里添加商品。",
     pushRecordatorioAceptar: "确定",
+    avisoAbrirWhatsappTexto: "别忘了在 WhatsApp 里点击发送",
+    avisoAbrirWhatsappAceptar: "确定",
   },
 };
 
@@ -735,14 +740,15 @@ export default function App() {
   const enviandoPedidoRef = useRef(false);
   const [enviandoPedido, setEnviandoPedido] = useState(false);
 
-  // Enlace de repuesto: si el navegador bloquea la apertura automática de
-  // WhatsApp (algo que puede pasar en navegadores/PWA de móvil cuando la
-  // apertura llega después de varias esperas a Supabase, en vez de justo
-  // en el toque del cliente), este botón queda visible para que el
-  // cliente lo abra él mismo con un toque directo, que ningún navegador
-  // bloquea. Se rellena justo antes de intentar la apertura automática y
-  // se mantiene hasta que el cliente empiece un pedido nuevo.
-  const [whatsappUrlManual, setWhatsappUrlManual] = useState(null);
+  // Aviso a pantalla completa "No olvides pulsar Enviar en tu WhatsApp":
+  // en vez de abrir WhatsApp automáticamente en cuanto termina todo el
+  // trabajo de fondo (Ruleta/Bingo/Sorteo/guardado), se deja preparada la
+  // URL aquí y se muestra este aviso grande primero. Solo al pulsar
+  // "Aceptar" se abre WhatsApp: así el toque en "Aceptar" es un gesto
+  // directo del cliente justo en ese instante (sin ninguna espera de por
+  // medio) y además queda clarísimo, en su propio idioma, que todavía le
+  // queda un paso por hacer dentro de WhatsApp.
+  const [avisoAbrirWhatsapp, setAvisoAbrirWhatsapp] = useState(null);
 
   const [pedidoEnviadoActivo, setPedidoEnviadoActivo] = useState(() =>
     // Optimista: se confirma (o se corrige) enseguida en el efecto que
@@ -3179,7 +3185,7 @@ export default function App() {
     setPushCerrado(false);
     setMostrarVolverPush(false);
     setHeaderCollapsed(false);
-    setWhatsappUrlManual(null);
+    setAvisoAbrirWhatsapp(null);
     localStorage.removeItem(obtenerClaveOrderStorage(clienteToken));
 
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -3777,16 +3783,15 @@ export default function App() {
     // Guardamos estadísticas en segundo plano, sin bloquear WhatsApp.
     guardarEstadisticasPedido(itemsPedido, pedidoIdEstadisticas, customerNamePedido);
 
-    const whatsappUrlAbierta = abrirPedidoEnWhatsApp({
+    const whatsappUrlPreparada = construirUrlWhatsapp({
       whatsappNumber: WHATSAPP_NUMBER,
       texto,
     });
 
-    // Guardamos el enlace de repuesto igualmente, aunque la apertura
-    // automática de arriba "parezca" haber funcionado: no hay forma de
-    // saber desde el código si el navegador la ha bloqueado en silencio,
-    // así que el botón manual queda siempre disponible por si acaso.
-    setWhatsappUrlManual(whatsappUrlAbierta);
+    // Ya no se abre WhatsApp aquí directamente: se deja preparada la URL y
+    // se muestra el aviso a pantalla completa. abrirPedidoEnWhatsApp() se
+    // llama en cuanto el cliente pulsa "Aceptar" en ese aviso.
+    setAvisoAbrirWhatsapp(whatsappUrlPreparada);
   }
 
   const sendByWhatsApp = async () => {
@@ -5234,6 +5239,28 @@ export default function App() {
         </div>
       )}
 
+      {avisoAbrirWhatsapp && (
+        <div style={styles.avisoModificacionOverlay}>
+          <div style={styles.avisoAbrirWhatsappPanel}>
+            <p style={styles.avisoAbrirWhatsappTexto}>{t.avisoAbrirWhatsappTexto}</p>
+
+            <button
+              type="button"
+              onClick={() => {
+                // Toque directo y nuevo del cliente, justo aquí, sin
+                // ningún await de por medio: es el momento correcto para
+                // abrir WhatsApp.
+                abrirUrlWhatsapp(avisoAbrirWhatsapp);
+                setAvisoAbrirWhatsapp(null);
+              }}
+              style={styles.avisoAbrirWhatsappBoton}
+            >
+              {t.avisoAbrirWhatsappAceptar}
+            </button>
+          </div>
+        </div>
+      )}
+
       {pushRecordatorioModificacion && (
         <div style={styles.avisoModificacionOverlay}>
           <div style={styles.avisoModificacionPanel}>
@@ -5379,43 +5406,6 @@ export default function App() {
                 <Send size={18} />
                 {enviandoPedido ? "Enviando..." : t.sendByWhatsApp}
               </button>
-
-              {whatsappUrlManual && (
-                <>
-                  <a
-                    href={whatsappUrlManual}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: "block",
-                      textAlign: "center",
-                      marginTop: 8,
-                      fontSize: 13,
-                      color: "#1f7a3d",
-                      textDecoration: "underline",
-                    }}
-                  >
-                    ¿No se ha abierto WhatsApp? Pulsa aquí
-                  </a>
-                  <p
-                    style={{
-                      marginTop: 6,
-                      fontSize: 12.5,
-                      color: "#8a5a00",
-                      background: "#fff6df",
-                      border: "1px solid #ffe4a3",
-                      borderRadius: 8,
-                      padding: "8px 10px",
-                      lineHeight: 1.35,
-                    }}
-                  >
-                    ⚠️ En WhatsApp, no olvides pulsar el botón de <strong>enviar</strong> (✈️) dentro
-                    del chat: escribir el mensaje aquí no lo manda solo. Si ves un pedido
-                    <strong> distinto o más antiguo</strong> ya escrito en el chat, bórralo primero y
-                    pega/escribe el nuevo antes de enviarlo.
-                  </p>
-                </>
-              )}
 
               <button type="button" onClick={resetToInitialState} style={styles.clearButton}>
                 <Trash2 size={18} />
@@ -7730,6 +7720,39 @@ const styles = {
     color: "#334155",
     fontWeight: "800",
     fontSize: "15px",
+  },
+
+  // Aviso "No olvides pulsar Enviar en tu WhatsApp": el texto debe ser lo
+  // primero y lo más grande que vea el cliente en esta pantalla, sin nada
+  // más alrededor que le distraiga del único paso que le queda por hacer.
+  avisoAbrirWhatsappPanel: {
+    width: "100%",
+    maxWidth: "420px",
+    background: "#fff",
+    borderRadius: "18px",
+    padding: "32px 24px",
+    boxSizing: "border-box",
+    boxShadow: "0 20px 40px rgba(15,23,42,0.35)",
+    textAlign: "center",
+  },
+
+  avisoAbrirWhatsappTexto: {
+    margin: "0 0 26px",
+    fontSize: "26px",
+    lineHeight: 1.3,
+    fontWeight: "900",
+    color: "#111a8f",
+  },
+
+  avisoAbrirWhatsappBoton: {
+    width: "100%",
+    padding: "16px 16px",
+    borderRadius: "12px",
+    border: "none",
+    background: "#25D366",
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: "18px",
   },
 
 };
