@@ -9,6 +9,7 @@ import {
   escribirCSVEnCarpeta,
   nombreArchivoSeguro,
 } from "../utils/carpetaPedidosRecibidos";
+import QrPendientes from "./QrPendientes";
 
 function fechaLocalISO(fecha = new Date()) {
   const year = fecha.getFullYear();
@@ -96,6 +97,8 @@ function filaCSVDesdeMovimiento(fila, codigoLojoPorToken = {}) {
 
 export default function PedidosExportar() {
   const hoyEstadistico = diaEstadisticoActualISO();
+
+  const [vistaPrincipal, setVistaPrincipal] = useState("pedidos");
 
   const [movimientos, setMovimientos] = useState([]);
   const [codigoLojoPorToken, setCodigoLojoPorToken] = useState({});
@@ -625,6 +628,27 @@ export default function PedidosExportar() {
         </div>
       </div>
 
+      <div style={filtrosEstado}>
+        <button
+          type="button"
+          style={botonFiltro(vistaPrincipal === "pedidos")}
+          onClick={() => setVistaPrincipal("pedidos")}
+        >
+          📦 Pedidos
+        </button>
+        <button
+          type="button"
+          style={botonFiltro(vistaPrincipal === "qr")}
+          onClick={() => setVistaPrincipal("qr")}
+        >
+          📷 QR pendientes
+        </button>
+      </div>
+
+      {vistaPrincipal === "qr" ? (
+        <QrPendientes />
+      ) : (
+        <>
       {!soportado && (
         <div style={avisoNavegador}>
           Este navegador no permite guardar archivos directamente en una carpeta. Abre esta pantalla con
@@ -992,6 +1016,8 @@ export default function PedidosExportar() {
           </div>
         ))}
       </div>
+        </>
+      )}
     </div>
   );
 }
