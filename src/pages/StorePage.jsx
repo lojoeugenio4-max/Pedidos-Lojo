@@ -4,6 +4,7 @@ import { supabase } from "../supabaseClient";
 import StoreWheel from "../components/StoreWheel";
 import BingoDrumStage from "../components/BingoDrumStage";
 import { calcularPremiosConseguidos } from "../utils/bingoWinLogic";
+import { notificarQrLeido } from "../utils/qrPendientesEvento";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
 const BINGO_CONTROL_CHANNEL = "lojo-bingo-control";
@@ -474,6 +475,9 @@ export default function StorePage() {
       setPremios(premiosMaster);
       setEstado("ready");
       enviarEventoDisplay("ready", { entrada: masterEntry, premios: premiosMaster });
+      // El QR maestro es una herramienta de pruebas del Admin, no un pedido
+      // real: no existe fila de game_entitlements que quitar de "QR
+      // pendientes", así que no hace falta avisar aquí.
       return;
     }
 
@@ -488,6 +492,11 @@ export default function StorePage() {
     if (!unifiedError && unified?.ok) {
       setCodigo(code);
       setEntitlement(unified);
+
+      // Aviso en tiempo real para el Admin: este código se acaba de leer en
+      // caja, así que su pedido debe desaparecer ya de "QR pendientes" sin
+      // esperar al refresco periódico.
+      notificarQrLeido({ orderId: unified.order_id, code: unified.code || code });
 
       if (unified.roulette_available && unified.roulette_participation_id) {
         const { data: rouletteEntry, error: rouletteError } = await supabase
