@@ -25,6 +25,19 @@ function normalizarBusqueda(texto) {
     .trim();
 }
 
+// Lleva a la pantalla real de juego (la misma que usa caja) con ese código
+// ya metido en la URL. StorePage, al cargar con "?store=1&code=...", valida
+// el código solo y salta directamente a Ruleta/Bingo — igual que si se
+// hubiera escrito/escaneado ahí mismo. Así no hay que duplicar nada de esa
+// lógica aquí.
+function irAPantallaDeJuego(codigo) {
+  const limpio = String(codigo || "").trim();
+  if (!limpio) return;
+  const url = new URL(window.location.href);
+  url.search = `?store=1&code=${encodeURIComponent(limpio)}`;
+  window.location.href = url.toString();
+}
+
 function formatearFechaHora(valor) {
   if (!valor) return "—";
   return new Date(valor).toLocaleString("es-ES");
@@ -46,6 +59,7 @@ export default function QrPendientes() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
   const [busqueda, setBusqueda] = useState("");
+  const [codigoLectura, setCodigoLectura] = useState("");
   const montado = useRef(true);
 
   async function cargar({ mostrarCargando = true } = {}) {
@@ -162,6 +176,27 @@ export default function QrPendientes() {
         style={inputBusqueda}
       />
 
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          irAPantallaDeJuego(codigoLectura);
+        }}
+        style={bloqueLectura}
+      >
+        <span style={etiquetaLectura}>📷 Escanea o escribe un código aquí para abrir su juego:</span>
+        <input
+          type="text"
+          value={codigoLectura}
+          onChange={(e) => setCodigoLectura(e.target.value)}
+          placeholder="Código del QR…"
+          autoComplete="off"
+          style={inputLectura}
+        />
+        <button type="submit" style={botonPrimarioLectura} disabled={!codigoLectura.trim()}>
+          Ir al juego →
+        </button>
+      </form>
+
       {error && <div style={cajaError}>{error}</div>}
 
       <p style={contador}>
@@ -226,7 +261,19 @@ export default function QrPendientes() {
                       "—"
                     )}
                   </td>
-                  <td style={{ ...td, fontFamily: "monospace", fontWeight: 700 }}>{pedido.code || "—"}</td>
+                  <td style={{ ...td, fontFamily: "monospace", fontWeight: 700 }}>
+                    {pedido.code || "—"}
+                    {pedido.code && (
+                      <button
+                        type="button"
+                        style={botonIrJuegoFila}
+                        onClick={() => irAPantallaDeJuego(pedido.code)}
+                        title="Abrir la pantalla de juego con este código"
+                      >
+                        Ir al juego →
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ));
             })}
@@ -263,6 +310,52 @@ const inputBusqueda = {
   fontSize: "14px",
   maxWidth: "420px",
   width: "100%",
+};
+
+const bloqueLectura = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  flexWrap: "wrap",
+  padding: "12px 14px",
+  borderRadius: "12px",
+  background: "#ecfdf5",
+  border: "1px solid #a7f3d0",
+};
+
+const etiquetaLectura = { fontSize: "13px", fontWeight: 700, color: "#065f46" };
+
+const inputLectura = {
+  padding: "9px 12px",
+  borderRadius: "8px",
+  border: "1px solid #6ee7b7",
+  fontSize: "14px",
+  minWidth: "220px",
+  fontFamily: "monospace",
+};
+
+const botonPrimarioLectura = {
+  padding: "9px 16px",
+  borderRadius: "10px",
+  border: "none",
+  background: "#059669",
+  color: "#ffffff",
+  fontWeight: 700,
+  fontSize: "13px",
+  cursor: "pointer",
+};
+
+const botonIrJuegoFila = {
+  display: "block",
+  marginTop: "4px",
+  padding: "3px 8px",
+  borderRadius: "6px",
+  border: "1px solid #6ee7b7",
+  background: "#ecfdf5",
+  color: "#065f46",
+  fontWeight: 700,
+  fontSize: "11px",
+  cursor: "pointer",
 };
 
 const contador = { margin: 0, color: "#6b7280", fontSize: "13px" };
