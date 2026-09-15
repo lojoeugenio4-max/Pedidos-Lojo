@@ -954,7 +954,7 @@ export default function StorePage() {
 
   function prepararSiguienteTirada() {
     if (!entrada || obtenerTiradasRestantesEntrada(entrada) <= 0) {
-      reset();
+      finalizarPartida();
       return;
     }
 
@@ -995,7 +995,7 @@ export default function StorePage() {
       return;
     }
 
-    reset();
+    finalizarPartida();
   }
 
   async function consumirSorteo() {
@@ -1061,6 +1061,16 @@ export default function StorePage() {
     window.setTimeout(() => {
       inputRef.current?.focus();
     }, 50);
+  }
+
+  // Se llama SOLO al terminar de jugar de verdad (botones "FINALIZAR ›" y
+  // los puntos donde ya no queda nada más que jugar para ese cliente) — no
+  // en el botón × de cancelar, que sigue sin navegar a ningún sitio.
+  function finalizarPartida() {
+    reset();
+    const url = new URL(window.location.href);
+    url.search = "?admin&seccion=pedidos";
+    window.location.href = url.toString();
   }
 
   function manejarSubmit(event) {
@@ -1240,7 +1250,7 @@ export default function StorePage() {
               {estado === "bingo-result-with-roulette" ? (
                 <button type="button" onClick={() => setEstado("game-choice")} style={styles.rouletteActionButton}>ELEGIR SIGUIENTE JUEGO ›</button>
               ) : (
-                <button type="button" onClick={reset} style={styles.nextButton}>FINALIZAR ›</button>
+                <button type="button" onClick={finalizarPartida} style={styles.nextButton}>FINALIZAR ›</button>
               )}
             </div>
           )}
@@ -1269,7 +1279,7 @@ export default function StorePage() {
               {(entitlement.roulette_available || entitlement.bingo_available) ? (
                 <button type="button" onClick={() => setEstado("game-choice")} style={styles.rouletteActionButton}>ELEGIR SIGUIENTE JUEGO ›</button>
               ) : (
-                <button type="button" onClick={reset} style={styles.nextButton}>FINALIZAR ›</button>
+                <button type="button" onClick={finalizarPartida} style={styles.nextButton}>FINALIZAR ›</button>
               )}
             </div>
           )}
