@@ -60,6 +60,9 @@ export default function QrPendientes() {
   const [error, setError] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [codigoLectura, setCodigoLectura] = useState("");
+  const [eliminandoIds, setEliminandoIds] = useState(new Set());
+  const [fechaLimiteBorrado, setFechaLimiteBorrado] = useState("");
+  const [borrandoAntiguos, setBorrandoAntiguos] = useState(false);
   const montado = useRef(true);
 
   async function cargar({ mostrarCargando = true } = {}) {
@@ -78,6 +81,53 @@ export default function QrPendientes() {
       }
     } finally {
       if (montado.current && mostrarCargando) setCargando(false);
+    }
+  }
+
+  async function eliminarUno(pedido) {
+    if (!window.confirm(`¿Eliminar el código de ${pedido.customer_name || "este cliente"}? No se puede deshacer.`)) {
+      return;
+    }
+    setEliminandoIds((prev) => new Set(prev).add(pedido.order_id));
+    try {
+      const { error: rpcError } = await supabase.rpc("admin_borrar_qr_pendiente", {
+        p_order_id: pedido.order_id,
+      });
+      if (rpcError) throw rpcError;
+      setFilas((prev) => prev.filter((fila) => fila.order_id !== pedido.order_id));
+    } catch (err) {
+      setError(err?.message || "No se pudo eliminar el código.");
+    } finally {
+      setEliminandoIds((prev) => {
+        const nuevo = new Set(prev);
+        nuevo.delete(pedido.order_id);
+        return nuevo;
+      });
+    }
+  }
+
+  async function eliminarAntiguos() {
+    if (!fechaLimiteBorrado) return;
+    if (
+      !window.confirm(
+        `¿Eliminar TODOS los códigos pendientes de antes del ${fechaLimiteBorrado}? No se puede deshacer.`
+      )
+    ) {
+      return;
+    }
+    setBorrandoAntiguos(true);
+    setError("");
+    try {
+      const { data, error: rpcError } = await supabase.rpc("admin_borrar_qr_pendientes_antiguos", {
+        p_antes: new Date(fechaLimiteBorrado).toISOString(),
+      });
+      if (rpcError) throw rpcError;
+      await cargar({ mostrarCargando: false });
+      window.alert(`Eliminados ${data ?? 0} código(s).`);
+    } catch (err) {
+      setError(err?.message || "No se pudieron eliminar los códigos antiguos.");
+    } finally {
+      setBorrandoAntiguos(false);
     }
   }
 
@@ -176,6 +226,24 @@ export default function QrPendientes() {
         style={inputBusqueda}
       />
 
+      <div style={bloqueBorrarAntiguos}>
+        <span style={etiquetaLectura}>🗑️ Eliminar todos los pendientes anteriores a:</span>
+        <input
+          type="date"
+          value={fechaLimiteBorrado}
+          onChange={(e) => setFechaLimiteBorrado(e.target.value)}
+          style={inputLectura}
+        />
+        <button
+          type="button"
+          style={botonBorrarAntiguos(!fechaLimiteBorrado || borrandoAntiguos)}
+          onClick={eliminarAntiguos}
+          disabled={!fechaLimiteBorrado || borrandoAntiguos}
+        >
+          {borrandoAntiguos ? "Eliminando…" : "Eliminar antiguos"}
+        </button>
+      </div>
+
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -215,12 +283,13 @@ export default function QrPendientes() {
               <th style={th}>🎡 Ruleta</th>
               <th style={th}>QR</th>
               <th style={th}>Código QR</th>
+              <th style={th}></th>
             </tr>
           </thead>
           <tbody>
             {gruposFiltrados.length === 0 && !cargando && (
               <tr>
-                <td style={td} colSpan={7}>
+                <td style={td} colSpan={8}>
                   {filas.length === 0
                     ? "No hay ningún QR pendiente de leer ahora mismo."
                     : "Ningún cliente coincide con la búsqueda."}
@@ -261,18 +330,17 @@ export default function QrPendientes() {
                       "—"
                     )}
                   </td>
-                  <td style={{ ...td, fontFamily: "monospace", fontWeight: 700 }}>
-                    {pedido.code || "—"}
-                    {pedido.code && (
-                      <button
-                        type="button"
-                        style={botonIrJuegoFila}
-                        onClick={() => irAPantallaDeJuego(pedido.code)}
-                        title="Abrir la pantalla de juego con este código"
-                      >
-                        Ir al juego →
-                      </button>
-                    )}
+                  <td style={{ ...td, fontFamily: "monospace", fontWeight: 700 }}>{pedido.code || "—"}</td>
+                  <td style={td}>
+                    <button
+                      type="button"
+                      style={botonEliminarFila}
+                      onClick={() => eliminarUno(pedido)}
+                      disabled={eliminandoIds.has(pedido.order_id)}
+                      title="Eliminar este código"
+                    >
+                      {eliminandoIds.has(pedido.order_id) ? "…" : "🗑️"}
+                    </button>
                   </td>
                 </tr>
               ));
@@ -345,18 +413,38 @@ const botonPrimarioLectura = {
   cursor: "pointer",
 };
 
-const botonIrJuegoFila = {
-  display: "block",
-  marginTop: "4px",
-  padding: "3px 8px",
+const botonEliminarFila = {
+  padding: "4px 8px",
   borderRadius: "6px",
-  border: "1px solid #6ee7b7",
-  background: "#ecfdf5",
-  color: "#065f46",
-  fontWeight: 700,
-  fontSize: "11px",
+  border: "1px solid #fca5a5",
+  background: "#fef2f2",
+  color: "#b91c1c",
+  fontSize: "13px",
   cursor: "pointer",
 };
+
+const bloqueBorrarAntiguos = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  flexWrap: "wrap",
+  padding: "12px 14px",
+  borderRadius: "12px",
+  background: "#fef2f2",
+  border: "1px solid #fca5a5",
+};
+
+const botonBorrarAntiguos = (deshabilitado) => ({
+  padding: "9px 16px",
+  borderRadius: "10px",
+  border: "none",
+  background: "#b91c1c",
+  color: "#ffffff",
+  fontWeight: 700,
+  fontSize: "13px",
+  opacity: deshabilitado ? 0.5 : 1,
+  cursor: deshabilitado ? "not-allowed" : "pointer",
+});
 
 const contador = { margin: 0, color: "#6b7280", fontSize: "13px" };
 
