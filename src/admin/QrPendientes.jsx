@@ -64,6 +64,8 @@ export default function QrPendientes() {
   const [fechaLimiteBorrado, setFechaLimiteBorrado] = useState("");
   const [borrandoAntiguos, setBorrandoAntiguos] = useState(false);
   const montado = useRef(true);
+  const inputLecturaRef = useRef(null);
+  const temporizadorLecturaRef = useRef(null);
 
   async function cargar({ mostrarCargando = true } = {}) {
     if (mostrarCargando) setCargando(true);
@@ -131,6 +133,32 @@ export default function QrPendientes() {
     }
   }
 
+  // Antes había que escribir/escanear el código Y ADEMÁS pulsar "Ir al
+  // juego". Un escáner físico escribe el código carácter a carácter muy
+  // rápido; en cuanto deja de "teclear" durante un instante (180ms) sin que
+  // nadie toque nada más, entendemos que el código ya está completo y
+  // saltamos solos a la pantalla del juego. Si el escáner sí manda un
+  // Enter al terminar, el formulario ya lo captura al instante (ver
+  // onKeyDown más abajo), sin ni siquiera esperar esos 180ms.
+  const LONGITUD_MINIMA_CODIGO = 6;
+
+  function manejarCambioLectura(valor) {
+    setCodigoLectura(valor);
+    if (temporizadorLecturaRef.current) clearTimeout(temporizadorLecturaRef.current);
+    const limpio = valor.trim();
+    if (limpio.length < LONGITUD_MINIMA_CODIGO) return;
+    temporizadorLecturaRef.current = setTimeout(() => {
+      irAPantallaDeJuego(limpio);
+    }, 180);
+  }
+
+  function manejarEnterLectura(event) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (temporizadorLecturaRef.current) clearTimeout(temporizadorLecturaRef.current);
+    irAPantallaDeJuego(codigoLectura);
+  }
+
   useEffect(() => {
     montado.current = true;
     cargar();
@@ -162,6 +190,7 @@ export default function QrPendientes() {
       montado.current = false;
       desuscribir();
       clearInterval(intervalo);
+      if (temporizadorLecturaRef.current) clearTimeout(temporizadorLecturaRef.current);
       document.removeEventListener("visibilitychange", alCambiarVisibilidad);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -247,17 +276,21 @@ export default function QrPendientes() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          if (temporizadorLecturaRef.current) clearTimeout(temporizadorLecturaRef.current);
           irAPantallaDeJuego(codigoLectura);
         }}
         style={bloqueLectura}
       >
-        <span style={etiquetaLectura}>📷 Escanea o escribe un código aquí para abrir su juego:</span>
+        <span style={etiquetaLectura}>📷 Escanea aquí — se abre el juego solo, sin tocar nada más:</span>
         <input
+          ref={inputLecturaRef}
           type="text"
           value={codigoLectura}
-          onChange={(e) => setCodigoLectura(e.target.value)}
+          onChange={(e) => manejarCambioLectura(e.target.value)}
+          onKeyDown={manejarEnterLectura}
           placeholder="Código del QR…"
           autoComplete="off"
+          autoFocus
           style={inputLectura}
         />
         <button type="submit" style={botonPrimarioLectura} disabled={!codigoLectura.trim()}>
