@@ -714,8 +714,10 @@ export default function StorePage() {
     }
 
     const restantesIniciales = Number(entitlement?.bingo_remaining || 0);
-    const rapido = restantesIniciales > BINGO_MODO_RAPIDO_MIN_BOLAS;
-    actualizarModoRapidoBingo(rapido);
+    // A petición del usuario: el Bingo se juega SIEMPRE en modo rápido,
+    // tenga las bolas que tenga el pedido (antes solo se activaba con más
+    // de BINGO_MODO_RAPIDO_MIN_BOLAS, dejando fuera el caso normal de 3).
+    actualizarModoRapidoBingo(true);
 
     // Igual que la Ruleta: no se abre ninguna ventana nueva. La pantalla del
     // Televisor ya está abierta de forma permanente (lojo-ruleta-display) y
