@@ -2798,7 +2798,10 @@ export default function App() {
 
     const variedadActual = articulosValidos.size;
     const cumple = variedadActual >= variedadMinima;
-    const bolasPorBloque = Math.max(1, Number(configuracionBingoCliente.bolas_por_pedido || 1));
+    // Si por lo que sea la promoción de Bingo aún no está cargada en este
+    // momento (configuracionBingoCliente == null), NO debe caerse a "1": el
+    // Bingo siempre se juega en bloques de 3 bolas, nunca de 1 en 1.
+    const bolasPorBloque = Math.max(1, Number(configuracionBingoCliente.bolas_por_pedido || 3));
     const bloquesCumplidos = cumple ? Math.floor(variedadActual / variedadMinima) : 0;
 
     return {
@@ -3613,8 +3616,13 @@ export default function App() {
           : 0,
         p_bingo_eligible: bingoConseguido,
         p_bingo_reference: participacionBingo || null,
+        // Si en este instante concreto no hay ninguna promoción de Bingo
+        // vigente cargada (configuracionBingoCliente es null — por ejemplo,
+        // justo cuando expira la campaña), NUNCA se debe conceder solo 1
+        // bola: el Bingo se reparte siempre en bloques de 3.
         p_bingo_plays_total: bingoConseguido
-          ? Math.max(1, bloquesCumplidosBingo(participacionBingo) * Number(configuracionBingoCliente?.bolas_por_pedido || 1))
+          ? Math.max(1, bloquesCumplidosBingo(participacionBingo)) *
+            Number(configuracionBingoCliente?.bolas_por_pedido || 3)
           : 0,
         p_expires_at: null,
         p_sorteo_eligible: sorteoConseguido,
