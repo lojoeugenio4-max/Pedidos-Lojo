@@ -776,14 +776,12 @@ export default function StorePage() {
       entrada: entitlement,
       numeros,
       bingoRemaining: restantesIniciales,
-      modoRapido: rapido,
+      modoRapido: true,
     });
 
-    if (rapido) {
-      // Modo rápido: se dispara sola la primera bola, sin esperar a que
-      // el cajero pulse GIRAR BOMBO.
-      window.setTimeout(() => { girarBombo(); }, BINGO_MODO_RAPIDO_PAUSA_MS);
-    }
+    // Modo rápido siempre activo: se dispara sola la primera bola, sin
+    // esperar a que el cajero pulse GIRAR BOMBO.
+    window.setTimeout(() => { girarBombo(); }, BINGO_MODO_RAPIDO_PAUSA_MS);
   }
 
   async function girarBombo() {
@@ -793,6 +791,11 @@ export default function StorePage() {
 
     setMensaje("");
     actualizarBomboGirando(true);
+    // Se arma AQUÍ, antes incluso de llamar a Supabase: si la petición se
+    // queda colgada sin responder (ni éxito ni error), antes el vigilante
+    // nunca llegaba a activarse porque solo arrancaba después de que esa
+    // petición terminara.
+    armarVigilanteBombo();
 
     try {
       const { data: raw, error: reserveError } = await supabase.rpc(
@@ -1118,14 +1121,34 @@ export default function StorePage() {
     }, 50);
   }
 
-  // Se llama SOLO al terminar de jugar de verdad (botones "FINALIZAR ›" y
-  // los puntos donde ya no queda nada más que jugar para ese cliente) — no
-  // en el botón × de cancelar, que sigue sin navegar a ningún sitio.
+  // Se llama al terminar de jugar de verdad (botones "FINALIZAR ›", los
+  // puntos donde ya no queda nada más que jugar, y ahora también la ×
+  // cuando ya no quedan juegos pendientes — ver cerrarOFinalizar).
   function finalizarPartida() {
     reset();
     const url = new URL(window.location.href);
     url.search = "?admin&seccion=pedidos";
     window.location.href = url.toString();
+  }
+
+  // Botón × (Escáner, Bingo o Ruleta): si a este pedido ya no le queda
+  // ningún juego disponible, se considera terminado del todo y se vuelve a
+  // Pedidos Recibidos igual que con FINALIZAR. Si todavía le quedan
+  // juegos (o no se había llegado a escanear nada), solo cancela sin
+  // navegar a ningún sitio, como hacía siempre.
+  function cerrarOFinalizar() {
+    if (!entitlement) {
+      reset();
+      return;
+    }
+    const quedanJuegos = Boolean(
+      entitlement.bingo_available || entitlement.roulette_available || entitlement.sorteo_available
+    );
+    if (quedanJuegos) {
+      reset();
+    } else {
+      finalizarPartida();
+    }
   }
 
   function manejarSubmit(event) {
@@ -1206,7 +1229,7 @@ export default function StorePage() {
           </p>
         </div>
 
-        <button type="button" onClick={reset} style={styles.closeButton}>
+        <button type="button" onClick={cerrarOFinalizar} style={styles.closeButton}>
           ×
         </button>
       </section>
