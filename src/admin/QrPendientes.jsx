@@ -141,14 +141,25 @@ export default function QrPendientes() {
   // Enter al terminar, el formulario ya lo captura al instante (ver
   // onKeyDown más abajo), sin ni siquiera esperar esos 180ms.
   const LONGITUD_MINIMA_CODIGO = 6;
+  // Guarda el valor real y al día del campo, actualizado de forma síncrona
+  // en cada tecla — a diferencia del estado de React (codigoLectura), que
+  // se actualiza con un pequeño retraso. Un escáner físico puede mandar el
+  // Enter final tan pegado al último carácter que ese Enter llegaba a
+  // leerse ANTES de que React terminara de guardar la última letra,
+  // enviando el código incompleto. Leyendo de esta ref en vez del estado,
+  // el Enter siempre ve el valor completo y correcto.
+  const valorLecturaActualRef = useRef("");
 
   function manejarCambioLectura(valor) {
+    valorLecturaActualRef.current = valor;
     setCodigoLectura(valor);
     if (temporizadorLecturaRef.current) clearTimeout(temporizadorLecturaRef.current);
     const limpio = valor.trim();
     if (limpio.length < LONGITUD_MINIMA_CODIGO) return;
     temporizadorLecturaRef.current = setTimeout(() => {
-      irAPantallaDeJuego(limpio);
+      if (valorLecturaActualRef.current.trim() === limpio) {
+        irAPantallaDeJuego(limpio);
+      }
     }, 180);
   }
 
@@ -156,7 +167,7 @@ export default function QrPendientes() {
     if (event.key !== "Enter") return;
     event.preventDefault();
     if (temporizadorLecturaRef.current) clearTimeout(temporizadorLecturaRef.current);
-    irAPantallaDeJuego(codigoLectura);
+    irAPantallaDeJuego(valorLecturaActualRef.current);
   }
 
   useEffect(() => {
@@ -277,7 +288,7 @@ export default function QrPendientes() {
         onSubmit={(e) => {
           e.preventDefault();
           if (temporizadorLecturaRef.current) clearTimeout(temporizadorLecturaRef.current);
-          irAPantallaDeJuego(codigoLectura);
+          irAPantallaDeJuego(valorLecturaActualRef.current);
         }}
         style={bloqueLectura}
       >
