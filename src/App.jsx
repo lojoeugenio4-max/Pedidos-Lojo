@@ -1874,6 +1874,7 @@ export default function App() {
         .select(`
           id,
           codigo,
+          codigo_lojo,
           nombre,
           precio,
           activo,
@@ -3281,7 +3282,10 @@ export default function App() {
 
           return {
             pedido_id: pedidoId,
-            codigo_articulo: product.codigo || product.idnum || "",
+            // El código guardado es el de Lojo (el que usa el almacén),
+            // no el del proveedor — con reserva al código antiguo por si
+            // a algún artículo todavía le falta rellenar el de Lojo.
+            codigo_articulo: product.codigo_lojo || product.codigo || product.idnum || "",
             nombre_articulo: product.name || product.nombre || "",
             departamento: product.department || product.departamento || "",
             cajas,
