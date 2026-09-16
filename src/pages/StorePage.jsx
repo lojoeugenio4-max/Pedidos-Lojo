@@ -15,6 +15,11 @@ const BINGO_MODO_RAPIDO_MIN_BOLAS = 3;
 // casi instantáneo, hace falta este hueco para que dé tiempo a oír el
 // número cantado por voz antes de que salga el siguiente.
 const BINGO_MODO_RAPIDO_PAUSA_MS = 2000;
+// Red de seguridad: si tras pulsar/encadenar una bola no se ha completado
+// la extracción en este tiempo (fallo de red, animación que no termina,
+// etc.), se fuerza la recuperación en vez de dejar el bombo bloqueado para
+// siempre sin ninguna forma de continuar.
+const BOMBO_WATCHDOG_MS = 20000;
 const SPIN_DURATION_MS = 9200;
 
 const PRODUCTOS_PUBLIC_URL =
@@ -329,6 +334,29 @@ export default function StorePage() {
   function actualizarBomboGirando(valor) {
     bomboGirandoRef.current = valor;
     setBomboGirando(valor);
+  }
+  // Vigilante anti-atasco: si tras iniciar una extracción no se llega a
+  // completar en BOMBO_WATCHDOG_MS (la animación del bombo no llama a
+  // onRevealComplete por lo que sea), se fuerza la recuperación en vez de
+  // dejar bomboGirandoRef en true para siempre — eso es lo que bloqueaba el
+  // bombo sin ninguna forma de continuar, sobre todo grave en modo rápido
+  // porque esa pantalla no tiene ningún botón manual.
+  const bomboWatchdogRef = useRef(null);
+  function armarVigilanteBombo() {
+    if (bomboWatchdogRef.current) window.clearTimeout(bomboWatchdogRef.current);
+    bomboWatchdogRef.current = window.setTimeout(() => {
+      if (!bomboGirandoRef.current) return;
+      console.warn("Bombo atascado: se fuerza la recuperación tras", BOMBO_WATCHDOG_MS, "ms.");
+      actualizarBomboGirando(false);
+      pendingBingoReservaRef.current = null;
+      setMensaje("La bola se quedó atascada. Pulsa GIRAR BOMBO para seguir.");
+    }, BOMBO_WATCHDOG_MS);
+  }
+  function desarmarVigilanteBombo() {
+    if (bomboWatchdogRef.current) {
+      window.clearTimeout(bomboWatchdogRef.current);
+      bomboWatchdogRef.current = null;
+    }
   }
   const [bingoNumbers, setBingoNumbers] = useState([]);
   const [bingoTrigger, setBingoTrigger] = useState(null);
@@ -691,6 +719,7 @@ export default function StorePage() {
     setBolaBingo(null);
     setMensaje("");
     actualizarBomboGirando(false);
+    desarmarVigilanteBombo();
     // Muy importante: si no se limpia aquí, al volver a montar el bombo
     // para el siguiente cliente, este seguía teniendo guardado el
     // disparador (bingoTrigger) de la jugada anterior y lo confundía con
@@ -776,7 +805,9 @@ export default function StorePage() {
       const token = Date.now();
       setBingoTrigger({ number: ballNumber, token });
       enviarEventoDisplay("bingo-spin", { entrada: entitlement, numero: ballNumber, token, modoRapido: modoRapidoBingoRef.current });
+      armarVigilanteBombo();
     } catch (drawFailure) {
+      desarmarVigilanteBombo();
       actualizarBomboGirando(false);
       setMensaje(drawFailure?.message || "No se pudo iniciar la extracción.");
       setEstado("error");
@@ -790,6 +821,7 @@ export default function StorePage() {
   async function onBingoRevealComplete(ballNumber) {
     const pendiente = pendingBingoReservaRef.current;
     if (!pendiente || pendiente.ballNumber !== ballNumber) return;
+    desarmarVigilanteBombo();
 
     try {
       const { data: finalRaw, error: finalizeError } = await supabase.rpc(
@@ -1050,6 +1082,7 @@ export default function StorePage() {
     setPremioFinal(null);
     setPremioObjetivo(null);
     actualizarBomboGirando(false);
+    desarmarVigilanteBombo();
     setBingoTrigger(null);
     setBingoNumbers([]);
     actualizarModoRapidoBingo(false);
