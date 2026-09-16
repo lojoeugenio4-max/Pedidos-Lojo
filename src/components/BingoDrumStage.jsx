@@ -747,25 +747,13 @@ export default function BingoDrumStage({
           {mostrarControles && (
             <div className="pro-draw-control">
               {!drawFinished ? (
-                <>
-                  {fastMode && <span className="pro-fast-status">⚡ SACANDO BOLAS…</span>}
-                  <button
-                    type="button"
-                    onClick={onGirar}
-                    // En modo rápido el botón es solo un rescate por si se
-                    // atasca: no lo bloqueamos por la fase interna de la
-                    // animación (esa fase es precisamente lo que puede
-                    // quedarse colgado), solo por si de verdad hay una
-                    // extracción en curso ahora mismo (drawing).
-                    disabled={fastMode ? drawing : drawing || phase !== "idle"}
-                  >
-                    {drawing || phase !== "idle"
-                      ? "BOMBO EN MARCHA…"
-                      : fastMode
-                        ? "¿Atascado? Pulsa aquí"
-                        : "GIRAR BOMBO"}
+                fastMode ? (
+                  <span className="pro-fast-status">⚡ SACANDO BOLAS…</span>
+                ) : (
+                  <button type="button" onClick={onGirar} disabled={drawing || phase !== "idle"}>
+                    {drawing || phase !== "idle" ? "BOMBO EN MARCHA…" : "GIRAR BOMBO"}
                   </button>
-                </>
+                )
               ) : (
                 <button type="button" className="pro-exit-button" onClick={onExit}>
                   {exitLabel}
