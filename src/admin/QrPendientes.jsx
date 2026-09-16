@@ -170,6 +170,63 @@ export default function QrPendientes() {
     irAPantallaDeJuego(valorLecturaActualRef.current);
   }
 
+  // Captura de escáner a nivel de página entera: el campo "Escanea aquí"
+  // solo funciona si el cursor está justo ahí, y en la práctica el foco se
+  // pierde con facilidad (un clic en el buscador, en "Actualizar", etc.).
+  // Esto detecta el escaneo por su VELOCIDAD (un escáner escribe cada
+  // carácter en menos de 35ms; una persona tecleando a mano, mucho más
+  // despacio) sin importar qué campo tenga el foco en ese momento, y abre
+  // el juego igual. No usamos preventDefault: si algún carácter suelto cae
+  // de paso en el buscador no pasa nada, porque navegamos fuera de la
+  // página en cuanto se detecta el código completo.
+  useEffect(() => {
+    let buffer = "";
+    let ultimoMomento = 0;
+    let temporizador = null;
+
+    function limpiarRafaga() {
+      buffer = "";
+      if (temporizador) {
+        clearTimeout(temporizador);
+        temporizador = null;
+      }
+    }
+
+    function cerrarRafaga() {
+      const codigo = buffer.trim();
+      limpiarRafaga();
+      if (codigo.length >= LONGITUD_MINIMA_CODIGO) {
+        irAPantallaDeJuego(codigo);
+      }
+    }
+
+    function manejarTecleoGlobal(event) {
+      if (event.key === "Enter") {
+        cerrarRafaga();
+        return;
+      }
+      if (event.ctrlKey || event.altKey || event.metaKey || event.key.length !== 1) return;
+
+      const ahora = Date.now();
+      const separacion = ahora - ultimoMomento;
+      ultimoMomento = ahora;
+
+      // Hueco grande entre teclas: es una persona escribiendo, no un
+      // escáner. Empezamos a contar de nuevo desde esta tecla.
+      buffer = separacion > 35 ? event.key : buffer + event.key;
+
+      if (temporizador) clearTimeout(temporizador);
+      temporizador = setTimeout(cerrarRafaga, 150);
+    }
+
+    document.addEventListener("keydown", manejarTecleoGlobal);
+    return () => {
+      document.removeEventListener("keydown", manejarTecleoGlobal);
+      limpiarRafaga();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     montado.current = true;
     cargar();
