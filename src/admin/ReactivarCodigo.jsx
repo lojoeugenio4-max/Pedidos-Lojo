@@ -33,10 +33,32 @@ export default function ReactivarCodigo() {
 
       setEntitlement(fila);
 
+      // Bug corregido: esto calculaba solo el número de BLOQUES cumplidos
+      // (ej. 1), y lo sugería tal cual como "bolas a conceder" — pero cada
+      // bloque son varias bolas (3 por defecto), no una. Sin esto, quien
+      // aceptaba la sugerencia sin fijarse acababa concediendo 1 bola en
+      // vez de 3.
       const matched = Number(fila.bingo_reference?.matched ?? 0);
       const required = Number(fila.bingo_reference?.required ?? 0);
-      const bolasSugeridas = required > 0 ? Math.max(1, Math.floor(matched / required)) : "";
-      setBolasInput(String(bolasSugeridas || fila.bingo_plays_total || 3));
+      const bloquesCumplidos = required > 0 ? Math.max(1, Math.floor(matched / required)) : 0;
+
+      let bolasPorBloque = 3;
+      try {
+        const { data: promos } = await supabase
+          .from("promociones_bingo")
+          .select("bolas_por_pedido")
+          .order("updated_at", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .limit(1);
+        const valorConfig = Number(promos?.[0]?.bolas_por_pedido);
+        if (Number.isFinite(valorConfig) && valorConfig > 0) bolasPorBloque = valorConfig;
+      } catch {
+        // Si no se puede leer la configuración, nos quedamos con 3 (el
+        // valor de siempre) en vez de arriesgarnos a sugerir mal.
+      }
+
+      const bolasSugeridas = bloquesCumplidos > 0 ? bloquesCumplidos * bolasPorBloque : "";
+      setBolasInput(String(bolasSugeridas || fila.bingo_plays_total || bolasPorBloque));
     } catch (err) {
       console.error(err);
       setError(err?.message || "No se ha podido buscar el código.");
