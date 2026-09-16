@@ -19,7 +19,7 @@ const BINGO_MODO_RAPIDO_PAUSA_MS = 2000;
 // la extracción en este tiempo (fallo de red, animación que no termina,
 // etc.), se fuerza la recuperación en vez de dejar el bombo bloqueado para
 // siempre sin ninguna forma de continuar.
-const BOMBO_WATCHDOG_MS = 20000;
+const BOMBO_WATCHDOG_MS = 8000;
 const SPIN_DURATION_MS = 9200;
 
 const PRODUCTOS_PUBLIC_URL =
@@ -342,14 +342,33 @@ export default function StorePage() {
   // bombo sin ninguna forma de continuar, sobre todo grave en modo rápido
   // porque esa pantalla no tiene ningún botón manual.
   const bomboWatchdogRef = useRef(null);
+  const bomboReintentosRef = useRef(0);
   function armarVigilanteBombo() {
     if (bomboWatchdogRef.current) window.clearTimeout(bomboWatchdogRef.current);
     bomboWatchdogRef.current = window.setTimeout(() => {
       if (!bomboGirandoRef.current) return;
-      console.warn("Bombo atascado: se fuerza la recuperación tras", BOMBO_WATCHDOG_MS, "ms.");
       actualizarBomboGirando(false);
       pendingBingoReservaRef.current = null;
-      setMensaje("La bola se quedó atascada. Pulsa GIRAR BOMBO para seguir.");
+
+      bomboReintentosRef.current += 1;
+      if (bomboReintentosRef.current <= 3) {
+        // Reintento automático y silencioso: al llamar de nuevo a
+        // girarBombo() se genera un "token" nuevo, que hace que el bombo
+        // (tanto en el TPV como en el Televisor) reinicie su animación
+        // desde cero, aunque se hubiera quedado colgado a mitad. El
+        // cliente no debería ni notar que ha habido un tropiezo.
+        console.warn(`Bombo atascado, reintento automático ${bomboReintentosRef.current}/3.`);
+        girarBombo();
+        return;
+      }
+
+      // Tres reintentos seguidos fallidos: ya no insistimos solos, para no
+      // quedarnos en un bucle infinito. Se avisa con un error normal, desde
+      // el que se puede volver a escanear.
+      console.error("Bombo atascado tras 3 reintentos automáticos.");
+      setMensaje("Hubo un problema extrayendo la bola. Vuelve a escanear el código para continuar.");
+      setEstado("error");
+      enviarEventoDisplay("waiting");
     }, BOMBO_WATCHDOG_MS);
   }
   function desarmarVigilanteBombo() {
@@ -357,6 +376,7 @@ export default function StorePage() {
       window.clearTimeout(bomboWatchdogRef.current);
       bomboWatchdogRef.current = null;
     }
+    bomboReintentosRef.current = 0;
   }
   const [bingoNumbers, setBingoNumbers] = useState([]);
   const [bingoTrigger, setBingoTrigger] = useState(null);
