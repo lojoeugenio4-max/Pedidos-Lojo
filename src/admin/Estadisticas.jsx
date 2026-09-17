@@ -152,6 +152,7 @@ function descargarArchivo(nombreArchivo, contenido) {
 const CABECERA_CSV_PEDIDO = [
   "Pedido",
   "Fecha",
+  "Código Cliente",
   "Cliente",
   "Departamento",
   "Código Lojo",
@@ -160,10 +161,11 @@ const CABECERA_CSV_PEDIDO = [
   "Unidades",
 ];
 
-function filaCSVDesdeMovimiento(fila) {
+function filaCSVDesdeMovimiento(fila, codigoLojoPorToken = {}) {
   return [
     fila.pedido_id || fila.id || "",
     fila.created_at ? new Date(fila.created_at).toLocaleString("es-ES") : "",
+    (fila.cliente_token && codigoLojoPorToken[fila.cliente_token]) || "",
     fila.customer_name || "",
     fila.departamento || "",
     fila.codigo_articulo || "",
@@ -177,11 +179,11 @@ function construirContenidoCSV(cabecera, filas) {
   return [cabecera, ...filas].map((fila) => fila.map(escaparCSV).join(";")).join("\r\n");
 }
 
-function exportarPedidosCSV(movimientos, desde, hasta) {
+function exportarPedidosCSV(movimientos, desde, hasta, codigoLojoPorToken = {}) {
   const filas = movimientos
     .slice()
     .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
-    .map((fila) => filaCSVDesdeMovimiento(fila));
+    .map((fila) => filaCSVDesdeMovimiento(fila, codigoLojoPorToken));
 
   descargarArchivo(`pedidos_${desde}_a_${hasta}.csv`, construirContenidoCSV(CABECERA_CSV_PEDIDO, filas));
 }
@@ -308,7 +310,7 @@ function nombreArchivoSeguro(pedidoId) {
   return texto.replace(/[^a-zA-Z0-9-_]+/g, "_") || "sin_id";
 }
 
-function exportarPedidosPorPedidoZIP(movimientos, desde, hasta) {
+function exportarPedidosPorPedidoZIP(movimientos, desde, hasta, codigoLojoPorToken = {}) {
   const porPedido = new Map();
 
   movimientos.forEach((fila) => {
@@ -321,7 +323,7 @@ function exportarPedidosPorPedidoZIP(movimientos, desde, hasta) {
     const filasOrdenadas = filas
       .slice()
       .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
-      .map((fila) => filaCSVDesdeMovimiento(fila));
+      .map((fila) => filaCSVDesdeMovimiento(fila, codigoLojoPorToken));
 
     return {
       nombre: `pedido_${nombreArchivoSeguro(pedidoId)}.csv`,
@@ -1048,7 +1050,7 @@ export default function Estadisticas() {
                   type="button"
                   style={exportCsvButton}
                   disabled={movimientos.length === 0}
-                  onClick={() => exportarPedidosCSV(movimientos, desde, hasta)}
+                  onClick={() => exportarPedidosCSV(movimientos, desde, hasta, codigoLojoPorToken)}
                   title="Descarga un único CSV con una fila por artículo de cada pedido del periodo mostrado"
                 >
                   ⬇️ Exportar CSV
@@ -1057,7 +1059,7 @@ export default function Estadisticas() {
                   type="button"
                   style={exportZipButton}
                   disabled={movimientos.length === 0}
-                  onClick={() => exportarPedidosPorPedidoZIP(movimientos, desde, hasta)}
+                  onClick={() => exportarPedidosPorPedidoZIP(movimientos, desde, hasta, codigoLojoPorToken)}
                   title="Descarga un .zip con un CSV independiente por cada pedido del periodo mostrado"
                 >
                   ⬇️ Un CSV por pedido (.zip)
