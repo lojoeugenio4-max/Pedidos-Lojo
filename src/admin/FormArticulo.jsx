@@ -97,12 +97,13 @@ export default function FormArticulo({
           </label>
 
           <label style={field}>
-            <span style={label}>Código Lojo</span>
+            <span style={label}>Código Lojo *</span>
             <input
               type="text"
               value={form.codigo_lojo}
               onChange={(e) => onChange("codigo_lojo", e.target.value)}
-              placeholder="Código del mayorista (opcional)"
+              placeholder="Código del mayorista (obligatorio)"
+              required
               style={input}
             />
           </label>
