@@ -2241,6 +2241,7 @@ export default function App() {
         return {
           id: String(articulo.id),
           codigo: articulo.codigo,
+          codigo_lojo: articulo.codigo_lojo,
           departamento_id: articulo.departamento_id,
           idnum: articulo.codigo,
           nombre: articulo.nombre,
