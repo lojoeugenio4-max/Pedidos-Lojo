@@ -62,6 +62,7 @@ function formatearFechaHora(valor) {
 const CABECERA_CSV_PEDIDO = [
   "Pedido",
   "Fecha",
+  "Código Cliente",
   "Cliente",
   "Departamento",
   "Código Lojo",
@@ -80,10 +81,11 @@ function construirContenidoCSV(cabecera, filas) {
   return [cabecera, ...filas].map((fila) => fila.map(escaparCSV).join(";")).join("\r\n");
 }
 
-function filaCSVDesdeMovimiento(fila) {
+function filaCSVDesdeMovimiento(fila, codigoLojoPorToken = {}) {
   return [
     fila.pedido_id || fila.id || "",
     fila.created_at ? new Date(fila.created_at).toLocaleString("es-ES") : "",
+    (fila.cliente_token && codigoLojoPorToken[fila.cliente_token]) || "",
     fila.customer_name || "",
     fila.departamento || "",
     fila.codigo_articulo || "",
@@ -473,7 +475,7 @@ export default function PedidosExportar() {
         const filasCSV = pedido.lineas
           .slice()
           .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
-          .map((fila) => filaCSVDesdeMovimiento(fila));
+          .map((fila) => filaCSVDesdeMovimiento(fila, codigoLojoPorToken));
 
         const contenido = construirContenidoCSV(CABECERA_CSV_PEDIDO, filasCSV);
 
