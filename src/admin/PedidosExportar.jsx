@@ -63,9 +63,8 @@ const CABECERA_CSV_PEDIDO = [
   "Pedido",
   "Fecha",
   "Cliente",
-  "Codigo Lojo",
   "Departamento",
-  "Codigo articulo",
+  "Código Lojo",
   "Nombre articulo",
   "Cajas",
   "Unidades",
@@ -81,12 +80,11 @@ function construirContenidoCSV(cabecera, filas) {
   return [cabecera, ...filas].map((fila) => fila.map(escaparCSV).join(";")).join("\r\n");
 }
 
-function filaCSVDesdeMovimiento(fila, codigoLojoPorToken = {}) {
+function filaCSVDesdeMovimiento(fila) {
   return [
     fila.pedido_id || fila.id || "",
     fila.created_at ? new Date(fila.created_at).toLocaleString("es-ES") : "",
     fila.customer_name || "",
-    (fila.cliente_token && codigoLojoPorToken[fila.cliente_token]) || "",
     fila.departamento || "",
     fila.codigo_articulo || "",
     fila.nombre_articulo || "",
@@ -475,7 +473,7 @@ export default function PedidosExportar() {
         const filasCSV = pedido.lineas
           .slice()
           .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
-          .map((fila) => filaCSVDesdeMovimiento(fila, codigoLojoPorToken));
+          .map((fila) => filaCSVDesdeMovimiento(fila));
 
         const contenido = construirContenidoCSV(CABECERA_CSV_PEDIDO, filasCSV);
 
@@ -511,7 +509,9 @@ export default function PedidosExportar() {
 
         exportadosOk += 1;
       } catch (err) {
-        fallidos.push(pedido.customer_name || pedido.pedido_id);
+        console.error("Error exportando pedido", pedido.pedido_id, err);
+        const motivo = err?.message || err?.name || "error desconocido";
+        fallidos.push(`${pedido.customer_name || pedido.pedido_id} (${motivo})`);
       }
     }
 
@@ -924,7 +924,7 @@ export default function PedidosExportar() {
                 <thead>
                   <tr>
                     <th style={th}>Departamento</th>
-                    <th style={th}>Código</th>
+                    <th style={th}>Código Lojo</th>
                     <th style={th}>Artículo</th>
                     <th style={th}>Cajas</th>
                     <th style={th}>Unidades</th>
@@ -988,7 +988,7 @@ export default function PedidosExportar() {
               <thead>
                 <tr>
                   <th>Departamento</th>
-                  <th>Código</th>
+                  <th>Código Lojo</th>
                   <th>Artículo</th>
                   <th>Cajas</th>
                   <th>Unidades</th>
