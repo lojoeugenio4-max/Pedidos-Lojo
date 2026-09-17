@@ -3281,12 +3281,21 @@ export default function App() {
 
           if (!cajas && !unidades) return null;
 
+          // El código guardado es el de Lojo (el que usa el almacén), no el
+          // del proveedor. OJO: si al artículo le falta rellenar el de
+          // Lojo, NUNCA se debe colar aquí su código normal tal cual, porque
+          // ese número puede coincidir por casualidad con el código Lojo
+          // real de OTRO artículo y el almacén lo confundiría con él. En su
+          // lugar se marca de forma explícita como "sin Lojo".
+          const codigoLojo = String(product.codigo_lojo || "").trim();
+          const codigoRespaldo = String(
+            product.codigo || product.idnum || ""
+          ).trim();
+
           return {
             pedido_id: pedidoId,
-            // El código guardado es el de Lojo (el que usa el almacén),
-            // no el del proveedor — con reserva al código antiguo por si
-            // a algún artículo todavía le falta rellenar el de Lojo.
-            codigo_articulo: product.codigo_lojo || product.codigo || product.idnum || "",
+            codigo_articulo:
+              codigoLojo || (codigoRespaldo ? `SIN LOJO (${codigoRespaldo})` : ""),
             nombre_articulo: product.name || product.nombre || "",
             departamento: product.department || product.departamento || "",
             cajas,
