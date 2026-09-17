@@ -5,6 +5,7 @@ import StoreWheel from "../components/StoreWheel";
 import BingoDrumStage from "../components/BingoDrumStage";
 import { calcularPremiosConseguidos } from "../utils/bingoWinLogic";
 import { notificarQrLeido } from "../utils/qrPendientesEvento";
+import PedidosExportar from "../admin/PedidosExportar";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
 const BINGO_CONTROL_CHANNEL = "lojo-bingo-control";
@@ -305,6 +306,13 @@ export default function StorePage() {
   const inputRef = useRef(null);
   const autoValidatedCodeRef = useRef("");
   const pendingBingoReservaRef = useRef(null);
+
+  // Vista de "Pedidos recibidos" incrustada en esta misma página/pestaña
+  // (mismo enlace ?store=1 de siempre): sustituye a la navegación anterior
+  // a "?admin&seccion=pedidos", que al cambiar de URL dejaba esta pestaña
+  // convertida en un Admin completo y obligaba a abrir OTRA pestaña nueva
+  // para volver a escanear, acumulando pestañas repetidas del mismo módulo.
+  const [mostrarPedidosRecibidos, setMostrarPedidosRecibidos] = useState(false);
 
   const [codigo, setCodigo] = useState("");
   const [entrada, setEntrada] = useState(null);
@@ -1124,11 +1132,22 @@ export default function StorePage() {
   // Se llama al terminar de jugar de verdad (botones "FINALIZAR ›", los
   // puntos donde ya no queda nada más que jugar, y ahora también la ×
   // cuando ya no quedan juegos pendientes — ver cerrarOFinalizar).
+  // Antes navegaba a "?admin&seccion=pedidos" (cambio de URL); ahora se
+  // queda en esta misma pestaña y solo muestra el panel de Pedidos
+  // recibidos incrustado, ver mostrarPedidosRecibidos más abajo.
   function finalizarPartida() {
     reset();
-    const url = new URL(window.location.href);
-    url.search = "?admin&seccion=pedidos";
-    window.location.href = url.toString();
+    setMostrarPedidosRecibidos(true);
+  }
+
+  // Vuelve del panel de Pedidos recibidos a la pantalla de escaneo, sin
+  // recargar ni cambiar de URL, y deja el cursor listo en el campo de
+  // código para el siguiente cliente.
+  function volverAEscanear() {
+    setMostrarPedidosRecibidos(false);
+    window.setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
   }
 
   // Botón × (Escáner, Bingo o Ruleta): si a este pedido ya no le queda
@@ -1162,6 +1181,22 @@ export default function StorePage() {
   const tiradasRestantes = obtenerTiradasRestantesEntrada(entrada);
   const esJackpot =
     premioFinal?.tipo_sonido === "jackpot" || premioFinal?.tipo_sonido === "sirena";
+
+  if (mostrarPedidosRecibidos) {
+    return (
+      <main style={styles.pedidosPage}>
+        <section style={styles.pedidosHeader}>
+          <h1 style={styles.pedidosTitle}>📋 Pedidos recibidos</h1>
+          <button type="button" onClick={volverAEscanear} style={styles.pedidosVolverButton}>
+            ← Volver a escanear
+          </button>
+        </section>
+        <div style={styles.pedidosContenido}>
+          <PedidosExportar />
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main style={styles.page}>
@@ -1239,7 +1274,16 @@ export default function StorePage() {
         estado === "error" ||
         estado === "used") && (
         <section style={styles.card}>
-          <h2 style={styles.cardTitle}>Escanear o introducir código</h2>
+          <div style={styles.cardTitleRow}>
+            <h2 style={styles.cardTitle}>Escanear o introducir código</h2>
+            <button
+              type="button"
+              onClick={() => setMostrarPedidosRecibidos(true)}
+              style={styles.verPedidosButton}
+            >
+              📋 Pedidos recibidos
+            </button>
+          </div>
 
           <form onSubmit={manejarSubmit} style={styles.form}>
             <input
@@ -1683,6 +1727,65 @@ const styles = {
   cardTitle: {
     margin: "0 0 20px",
     fontSize: "clamp(24px, 4vh, 34px)",
+  },
+  cardTitleRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  verPedidosButton: {
+    border: "2px solid #cbd5e1",
+    borderRadius: 14,
+    background: "#f1f5f9",
+    color: "#0f172a",
+    padding: "10px 16px",
+    fontSize: 15,
+    fontWeight: 800,
+    cursor: "pointer",
+    marginBottom: 20,
+  },
+  pedidosPage: {
+    minHeight: "100dvh",
+    background: "#f8fafc",
+    color: "#0f172a",
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+  },
+  pedidosHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    padding: "18px clamp(16px, 4vw, 32px)",
+    background: "#0f172a",
+    color: "#ffffff",
+    position: "sticky",
+    top: 0,
+    zIndex: 5,
+  },
+  pedidosTitle: {
+    margin: 0,
+    fontSize: "clamp(20px, 3vh, 28px)",
+  },
+  pedidosVolverButton: {
+    border: "none",
+    borderRadius: 14,
+    background: "#22c55e",
+    color: "#ffffff",
+    padding: "12px 20px",
+    fontSize: 16,
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+  pedidosContenido: {
+    flex: 1,
+    padding: "clamp(12px, 3vw, 24px)",
+    boxSizing: "border-box",
   },
   form: {
     display: "grid",
