@@ -46,6 +46,26 @@ function enviarEventoDisplay(type, payload = {}) {
   } catch {}
 }
 
+// Abre (o enfoca, si ya estaba abierta) la pantalla de TV grande
+// (?display=1) en una ventana aparte. Se posiciona a partir del ancho del
+// monitor donde está esta pestaña (el del TPV), asumiendo que la TV grande
+// es el monitor contiguo en el escritorio extendido — el mismo montaje que
+// ya usan en tienda (ver dos monitores del mismo ordenador).
+function abrirDisplayTVGrande() {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.search = "?display=1";
+
+  const anchoMonitorTPV = window.screen?.width || window.innerWidth || 1920;
+  const altoMonitorTPV = window.screen?.height || window.innerHeight || 1080;
+
+  window.open(
+    url.toString(),
+    "lojo-tv-grande",
+    `left=${anchoMonitorTPV},top=0,width=${anchoMonitorTPV},height=${altoMonitorTPV}`
+  );
+}
+
 
 let audioContext = null;
 let giroTimeout = null;
@@ -419,6 +439,26 @@ export default function StorePage() {
   useEffect(() => {
     enviarEventoDisplay("waiting");
     return () => stopSpinSound();
+  }, []);
+
+  // Al cargar ?store=1 en el TPV, intenta abrir automáticamente ?display=1
+  // (la TV grande) en una ventana aparte, posicionada fuera del monitor
+  // principal (donde está el TPV) para que caiga en el segundo monitor
+  // del escritorio extendido. Solo se intenta una vez por pestaña — si el
+  // usuario cierra esa ventana a propósito, no se le vuelve a abrir sola.
+  //
+  // Aviso: los navegadores bloquean por defecto una ventana abierta así,
+  // sin que la persona haya hecho clic justo antes. La primera vez puede
+  // aparecer un aviso de "ventana emergente bloqueada" junto a la barra de
+  // direcciones — hay que pulsar "permitir siempre" para pedidos-lojo
+  // .vercel.app, y a partir de ahí se abrirá sola cada vez. Si el
+  // navegador la bloquea igualmente, queda el botón manual "🖥️ Abrir TV
+  // grande" en la pantalla de escaneo como alternativa.
+  useEffect(() => {
+    if (sessionStorage.getItem("lojo-tv-grande-auto-abierta")) return;
+    sessionStorage.setItem("lojo-tv-grande-auto-abierta", "1");
+    abrirDisplayTVGrande();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1276,13 +1316,22 @@ export default function StorePage() {
         <section style={styles.card}>
           <div style={styles.cardTitleRow}>
             <h2 style={styles.cardTitle}>Escanear o introducir código</h2>
-            <button
-              type="button"
-              onClick={() => setMostrarPedidosRecibidos(true)}
-              style={styles.verPedidosButton}
-            >
-              📋 Pedidos recibidos
-            </button>
+            <div style={styles.cardTitleButtons}>
+              <button
+                type="button"
+                onClick={abrirDisplayTVGrande}
+                style={styles.verPedidosButton}
+              >
+                🖥️ Abrir TV grande
+              </button>
+              <button
+                type="button"
+                onClick={() => setMostrarPedidosRecibidos(true)}
+                style={styles.verPedidosButton}
+              >
+                📋 Pedidos recibidos
+              </button>
+            </div>
           </div>
 
           <form onSubmit={manejarSubmit} style={styles.form}>
@@ -1733,6 +1782,11 @@ const styles = {
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
+    flexWrap: "wrap",
+  },
+  cardTitleButtons: {
+    display: "flex",
+    gap: 10,
     flexWrap: "wrap",
   },
   verPedidosButton: {
