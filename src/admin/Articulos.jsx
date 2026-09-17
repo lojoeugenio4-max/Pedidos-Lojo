@@ -189,9 +189,11 @@ export default function Articulos() {
   async function guardarArticulo() {
     const codigoLimpio = String(form.codigo).trim();
     const nombreLimpio = form.nombre.trim();
+    const codigoLojoLimpio = String(form.codigo_lojo || "").trim();
 
     if (!codigoLimpio) return alert("El código es obligatorio");
     if (!nombreLimpio) return alert("El nombre es obligatorio");
+    if (!codigoLojoLimpio) return alert("El código Lojo es obligatorio");
 
     if (!form.oculto && !form.departamento_id) {
       return alert("Selecciona un departamento o marca el artículo como oculto");
@@ -205,6 +207,17 @@ export default function Articulos() {
 
     if (codigoDuplicado) {
       alert("Ya existe un artículo con ese código");
+      return;
+    }
+
+    const codigoLojoDuplicado = articulos.some(
+      (articulo) =>
+        String(articulo.codigo_lojo || "").trim() === codigoLojoLimpio &&
+        articulo.id !== editando?.id
+    );
+
+    if (codigoLojoDuplicado) {
+      alert("Ya existe otro artículo con ese código Lojo");
       return;
     }
 
@@ -231,8 +244,6 @@ export default function Articulos() {
         }
 
       }
-
-      const codigoLojoLimpio = String(form.codigo_lojo || "").trim();
 
       const datosArticulo = {
         codigo: Number(codigoLimpio),
@@ -452,6 +463,8 @@ export default function Articulos() {
       (filtro === "inactivos" && !articulo.activo) ||
       (filtro === "novedades" && articulo.novedad) ||
       (filtro === "sin_foto" && !articulo.foto) ||
+      (filtro === "sin_lojo" &&
+        !String(articulo.codigo_lojo || "").trim()) ||
       (filtro === "con_oferta" && tieneOferta) ||
       (filtro === "con_precio" &&
         articulo.precio !== null &&
@@ -557,6 +570,9 @@ export default function Articulos() {
           </FilterButton>
           <FilterButton active={filtro === "sin_foto"} onClick={() => setFiltro("sin_foto")}>
             Sin foto
+          </FilterButton>
+          <FilterButton active={filtro === "sin_lojo"} onClick={() => setFiltro("sin_lojo")}>
+            ⚠️ Sin código Lojo
           </FilterButton>
           <FilterButton active={filtro === "con_oferta"} onClick={() => setFiltro("con_oferta")}>
             Con oferta
