@@ -9,6 +9,7 @@
 // cuando termina (onRevealComplete).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import logoLojo from "../assets/logo-lojo.jpg";
+import { lanzarConfeti } from "../utils/confetti";
 
 export const MIX_SECONDS = 5.2;
 export const STOP_SECONDS = 2.4;
@@ -149,6 +150,26 @@ function audioCue(kind) {
         noise.connect(filter).connect(gain).connect(master);
         noise.start(at);
       }
+    } else if (kind === "fanfare-premio") {
+      // Fanfarria fuerte y clara para un premio grande (línea, línea
+      // especial, bingo o bingo especial): un acorde ascendente con más
+      // volumen que el resto de sonidos de esta pantalla, para que se
+      // note sin dudas que ha pasado algo especial, tanto en el TPV
+      // como en la TV grande.
+      master.gain.value = 0.36;
+      [261.63, 329.63, 392.0, 523.25, 659.25].forEach((frequency, index) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const at = t + index * 0.1;
+        osc.type = "sawtooth";
+        osc.frequency.value = frequency;
+        gain.gain.setValueAtTime(0.001, at);
+        gain.gain.exponentialRampToValueAtTime(0.3, at + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, at + 0.9);
+        osc.connect(gain).connect(master);
+        osc.start(at);
+        osc.stop(at + 1);
+      });
     } else {
       [392, 523.25, 659.25, 783.99].forEach((frequency, index) => {
         const osc = ctx.createOscillator();
@@ -211,10 +232,17 @@ function encolarMensajeVoz(texto) {
 }
 
 function celebrarPremio(nombrePremio) {
-  audioCue("applause");
+  // Premio grande: fanfarria fuerte + dos tandas de aplausos + confeti y
+  // serpentinas cayendo por toda la pantalla, para que se note claramente
+  // que se ha ganado algo (línea, línea especial, bingo o bingo especial
+  // se celebran todos igual de fuerte).
+  audioCue("fanfare-premio");
+  window.setTimeout(() => audioCue("applause"), 150);
+  window.setTimeout(() => audioCue("applause"), 1500);
+  lanzarConfeti({ duracionMs: 4500 });
   window.setTimeout(() => {
     decirEnVoz(`¡Premio conseguido! ${nombrePremio}`, { rate: 0.92, pitch: 1.08 });
-  }, 380);
+  }, 500);
 }
 
 function seeded(seed) {
