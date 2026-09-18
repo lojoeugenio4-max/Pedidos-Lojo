@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, Clock3, Gift, UserRound, Volume2, VolumeX } from "lucide-react";
 import logoBingo from "../../assets/logo-bingo.png";
 import { normalizarFilas, normalizarNumeros, tieneBingo, tieneLinea } from "../../utils/bingoWinLogic";
+import { lanzarConfeti } from "../../utils/confetti";
 
 let bingoAudioContext = null;
 
@@ -46,9 +47,26 @@ function reproducirCelebracion(tipo = "numero") {
     bingo: [523, 659, 784, 1047, 1319, 1568],
   };
 
+  // Línea y Bingo suenan bastante más fuerte y más largo que el simple
+  // "tin" de una bola nueva, para que en el móvil del cliente se note
+  // claramente que ha ganado algo, no que solo ha salido un número más.
+  const esPremioGrande = tipo === "linea" || tipo === "bingo";
+  const volumen = tipo === "bingo" ? 0.22 : esPremioGrande ? 0.17 : 0.09;
+  const duracion = tipo === "bingo" ? 0.32 : esPremioGrande ? 0.26 : 0.18;
+
   (secuencias[tipo] || secuencias.numero).forEach((frequency, index) => {
-    reproducirTono(frequency, index * 0.12, tipo === "bingo" ? 0.24 : 0.18, tipo === "bingo" ? 0.12 : 0.09);
+    reproducirTono(frequency, index * 0.12, duracion, volumen);
   });
+
+  if (esPremioGrande) {
+    // Segunda pasada, un poco más tarde, para reforzar el momento (como
+    // un segundo "tin-tin-tin" de celebración).
+    window.setTimeout(() => {
+      (secuencias[tipo] || secuencias.numero).forEach((frequency, index) => {
+        reproducirTono(frequency, index * 0.1, duracion, volumen * 0.8);
+      });
+    }, 550);
+  }
 }
 
 function PrizePanel({ title, prize, won, special = false }) {
@@ -146,6 +164,9 @@ export default function BingoCard({
       );
 
       if (soundEnabled) reproducirCelebracion(celebrationType);
+      if (achievedBingo || achievedLine) {
+        lanzarConfeti({ duracionMs: achievedBingo ? 5000 : 3800 });
+      }
       if (typeof navigator !== "undefined" && navigator.vibrate) {
         navigator.vibrate(achievedBingo ? [180, 90, 180, 90, 320] : [120, 70, 180]);
       }
