@@ -5,6 +5,7 @@ import Departamentos from "./Departamentos";
 import Ofertas from "./Ofertas";
 import Pushes from "./Pushes";
 import Estadisticas from "./Estadisticas";
+import PremiosBingo from "./PremiosBingo";
 import Configuracion from "./Configuracion";
 import Promociones from "./Promociones";
 import Clientes from "./Clientes";
@@ -20,6 +21,7 @@ const OPCIONES_VALIDAS = [
   "promociones",
   "pushes",
   "estadisticas",
+  "premios-bingo",
   "pedidos",
   "configuracion",
 ];
@@ -161,6 +163,7 @@ export default function AdminPanel() {
             {opcion === "promociones" && <Promociones />}
             {opcion === "pushes" && <Pushes />}
             {opcion === "estadisticas" && <Estadisticas />}
+            {opcion === "premios-bingo" && <PremiosBingo />}
             {opcion === "pedidos" && <PedidosExportar />}
             {opcion === "configuracion" && <Configuracion />}
           </div>
