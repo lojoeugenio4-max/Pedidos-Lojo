@@ -49,6 +49,12 @@ export default function MenuAdmin({
       descripcion: "Resumen y actividad",
     },
     {
+      id: "premios-bingo",
+      icono: "🎉",
+      titulo: "Premios de Bingo",
+      descripcion: "Clientes con línea o bingo",
+    },
+    {
       id: "pedidos",
       icono: "📥",
       titulo: "Pedidos recibidos",
