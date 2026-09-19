@@ -74,7 +74,7 @@ export default function PremiosBingo() {
         <div>
           <h2 style={titulo}>🎉 Premios de Bingo</h2>
           <p style={subtitulo}>
-            Clientes que han conseguido línea o bingo (normal o especial) con su cartón actual.
+            Clientes que han conseguido línea o bingo (normal o especial). Cada cartón cuenta por separado: si un cliente completa su cartón y sigue con el siguiente, sale una fila por cartón.
           </p>
         </div>
         <div style={acciones}>
@@ -110,10 +110,13 @@ export default function PremiosBingo() {
             </thead>
             <tbody>
               {filasFiltradas.map((fila) => (
-                <tr key={fila.customer_token}>
+                <tr key={fila.carton_id || fila.customer_token}>
                   <td style={td}>
                     <strong>{fila.customer_name || "Cliente sin nombre"}</strong>
-                    <div style={tokenPequeno}>{fila.customer_token}</div>
+                    <div style={tokenPequeno}>
+                      {fila.customer_token}
+                      {fila.ronda ? ` · Cartón nº ${fila.ronda}` : ""}
+                    </div>
                   </td>
                   <td style={td}>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
