@@ -105,6 +105,7 @@ export default function PedidosExportar() {
   // aviso si el navegador bloquea la ventana.
   const [vistaTV, setVistaTV] = useState(leerVistaReposo);
   const [avisoTV, setAvisoTV] = useState("");
+  const [avisoMonitorTV, setAvisoMonitorTV] = useState("");
 
   const [movimientos, setMovimientos] = useState([]);
   const [codigoLojoPorToken, setCodigoLojoPorToken] = useState({});
@@ -618,7 +619,8 @@ export default function PedidosExportar() {
     // Se quita el foco del botón: el lector de QR termina cada lectura con un
     // Enter, y con el botón aún enfocado ese Enter lo volvería a pulsar.
     evento?.currentTarget?.blur?.();
-    const abierta = abrirPantallaGrande({ vista });
+    setAvisoMonitorTV("");
+    const abierta = abrirPantallaGrande({ vista, onAviso: setAvisoMonitorTV });
     setVistaTV(vista);
     setAvisoTV(
       abierta
@@ -672,6 +674,7 @@ export default function PedidosExportar() {
         </span>
       </div>
       {avisoTV && <div style={cajaError}>{avisoTV}</div>}
+      {avisoMonitorTV && <div style={avisoNavegador}>{avisoMonitorTV}</div>}
 
       <div style={filtrosEstado}>
         <button
