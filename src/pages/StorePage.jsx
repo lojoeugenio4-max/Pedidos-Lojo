@@ -5,6 +5,7 @@ import StoreWheel from "../components/StoreWheel";
 import BingoDrumStage from "../components/BingoDrumStage";
 import { calcularPremiosConseguidos } from "../utils/bingoWinLogic";
 import { notificarQrLeido } from "../utils/qrPendientesEvento";
+import { abrirPantallaGrande } from "../utils/pantallaGrande";
 import PedidosExportar from "../admin/PedidosExportar";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
@@ -47,23 +48,12 @@ function enviarEventoDisplay(type, payload = {}) {
 }
 
 // Abre (o enfoca, si ya estaba abierta) la pantalla de TV grande
-// (?display=1) en una ventana aparte. Se posiciona a partir del ancho del
-// monitor donde está esta pestaña (el del TPV), asumiendo que la TV grande
-// es el monitor contiguo en el escritorio extendido — el mismo montaje que
-// ya usan en tienda (ver dos monitores del mismo ordenador).
+// (?display=1) en una ventana aparte y la coloca en el OTRO monitor (el de
+// la TV), detectándolo de verdad en vez de suponer que está a la derecha.
+// Es la misma función que usan los botones de "Pedidos recibidos" (ver
+// utils/pantallaGrande.js). No cambia lo que muestra la TV en reposo.
 function abrirDisplayTVGrande() {
-  if (typeof window === "undefined") return;
-  const url = new URL(window.location.href);
-  url.search = "?display=1";
-
-  const anchoMonitorTPV = window.screen?.width || window.innerWidth || 1920;
-  const altoMonitorTPV = window.screen?.height || window.innerHeight || 1080;
-
-  window.open(
-    url.toString(),
-    "lojo-tv-grande",
-    `left=${anchoMonitorTPV},top=0,width=${anchoMonitorTPV},height=${altoMonitorTPV}`
-  );
+  abrirPantallaGrande();
 }
 
 
