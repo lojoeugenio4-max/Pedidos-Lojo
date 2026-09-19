@@ -4,6 +4,7 @@ import StoreWheel from "../components/StoreWheel";
 import BingoDrumStage from "../components/BingoDrumStage";
 import SorteoGrid from "../components/sorteo/SorteoGrid";
 import { cantarNumeroSorteo, playSorteoDing } from "../utils/sorteoSound";
+import { leerVistaReposo } from "../utils/pantallaGrande";
 import logoLojo from "../assets/logo-lojo.jpg";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
@@ -39,6 +40,65 @@ function getPrizeImageUrl(premio) {
   if (value.startsWith("http") || value.startsWith("data:") || value.startsWith("blob:")) return value;
 
   return `${PRODUCTOS_PUBLIC_URL}/${value.replace(/^\/+/, "")}`;
+}
+
+// Qué se ve en la pantalla grande mientras no hay ningún cliente jugando: el
+// Bombo de Bingo (por defecto) o el Sorteo, según lo que se haya elegido en
+// "Pedidos recibidos" (ver utils/pantallaGrande.js).
+function estadoDeReposo(vista = leerVistaReposo()) {
+  return vista === "sorteo" ? "sorteo-reposo" : "bingo-waiting";
+}
+
+const REFRESCO_SORTEO_REPOSO_MS = 15000;
+
+// Cuadrícula del Sorteo "en juego", para enseñarla en la TV sin necesidad de
+// haber escaneado ningún QR: la abierta (la de número más alto) o, si no hay
+// ninguna abierta, la última que exista. Devuelve la cuadrícula, null si no
+// hay ningún Sorteo configurado, o undefined si falló la consulta.
+async function cargarCuadriculaSorteoActiva() {
+  const { data: promo, error: promoError } = await supabase
+    .from("promociones_sorteo")
+    .select("id")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (promoError) {
+    console.error("No se pudo cargar el Sorteo para la TV:", promoError);
+    return undefined;
+  }
+  if (!promo?.id) return null;
+
+  const consultaEdicion = () =>
+    supabase
+      .from("sorteo_editions")
+      .select("id")
+      .eq("promocion_id", promo.id)
+      .order("numero", { ascending: false })
+      .limit(1);
+
+  let { data: edicion, error: edicionError } = await consultaEdicion()
+    .eq("estado", "abierta")
+    .maybeSingle();
+
+  if (!edicionError && !edicion?.id) {
+    ({ data: edicion, error: edicionError } = await consultaEdicion().maybeSingle());
+  }
+
+  if (edicionError) {
+    console.error("No se pudo cargar la cuadrícula del Sorteo para la TV:", edicionError);
+    return undefined;
+  }
+  if (!edicion?.id) return null;
+
+  const { data: grid, error: gridError } = await supabase.rpc("obtener_cuadricula_sorteo", {
+    p_edition_id: edicion.id,
+  });
+  if (gridError) {
+    console.error("No se pudo cargar la cuadrícula del Sorteo para la TV:", gridError);
+    return undefined;
+  }
+  return grid || null;
 }
 
 function DisplayWheel({ premios = [], girando, premioFinal }) {
@@ -132,7 +192,7 @@ function DisplayWheel({ premios = [], girando, premioFinal }) {
 
 export default function DisplayPage() {
   const [premios, setPremios] = useState([]);
-  const [estado, setEstado] = useState("bingo-waiting");
+  const [estado, setEstado] = useState(() => estadoDeReposo());
   const [entrada, setEntrada] = useState(null);
   const [premioFinal, setPremioFinal] = useState(null);
   const [premioObjetivo, setPremioObjetivo] = useState(null);
@@ -147,6 +207,8 @@ export default function DisplayPage() {
   const [sorteoEntrada, setSorteoEntrada] = useState(null);
   const [sorteoNumeros, setSorteoNumeros] = useState([]);
   const [sorteoGrids, setSorteoGrids] = useState([]);
+  // undefined = cargando; null = no hay Sorteo configurado.
+  const [sorteoReposoGrid, setSorteoReposoGrid] = useState(undefined);
 
   useEffect(() => {
     cargarPremios();
@@ -185,6 +247,27 @@ export default function DisplayPage() {
 
   useEffect(() => {
     if (estado.startsWith("bingo")) cargarPremiosBingoTV();
+  }, [estado]);
+
+  // Sorteo en reposo: carga la cuadrícula en juego y la va refrescando para
+  // que se vean los números nuevos según se reparten en caja.
+  useEffect(() => {
+    if (estado !== "sorteo-reposo") return undefined;
+
+    let cancelado = false;
+
+    async function cargar() {
+      const grid = await cargarCuadriculaSorteoActiva();
+      if (!cancelado && grid !== undefined) setSorteoReposoGrid(grid);
+    }
+
+    cargar();
+    const intervalo = window.setInterval(cargar, REFRESCO_SORTEO_REPOSO_MS);
+
+    return () => {
+      cancelado = true;
+      window.clearInterval(intervalo);
+    };
   }, [estado]);
 
   async function cargarPremiosBingoTV() {
@@ -288,14 +371,22 @@ export default function DisplayPage() {
 
     const payload = event.payload || {};
 
-    if (event.type === "waiting") {
-      // El TPV manda este aviso cuando vuelve a estar listo para leer el
-      // siguiente código (botón "reiniciar", o tras un error). Antes esto
-      // dejaba la TV en el reposo de la Ruleta; ahora el reposo por
-      // defecto de la pantalla grande es siempre el Bingo, gane lo que
-      // gane el cliente anterior. La Ruleta solo aparece mientras se está
-      // jugando de verdad (eventos "ready"/"spin"/"result").
-      setEstado("bingo-waiting");
+    if (event.type === "waiting" || event.type === "vista-reposo") {
+      // El TPV manda "waiting" cuando vuelve a estar listo para leer el
+      // siguiente código (botón "reiniciar", o tras un error). El reposo
+      // de la pantalla grande es el Bombo de Bingo, gane lo que gane el
+      // cliente anterior, salvo que en "Pedidos recibidos" se haya elegido
+      // el Sorteo. La Ruleta solo aparece mientras se está jugando de
+      // verdad (eventos "ready"/"spin"/"result").
+      //
+      // "vista-reposo" es lo que manda "Pedidos recibidos" al pulsar
+      // "Bombo de Bingo" o "Sorteo": cambia el reposo y lo muestra ya, sin
+      // haber escaneado ningún QR.
+      setEstado(
+        event.type === "vista-reposo"
+          ? estadoDeReposo(payload.vista === "sorteo" ? "sorteo" : "bingo")
+          : estadoDeReposo()
+      );
       setEntrada(null);
       setPremioFinal(null);
       setPremioObjetivo(null);
@@ -458,6 +549,37 @@ export default function DisplayPage() {
         mensajeVozFinal={mensajeVozFinal}
         fastMode={bingoModoRapido}
       />
+    );
+  }
+
+  if (estado === "sorteo-reposo") {
+    const ocupadas = sorteoReposoGrid?.casillas?.length || 0;
+    return (
+      <main style={styles.sorteoPage}>
+        <section style={styles.sorteoHeader}>
+          <img src={logoLojo} alt="Cash Lojo" style={styles.sorteoLogo} />
+          <div>
+            <div style={styles.sorteoKicker}>CASH LOJO · 🎟️ SORTEO</div>
+            <p style={styles.sorteoSubtitle}>
+              {sorteoReposoGrid
+                ? `${sorteoReposoGrid.edition_nombre || "Sorteo"} · ${ocupadas} de 100 números repartidos`
+                : sorteoReposoGrid === null
+                  ? "No hay ningún Sorteo activo"
+                  : "Cargando Sorteo..."}
+            </p>
+          </div>
+        </section>
+        <div style={styles.sorteoGridsWrap}>
+          {sorteoReposoGrid && (
+            <SorteoGrid
+              key={sorteoReposoGrid.edition_id}
+              titulo={sorteoReposoGrid.edition_nombre}
+              casillas={sorteoReposoGrid.casillas}
+              numeroPremiado={sorteoReposoGrid.numero_premiado ?? null}
+            />
+          )}
+        </div>
+      </main>
     );
   }
 
