@@ -316,6 +316,10 @@ export default function StorePage() {
   const inputRef = useRef(null);
   const autoValidatedCodeRef = useRef("");
   const pendingBingoReservaRef = useRef(null);
+  // Ronda (número de cartón) del cliente que se está jugando ahora. Cuando
+  // un cliente completa su cartón se abre el siguiente con una ronda nueva y
+  // su bombo vuelve a empezar de cero.
+  const ultimaRondaBingoRef = useRef(null);
 
   // Vista de "Pedidos recibidos" incrustada en esta misma página/pestaña
   // (mismo enlace ?store=1 de siempre): sustituye a la navegación anterior
@@ -700,7 +704,12 @@ export default function StorePage() {
     enviarEventoDisplay("ready", { entrada: data, premios: premiosData });
   }
 
-  async function cargarNumerosBingo() {
+  // ocultarSiCompleto: al abrir el bombo de un cliente cuyo cartón YA está
+  // completo, la siguiente bola abrirá un cartón nuevo, así que se empieza
+  // con el bombo vacío en vez de enseñar las bolas del cartón anterior. Justo
+  // después de sacar una bola NO se usa (hay que ver también la que completa
+  // el cartón).
+  async function cargarNumerosBingo({ ocultarSiCompleto = false } = {}) {
     try {
       const hoy = new Date().toISOString().slice(0, 10);
       const { data: promo, error: promoError } = await supabase
@@ -718,11 +727,26 @@ export default function StorePage() {
       const customerToken = entitlement?.customer_token;
       if (!customerToken) return [];
 
+      // Ronda del cartón actual del cliente (1 si aún no tiene cartón).
+      let ronda = 1;
+      let cartonCompleto = false;
+      const { data: rawEstado } = await supabase.rpc("obtener_estado_carton_bingo", {
+        p_customer_token: customerToken,
+      });
+      const estadoCarton = Array.isArray(rawEstado) ? rawEstado[0] : rawEstado;
+      if (estadoCarton?.ok && String(estadoCarton.edition_id || "") === String(promo.edition_id)) {
+        ronda = Number(estadoCarton.ronda) || 1;
+        cartonCompleto = Boolean(estadoCarton.completo);
+      }
+      ultimaRondaBingoRef.current = ronda;
+      if (ocultarSiCompleto && cartonCompleto) return [];
+
       const { data: draws, error: drawsError } = await supabase
         .from("bingo_draws")
         .select("number,drawn_at")
         .eq("edition_id", promo.edition_id)
         .eq("customer_token", customerToken)
+        .eq("ronda", ronda)
         .order("drawn_at", { ascending: true });
 
       if (drawsError) return [];
@@ -756,7 +780,9 @@ export default function StorePage() {
       ];
 
       definiciones.forEach(({ clave, conseguido, etiqueta, nombre }) => {
-        const claveUnica = `${customerToken}:${clave}`;
+        // La clave incluye el cartón: el cartón nuevo puede volver a ganar
+        // línea y Bingo, y eso se tiene que celebrar otra vez.
+        const claveUnica = `${customerToken}:${estadoCarton.carton_id || ""}:${clave}`;
         if (!conseguido || premiosYaCelebradosRef.current.has(claveUnica)) return;
         premiosYaCelebradosRef.current.add(claveUnica);
         if (!celebrar) return;
@@ -789,7 +815,7 @@ export default function StorePage() {
     setPremioBingoGanado(null);
     premiosYaCelebradosRef.current = new Set();
 
-    const numeros = await cargarNumerosBingo();
+    const numeros = await cargarNumerosBingo({ ocultarSiCompleto: true });
     setBingoNumbers(numeros);
 
     // Antes de la primera tirada de esta sesión, comprobamos en silencio
@@ -856,6 +882,25 @@ export default function StorePage() {
       }
 
       pendingBingoReservaRef.current = { ballNumber, reservationToken, qrCode };
+
+      // ¿Esta bola abre un cartón nuevo? (el anterior quedó completo). Se
+      // vacía el bombo en el TPV y en la TV ANTES de la animación, para que
+      // el cartón nuevo empiece de cero. Se compara también con la ronda
+      // conocida por si otra caja fue la que abrió el cartón.
+      const rondaReserva = Number(reservation.ronda) || 1;
+      const rondaConocida = ultimaRondaBingoRef.current;
+      ultimaRondaBingoRef.current = rondaReserva;
+      if (reservation.nueva_ronda || (rondaConocida !== null && rondaReserva !== rondaConocida)) {
+        setBingoNumbers([]);
+        enviarEventoDisplay("bingo-waiting", {
+          entrada: entitlement,
+          numeros: [],
+          bingoRemaining: Number(entitlement?.bingo_remaining || 0),
+          modoRapido: modoRapidoBingoRef.current,
+        });
+        // Pequeña pausa para que la TV limpie el bombo antes de girar.
+        await new Promise((resolve) => window.setTimeout(resolve, 400));
+      }
 
       // Disparamos la MISMA animación del bombo a la vez en el TPV (aquí
       // debajo, vía bingoTrigger) y en el Televisor (vía el aviso
