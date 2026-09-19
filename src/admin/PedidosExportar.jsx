@@ -10,6 +10,7 @@ import {
   nombreArchivoSeguro,
 } from "../utils/carpetaPedidosRecibidos";
 import QrPendientes from "./QrPendientes";
+import { abrirPantallaGrande, leerVistaReposo } from "../utils/pantallaGrande";
 
 function fechaLocalISO(fecha = new Date()) {
   const year = fecha.getFullYear();
@@ -99,6 +100,11 @@ export default function PedidosExportar() {
   const hoyEstadistico = diaEstadisticoActualISO();
 
   const [vistaPrincipal, setVistaPrincipal] = useState("pedidos");
+
+  // Pantalla grande (TV): qué se deja mostrando entre cliente y cliente y
+  // aviso si el navegador bloquea la ventana.
+  const [vistaTV, setVistaTV] = useState(leerVistaReposo);
+  const [avisoTV, setAvisoTV] = useState("");
 
   const [movimientos, setMovimientos] = useState([]);
   const [codigoLojoPorToken, setCodigoLojoPorToken] = useState({});
@@ -606,6 +612,21 @@ export default function PedidosExportar() {
     }
   }
 
+  // Abre la TV grande (o la trae al frente) con el Bombo de Bingo o el Sorteo,
+  // sin necesidad de haber escaneado antes ningún QR de cliente.
+  function manejarAbrirPantallaGrande(evento, vista) {
+    // Se quita el foco del botón: el lector de QR termina cada lectura con un
+    // Enter, y con el botón aún enfocado ese Enter lo volvería a pulsar.
+    evento?.currentTarget?.blur?.();
+    const abierta = abrirPantallaGrande({ vista });
+    setVistaTV(vista);
+    setAvisoTV(
+      abierta
+        ? ""
+        : "El navegador ha bloqueado la ventana de la pantalla grande. Permite las ventanas emergentes para este sitio y vuelve a pulsar."
+    );
+  }
+
   return (
     <div style={contenedor}>
       <style>{`
@@ -629,6 +650,28 @@ export default function PedidosExportar() {
           </p>
         </div>
       </div>
+
+      <div style={bloquePantallaGrande}>
+        <span style={etiquetaPantallaGrande}>🖥️ Pantalla grande</span>
+        <button
+          type="button"
+          style={botonPantallaGrande(vistaTV === "bingo", "#7c3aed")}
+          onClick={(evento) => manejarAbrirPantallaGrande(evento, "bingo")}
+        >
+          🎱 Bombo de Bingo
+        </button>
+        <button
+          type="button"
+          style={botonPantallaGrande(vistaTV === "sorteo", "#dc2626")}
+          onClick={(evento) => manejarAbrirPantallaGrande(evento, "sorteo")}
+        >
+          🎟️ Sorteo
+        </button>
+        <span style={textoPantallaGrande}>
+          Se queda en pantalla entre cliente y cliente. Pasando un QR, cambia sola al juego de ese cliente.
+        </span>
+      </div>
+      {avisoTV && <div style={cajaError}>{avisoTV}</div>}
 
       <div style={filtrosEstado}>
         <button
@@ -1090,6 +1133,32 @@ const inputFecha = {
   border: "1px solid #d1d5db",
   fontSize: "13px",
 };
+
+const bloquePantallaGrande = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  flexWrap: "wrap",
+  padding: "10px 14px",
+  borderRadius: "12px",
+  background: "#f5f3ff",
+  border: "1px solid #ddd6fe",
+};
+
+const etiquetaPantallaGrande = { color: "#4c1d95", fontWeight: 800, fontSize: "14px" };
+
+const textoPantallaGrande = { color: "#6b7280", fontSize: "12px" };
+
+const botonPantallaGrande = (activo, color) => ({
+  padding: "10px 18px",
+  borderRadius: "10px",
+  border: activo ? `2px solid ${color}` : "1px solid #d1d5db",
+  background: activo ? color : "#ffffff",
+  color: activo ? "#ffffff" : "#374151",
+  fontWeight: 800,
+  fontSize: "14px",
+  cursor: "pointer",
+});
 
 const filtrosEstado = { display: "flex", gap: "8px" };
 
