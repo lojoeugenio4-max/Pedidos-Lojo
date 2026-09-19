@@ -4548,7 +4548,7 @@ export default function App() {
                     <div style={styles.bingoStatusBox}>Cartón nº {cartonBingo.ronda}</div>
                   )}
                   <BingoDrum
-                    key={cartonBingo.id}
+                    key={`bombo-${cartonBingo.id}`}
                     editionId={cartonBingo.edition_id}
                     customerToken={clienteToken}
                     ronda={cartonBingo.ronda || 1}
@@ -4557,7 +4557,7 @@ export default function App() {
                     onNumbersChange={(numbers) => setCartonBingo((current) => current ? { ...current, drawn_numbers: numbers } : current)}
                   />
                   <BingoCard
-                    key={cartonBingo.id}
+                    key={`carton-${cartonBingo.id}`}
                     card={cartonBingo.card}
                     drawnNumbers={cartonBingo.drawn_numbers}
                     customerName={clienteIdentificado.nombre}
