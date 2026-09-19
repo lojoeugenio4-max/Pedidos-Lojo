@@ -61,6 +61,8 @@ export default function BingoShow() {
   const [premioGanado, setPremioGanado] = useState(null);
   const reservationRef = useRef(null);
   const premiosYaCelebradosRef = useRef(new Set());
+  // Ronda (número de cartón) del cliente; ver StorePage.jsx.
+  const rondaRef = useRef(1);
 
   const loadPromotion = useCallback(async () => {
     setLoading(true);
@@ -108,11 +110,19 @@ export default function BingoShow() {
       setLoading(false);
       return;
     }
+    let ronda = 1;
+    const { data: rawEstado } = await supabase.rpc("obtener_estado_carton_bingo", { p_customer_token: token });
+    const estadoCarton = Array.isArray(rawEstado) ? rawEstado[0] : rawEstado;
+    if (estadoCarton?.ok && String(estadoCarton.edition_id || "") === String(data.edition_id)) {
+      ronda = Number(estadoCarton.ronda) || 1;
+    }
+    rondaRef.current = ronda;
     const { data: draws, error: drawsError } = await supabase
       .from("bingo_draws")
       .select("number,drawn_at")
       .eq("edition_id", data.edition_id)
       .eq("customer_token", token)
+      .eq("ronda", ronda)
       .order("drawn_at", { ascending: true });
     if (drawsError) setError("No se han podido cargar las bolas cantadas.");
     setNumbers((draws || []).map((draw) => Number(draw.number)));
@@ -187,6 +197,9 @@ export default function BingoShow() {
         filter: `customer_token=eq.${customerToken}`,
       }, (payload) => {
         if (String(payload.new?.edition_id || "") !== String(promotion.edition_id)) return;
+        // Solo las bolas del cartón actual (una ronda más nueva la recoge
+        // drawFromQr al reservar la bola).
+        if ((Number(payload.new?.ronda ?? 1) || 1) !== rondaRef.current) return;
         const number = Number(payload.new?.number);
         if (!number) return;
         setPendingTrigger({ number, token: Date.now() });
@@ -219,7 +232,7 @@ export default function BingoShow() {
       ];
 
       definiciones.forEach(({ clave, conseguido, etiqueta, nombre }) => {
-        const claveUnica = `${customerToken}:${clave}`;
+        const claveUnica = `${customerToken}:${estadoCarton.carton_id || ""}:${clave}`;
         if (!conseguido || premiosYaCelebradosRef.current.has(claveUnica)) return;
         premiosYaCelebradosRef.current.add(claveUnica);
         const texto = nombre ? `${etiqueta} ${nombre}` : etiqueta;
@@ -252,6 +265,13 @@ export default function BingoShow() {
       const reservationToken = String(reservation.reservation_token || "");
       if (!Number.isInteger(ballNumber) || ballNumber < 1 || ballNumber > BALL_COUNT || !reservationToken) {
         throw new Error("Supabase no devolvió una reserva válida.");
+      }
+
+      // Si esta bola abre un cartón nuevo, el bombo empieza de cero.
+      const rondaReserva = Number(reservation.ronda) || 1;
+      if (rondaReserva !== rondaRef.current) {
+        rondaRef.current = rondaReserva;
+        setNumbers([]);
       }
 
       reservationRef.current = { ballNumber, reservationToken };
