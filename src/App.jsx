@@ -1537,6 +1537,7 @@ export default function App() {
         status: resultado.estado || resultado.status || "activo",
         edition_id: editionId,
         fecha_limite: resultado.fecha_limite || respuesta.fecha_limite || null,
+        ronda: Number(resultado.ronda) || 1,
       });
       setFechaLimiteBingoPropia(resultado.fecha_limite || respuesta.fecha_limite || null);
 
@@ -1590,6 +1591,45 @@ export default function App() {
       );
     } finally {
       setCargandoBingo(false);
+    }
+  }
+
+  // Cuando el cliente completa su cartón, en tienda se le abre el siguiente.
+  // El móvil (con "Mi Bingo" abierto) lo detecta por las bolas nuevas y pide
+  // aquí el cartón nuevo, sin cerrar la pantalla ni mostrar "Preparando…".
+  async function refrescarCartonBingo() {
+    if (!clienteToken) return;
+    try {
+      const { data, error } = await supabase.rpc("ensure_customer_bingo_card", {
+        p_token: clienteToken,
+        p_carton: crearCartonBingo90(),
+      });
+      if (error) throw error;
+      const respuesta = Array.isArray(data) ? data[0] : data;
+      if (!respuesta?.ok) return;
+
+      const resultado = respuesta.card_result || respuesta;
+      const carton = resultado.carton || resultado.card || respuesta.card;
+      const cartonId = resultado.carton_id || resultado.id || respuesta.carton_id;
+      const editionId = resultado.edition_id || respuesta.edition_id;
+      if (!cartonId || !carton || !editionId) return;
+
+      setCartonBingo((actual) =>
+        actual && actual.id === cartonId
+          ? actual
+          : {
+              id: cartonId,
+              card: carton,
+              drawn_numbers: resultado.numeros_marcados || resultado.drawn_numbers || [],
+              status: resultado.estado || resultado.status || "activo",
+              edition_id: editionId,
+              fecha_limite: resultado.fecha_limite || respuesta.fecha_limite || null,
+              ronda: Number(resultado.ronda) || 1,
+            }
+      );
+      setFechaLimiteBingoPropia(resultado.fecha_limite || respuesta.fecha_limite || null);
+    } catch (error) {
+      console.error("No se pudo cargar el cartón nuevo de Bingo:", error);
     }
   }
 
@@ -4504,13 +4544,20 @@ export default function App() {
 
               {!cargandoBingo && !errorBingo && cartonBingo && (
                 <>
+                  {(cartonBingo.ronda || 1) > 1 && (
+                    <div style={styles.bingoStatusBox}>Cartón nº {cartonBingo.ronda}</div>
+                  )}
                   <BingoDrum
+                    key={cartonBingo.id}
                     editionId={cartonBingo.edition_id}
                     customerToken={clienteToken}
+                    ronda={cartonBingo.ronda || 1}
+                    onNuevaRonda={refrescarCartonBingo}
                     initialNumbers={cartonBingo.drawn_numbers}
                     onNumbersChange={(numbers) => setCartonBingo((current) => current ? { ...current, drawn_numbers: numbers } : current)}
                   />
                   <BingoCard
+                    key={cartonBingo.id}
                     card={cartonBingo.card}
                     drawnNumbers={cartonBingo.drawn_numbers}
                     customerName={clienteIdentificado.nombre}
