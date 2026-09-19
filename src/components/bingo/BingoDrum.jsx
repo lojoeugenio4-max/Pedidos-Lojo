@@ -1,11 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../supabaseClient";
 
-export default function BingoDrum({ editionId, customerToken, initialNumbers = [], onNumbersChange }) {
+// "ronda" es el número del cartón que se está jugando (1, 2, 3...). Cuando un
+// cliente completa su cartón se le abre el siguiente y sus bolas empiezan de
+// cero con una ronda nueva. Este bombo solo pinta las bolas de SU ronda y, si
+// ve que ha empezado una más nueva, avisa con onNuevaRonda para que el móvil
+// pida el cartón nuevo.
+export default function BingoDrum({ editionId, customerToken, ronda = 1, onNuevaRonda, initialNumbers = [], onNumbersChange }) {
   const [numbers, setNumbers] = useState(() => [...new Set(initialNumbers.map(Number).filter(Boolean))]);
   const [spinning, setSpinning] = useState(false);
   const onNumbersChangeRef = useRef(onNumbersChange);
   const spinTimerRef = useRef(null);
+  const rondaRef = useRef(ronda);
+  const onNuevaRondaRef = useRef(onNuevaRonda);
+  const ultimoAvisoRondaRef = useRef(0);
+
+  useEffect(() => {
+    rondaRef.current = ronda;
+    onNuevaRondaRef.current = onNuevaRonda;
+  }, [ronda, onNuevaRonda]);
+
+  // Avisa (como mucho una vez cada 5 s) de que existe una ronda más nueva.
+  const avisarNuevaRonda = useCallback((rondaNueva) => {
+    const ahora = Date.now();
+    if (ahora - ultimoAvisoRondaRef.current < 5000) return;
+    ultimoAvisoRondaRef.current = ahora;
+    onNuevaRondaRef.current?.(rondaNueva);
+  }, []);
 
   useEffect(() => {
     onNumbersChangeRef.current = onNumbersChange;
@@ -54,6 +75,9 @@ export default function BingoDrum({ editionId, customerToken, initialNumbers = [
         { event: "INSERT", schema: "public", table: "bingo_draws", filter: `customer_token=eq.${customerToken}` },
         (payload) => {
           if (String(payload.new?.edition_id || "") !== String(editionId)) return;
+          const rondaBola = Number(payload.new?.ronda ?? 1) || 1;
+          if (rondaBola > rondaRef.current) { avisarNuevaRonda(rondaBola); return; }
+          if (rondaBola < rondaRef.current) return;
           incorporateNumber(payload.new?.number, true);
         }
       )
@@ -65,12 +89,18 @@ export default function BingoDrum({ editionId, customerToken, initialNumbers = [
     const reconcile = async () => {
       const { data, error } = await supabase
         .from("bingo_draws")
-        .select("number,drawn_at")
+        .select("number,drawn_at,ronda")
         .eq("edition_id", editionId)
         .eq("customer_token", customerToken)
         .order("drawn_at", { ascending: true });
       if (!active || error) return;
-      const latest = (data || []).map((row) => Number(row.number)).filter(Boolean);
+      const filas = data || [];
+      const rondaMasNueva = filas.reduce((max, row) => Math.max(max, Number(row.ronda ?? 1) || 1), rondaRef.current);
+      if (rondaMasNueva > rondaRef.current) avisarNuevaRonda(rondaMasNueva);
+      const latest = filas
+        .filter((row) => (Number(row.ronda ?? 1) || 1) === rondaRef.current)
+        .map((row) => Number(row.number))
+        .filter(Boolean);
       publishNumbers(latest, false);
     };
 
@@ -88,7 +118,7 @@ export default function BingoDrum({ editionId, customerToken, initialNumbers = [
       document.removeEventListener("visibilitychange", onVisibility);
       supabase.removeChannel(channel);
     };
-  }, [editionId, customerToken, publishNumbers]);
+  }, [editionId, customerToken, publishNumbers, avisarNuevaRonda]);
 
   const lastNumber = numbers.at(-1) || null;
   const recent = useMemo(() => numbers.slice(-8).reverse(), [numbers]);
