@@ -5,6 +5,7 @@
 // (p. ej. justo después de escanear un QR en el TPV).
 export default function SorteoGrid({
   titulo,
+  subtitulo = "",
   casillas = [],
   numeroPremiado = null,
   numerosDestacados = [],
@@ -16,7 +17,8 @@ export default function SorteoGrid({
 
   return (
     <div style={estilos.contenedor}>
-      {titulo && <h3 style={estilos.titulo}>{titulo}</h3>}
+      {titulo && <h3 style={{ ...estilos.titulo, ...(subtitulo ? { marginBottom: 2 } : null) }}>{titulo}</h3>}
+      {subtitulo && <div style={estilos.subtitulo}>{subtitulo}</div>}
       <div
         style={{
           ...estilos.grid,
@@ -63,6 +65,13 @@ export default function SorteoGrid({
 const estilos = {
   contenedor: { width: "100%" },
   titulo: { margin: "0 0 10px", color: "#fff", fontSize: 20, fontWeight: 900, textAlign: "center" },
+  subtitulo: {
+    margin: "0 0 10px",
+    color: "#fde68a",
+    fontSize: 14,
+    fontWeight: 800,
+    textAlign: "center",
+  },
   grid: {
     display: "grid",
     gridTemplateColumns: "repeat(10, 1fr)",
