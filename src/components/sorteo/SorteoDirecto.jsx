@@ -11,7 +11,9 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../supabaseClient";
 import { lanzarConfeti } from "../../utils/confetti";
 import {
+  audioSorteoActivo,
   cantarResultadoSorteo,
+  desbloquearAudioSorteo,
   iniciarRedobleSorteo,
   playSorteoParada,
   playSorteoPlatillos,
@@ -123,15 +125,28 @@ export default function SorteoDirecto({
       resultado: t >= SORTEO_T_REVELAR_MS,
     };
   }
-  const tInicial = useRef(t).current;
   const temporizadorVoz = useRef(null);
 
-  // Redoble de tambor mientras giran las ruedas (solo en la TV). Si la
-  // pantalla se abre a mitad del sorteo, entra en el punto que toca.
+  // ¿Está despierto el audio? (los navegadores lo bloquean hasta que alguien
+  // toca la pantalla). Se vigila para arrancar el redoble en cuanto se pueda.
+  const [audioActivo, setAudioActivo] = useState(() => (sonido ? audioSorteoActivo() : false));
   useEffect(() => {
-    if (!sonido || tInicial >= SORTEO_T_REVELAR_MS) return undefined;
-    return iniciarRedobleSorteo({ desdeMs: tInicial, hastaMs: SORTEO_T_REVELAR_MS });
-  }, [sonido, tInicial]);
+    if (!sonido) return undefined;
+    const revisar = () => setAudioActivo(audioSorteoActivo());
+    revisar();
+    const intervalo = window.setInterval(revisar, 400);
+    return () => window.clearInterval(intervalo);
+  }, [sonido]);
+
+  // Redoble de tambor mientras giran las ruedas (solo en la TV). Arranca en
+  // el punto que toca del sorteo: sirve tanto si la pantalla se abre a mitad
+  // como si el audio se desbloquea con un toque a mitad del sorteo.
+  useEffect(() => {
+    if (!sonido || !audioActivo) return undefined;
+    const tAhora = Math.max(0, getAhora() - edicion.inicioAt);
+    if (tAhora >= SORTEO_T_REVELAR_MS) return undefined;
+    return iniciarRedobleSorteo({ desdeMs: tAhora, hastaMs: SORTEO_T_REVELAR_MS });
+  }, [sonido, audioActivo, getAhora, edicion.inicioAt]);
 
   useEffect(
     () => () => {
@@ -174,19 +189,22 @@ export default function SorteoDirecto({
   // Sonidos y celebración, cada uno una sola vez en su momento.
   useEffect(() => {
     const marca = disparado.current;
+    // Si el audio sigue bloqueado, nada suena (y no se acumula para sonar
+    // tarde cuando se desbloquee).
+    const sonar = sonido && audioSorteoActivo();
 
     if (!marca.unidades && t >= SORTEO_T_UNIDADES_MS) {
       marca.unidades = true;
-      if (sonido) playSorteoParada();
+      if (sonar) playSorteoParada();
     }
     if (!marca.decenas && t >= SORTEO_T_DECENAS_MS) {
       marca.decenas = true;
-      if (sonido) playSorteoParada();
+      if (sonar) playSorteoParada();
     }
     if (!marca.resultado && t >= SORTEO_T_REVELAR_MS) {
       marca.resultado = true;
       lanzarConfeti({ duracionMs: 7000 });
-      if (sonido) {
+      if (sonar) {
         // Platillazo al aparecer el número y, un instante después (para que
         // se oigan los platillos), la voz canta el número y felicita.
         playSorteoPlatillos();
@@ -209,7 +227,13 @@ export default function SorteoDirecto({
   const premio = edicion.premioTexto;
 
   return (
-    <div style={{ ...estilos.pantalla, zIndex: esTV ? 5000 : 10100 }} role="dialog" aria-modal="true" aria-label="Sorteo en directo">
+    <div
+      style={{ ...estilos.pantalla, zIndex: esTV ? 5000 : 10100 }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Sorteo en directo"
+      onPointerDown={sonido && !audioActivo ? () => desbloquearAudioSorteo().then((ok) => ok && setAudioActivo(true)) : undefined}
+    >
       <style>{`
         @keyframes lojoSorteoLatido { 0%,100% { transform: scale(1); opacity: .9; } 50% { transform: scale(1.06); opacity: 1; } }
         @keyframes lojoSorteoPop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
@@ -289,6 +313,10 @@ export default function SorteoDirecto({
           )}
         </div>
       </main>
+
+      {sonido && !audioActivo && (
+        <div style={estilos.avisoSonido}>🔊 Toca la pantalla para activar el sonido</div>
+      )}
 
       {!esTV && (
         <footer style={estilos.pie}>
@@ -433,6 +461,22 @@ const estilos = {
     color: "#713f12",
     fontWeight: 900,
     border: "2px solid #eab308",
+  },
+  avisoSonido: {
+    position: "absolute",
+    left: "50%",
+    bottom: "3vh",
+    transform: "translateX(-50%)",
+    padding: "12px 26px",
+    borderRadius: 999,
+    background: "rgba(255,255,255,.95)",
+    color: "#7f1d1d",
+    fontSize: "clamp(16px, 2.4vh, 28px)",
+    fontWeight: 900,
+    boxShadow: "0 10px 30px rgba(0,0,0,.5)",
+    animation: "lojoSorteoLatido 1.2s ease-in-out infinite",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
   },
   pie: { flexShrink: 0, display: "grid", gap: 10, justifyItems: "center", paddingBottom: "env(safe-area-inset-bottom, 0px)" },
   misNumeros: { fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,.85)", textAlign: "center" },
