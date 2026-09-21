@@ -139,7 +139,7 @@ function construirBloqueParticipacion({
     }
     if (sorteoConseguido) {
       bannerLineas.push(
-        `🎟️ Sorteo: *${sorteoPlaysTotal} ${sorteoPlaysTotal === 1 ? "número" : "números"}* (se sortean al pasar el QR en caja)`
+        `🎟️ Al pasar el QR te asignaremos *${sorteoPlaysTotal} ${sorteoPlaysTotal === 1 ? "número" : "números"}* para que participes en el Sorteo`
       );
     }
 
