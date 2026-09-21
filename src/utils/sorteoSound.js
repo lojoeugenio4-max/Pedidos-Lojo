@@ -47,6 +47,42 @@ export function playSorteoDing() {
 
 // --- Sorteo en directo (rotación de números) -----------------------------
 
+// ¿Puede sonar ya el audio de esta pantalla? Los navegadores bloquean el
+// sonido automático hasta que alguien toca/hace clic en la página; si la TV
+// se ha recargado (p. ej. al desplegar una versión nueva) y nadie la ha
+// tocado, el audio queda "suspendido" y NADA suena, ni voz ni platillos.
+export function audioSorteoActivo() {
+  const ctx = obtenerAudioContext();
+  return Boolean(ctx) && ctx.state === "running";
+}
+
+// Debe llamarse dentro de un clic/toque. Despierta el audio (y la voz) y
+// devuelve true si ya puede sonar.
+export async function desbloquearAudioSorteo() {
+  const ctx = obtenerAudioContext();
+  if (!ctx) return false;
+  try {
+    await ctx.resume();
+    const silencio = ctx.createBuffer(1, 1, 22050);
+    const fuente = ctx.createBufferSource();
+    fuente.buffer = silencio;
+    fuente.connect(ctx.destination);
+    fuente.start(0);
+  } catch (error) {
+    console.warn("No se pudo activar el audio del Sorteo:", error);
+  }
+  try {
+    // Un "hola" mudo para que la síntesis de voz también quede autorizada.
+    window.speechSynthesis?.cancel();
+    const mudo = new SpeechSynthesisUtterance(" ");
+    mudo.volume = 0;
+    window.speechSynthesis?.speak(mudo);
+  } catch {
+    // sin voz, el resto sigue funcionando
+  }
+  return ctx.state === "running";
+}
+
 // Clic seco y corto, como el trinquete de una ruleta al pasar cada número.
 export function playSorteoTick() {
   try {
