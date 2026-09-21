@@ -27,6 +27,7 @@ import BingoDrum from "./components/bingo/BingoDrum";
 import CelebracionPremio from "./components/sorteo/CelebracionPremio";
 import SorteoDirecto from "./components/sorteo/SorteoDirecto";
 import AvisoSorteo from "./components/sorteo/AvisoSorteo";
+import MisNumerosSorteo from "./components/sorteo/MisNumerosSorteo";
 import { useSorteoDirecto } from "./utils/sorteoDirecto";
 import logoLojo from "./assets/logo-lojo.jpg";
 import {
@@ -2586,7 +2587,14 @@ export default function App() {
         : [];
     }
 
+    // Al buscar en "TODOS" solo cuentan los departamentos de verdad. Los
+    // grupos promocionales (OFERTAS, NOVEDAD, RULETA, BINGO) repiten
+    // artículos que ya están en su departamento, y con la búsqueda el mismo
+    // artículo salía varias veces. Sin búsqueda se ven igual que siempre.
+    const GRUPOS_PROMOCIONALES = ["OFERTAS", "NOVEDAD", "RULETA", "BINGO"];
+
     const visibleDepartments = departamentosCatalogo
+      .filter((department) => !cleanSearch || !GRUPOS_PROMOCIONALES.includes(department.name))
       .map((department) => ({
         ...department,
         products: ordenarProductos(filterBySearch(department.products)),
@@ -2597,14 +2605,29 @@ export default function App() {
       return visibleDepartments;
     }
 
-    const hiddenMatches = productos
-      .filter((product) => product.oculto)
-      .filter((product) => productMatchesSearch(product, cleanSearch));
+    // Artículos que coinciden pero no están en ningún departamento real
+    // (p. ej. solo salían en un grupo promocional) más los ocultos: cada
+    // uno aparece una sola vez, en "ARTÍCULOS BUSCADOS".
+    const yaMostrados = new Set(
+      visibleDepartments.flatMap((department) => department.products.map((product) => String(product.id)))
+    );
+    const sueltos = [];
+    [
+      ...productosVisibles.filter((product) => productMatchesSearch(product, cleanSearch)),
+      ...productos
+        .filter((product) => product.oculto)
+        .filter((product) => productMatchesSearch(product, cleanSearch)),
+    ].forEach((product) => {
+      const id = String(product.id);
+      if (yaMostrados.has(id)) return;
+      yaMostrados.add(id);
+      sueltos.push(product);
+    });
 
-    if (hiddenMatches.length > 0) {
+    if (sueltos.length > 0) {
       visibleDepartments.push({
         name: "ARTÍCULOS BUSCADOS",
-        products: ordenarProductos(hiddenMatches),
+        products: ordenarProductos(sueltos),
       });
     }
 
@@ -4516,12 +4539,6 @@ export default function App() {
             <div style={styles.bingoModalBody}>
               <h2 style={{ margin: "0 0 12px" }}>🎟️ Mi Sorteo</h2>
 
-              {sorteoEnDirecto.proximas.length > 0 && (
-                <div style={{ marginBottom: 12 }}>
-                  <AvisoSorteo proximas={sorteoEnDirecto.proximas} getAhora={sorteoEnDirecto.getAhora} />
-                </div>
-              )}
-
               {cargandoSorteo && <div style={styles.bingoStatusBox}>Cargando tus números...</div>}
               {!cargandoSorteo && errorSorteo && <div style={styles.bingoErrorBox}>{errorSorteo}</div>}
 
@@ -4532,36 +4549,7 @@ export default function App() {
               )}
 
               {!cargandoSorteo && !errorSorteo && numerosSorteoCliente.length > 0 && (
-                <div style={{ display: "grid", gap: 10 }}>
-                  {numerosSorteoCliente.map((n, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "12px 16px",
-                        borderRadius: 12,
-                        background: n.ganador ? "#dcfce7" : "#f0fdf4",
-                        border: n.ganador ? "2px solid #16a34a" : "1px solid #bbf7d0",
-                      }}
-                    >
-                      <div>
-                        <strong>{n.edition_nombre}</strong>
-                        <div style={{ fontSize: 13, color: "#166534" }}>
-                          {n.estado === "resuelta"
-                            ? n.ganador
-                              ? "¡Enhorabuena, este número ha sido el premiado!"
-                              : `Resuelto · número premiado: ${String(n.numero_premiado).padStart(2, "0")}`
-                            : "Cuadrícula aún en juego"}
-                        </div>
-                      </div>
-                      <div style={{ fontSize: 30, fontWeight: 900, color: "#166534" }}>
-                        {String(n.numero).padStart(2, "0")}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <MisNumerosSorteo numeros={numerosSorteoCliente} proximas={sorteoEnDirecto.proximas} />
               )}
             </div>
           </div>
