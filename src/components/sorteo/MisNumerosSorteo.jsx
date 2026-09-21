@@ -91,7 +91,7 @@ export default function MisNumerosSorteo({ numeros = [], proximas = [], fechasSo
               </span>
             </header>
 
-            {sorteadaEn && <div style={estilos.detalle}>🏁 Sorteada el {formatearFechaSorteo(sorteadaEn)}</div>}
+            {sorteadaEn && <div style={estilos.detalle}>🏁 Sorteado el {formatearFechaSorteo(sorteadaEn)}</div>}
 
             {g.ganador ? (
               <div style={estilos.ganadorAviso}>🏆 ¡Enhorabuena, uno de tus números ha sido el premiado!</div>
