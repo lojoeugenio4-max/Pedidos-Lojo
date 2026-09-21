@@ -1695,10 +1695,14 @@ export default function App() {
       try {
         const { data: fechas } = await supabase
           .from("sorteo_editions")
-          .select("numero, sorteo_inicio_at")
-          .not("sorteo_inicio_at", "is", null);
+          .select("numero, sorteo_inicio_at, resuelta_at")
+          .eq("estado", "resuelta");
         setFechasSorteoCliente(
-          Object.fromEntries((fechas || []).map((f) => [f.numero, Date.parse(f.sorteo_inicio_at)]))
+          Object.fromEntries(
+            (fechas || [])
+              .map((f) => [f.numero, Date.parse(f.sorteo_inicio_at || f.resuelta_at)])
+              .filter(([, ms]) => Number.isFinite(ms))
+          )
         );
       } catch (errorFechas) {
         console.error("No se pudieron cargar las fechas de los sorteos:", errorFechas);
