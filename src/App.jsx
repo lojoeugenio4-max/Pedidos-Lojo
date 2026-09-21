@@ -853,6 +853,8 @@ export default function App() {
   const [numerosSorteoCliente, setNumerosSorteoCliente] = useState([]);
   const [cargandoSorteo, setCargandoSorteo] = useState(false);
   const [errorSorteo, setErrorSorteo] = useState("");
+  // número de cuadrícula -> instante (ms) en que se sorteó
+  const [fechasSorteoCliente, setFechasSorteoCliente] = useState({});
   const [motivoSorteoNoDisponible, setMotivoSorteoNoDisponible] = useState("");
   // Sorteo en directo: aviso de la fecha/hora de cada cuadrícula donde juega
   // el cliente y, a esa hora, pantalla con la rotación de números. Mismo
@@ -1687,6 +1689,20 @@ export default function App() {
       });
       if (error) throw error;
       setNumerosSorteoCliente(Array.isArray(data) ? data : []);
+
+      // Fecha y hora en que se sorteó cada cuadrícula. Si falla, simplemente
+      // no se enseña (no es imprescindible para ver los números).
+      try {
+        const { data: fechas } = await supabase
+          .from("sorteo_editions")
+          .select("numero, sorteo_inicio_at")
+          .not("sorteo_inicio_at", "is", null);
+        setFechasSorteoCliente(
+          Object.fromEntries((fechas || []).map((f) => [f.numero, Date.parse(f.sorteo_inicio_at)]))
+        );
+      } catch (errorFechas) {
+        console.error("No se pudieron cargar las fechas de los sorteos:", errorFechas);
+      }
     } catch (error) {
       console.error("No se pudo cargar el Sorteo del cliente:", error);
       setErrorSorteo("No se han podido cargar tus números de Sorteo. Inténtalo de nuevo.");
@@ -4549,7 +4565,7 @@ export default function App() {
               )}
 
               {!cargandoSorteo && !errorSorteo && numerosSorteoCliente.length > 0 && (
-                <MisNumerosSorteo numeros={numerosSorteoCliente} proximas={sorteoEnDirecto.proximas} />
+                <MisNumerosSorteo numeros={numerosSorteoCliente} proximas={sorteoEnDirecto.proximas} fechasSorteo={fechasSorteoCliente} />
               )}
             </div>
           </div>
