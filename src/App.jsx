@@ -25,6 +25,9 @@ import BingoShow from "./pages/bingo/BingoShow";
 import BingoCard from "./components/bingo/BingoCard";
 import BingoDrum from "./components/bingo/BingoDrum";
 import CelebracionPremio from "./components/sorteo/CelebracionPremio";
+import SorteoDirecto from "./components/sorteo/SorteoDirecto";
+import AvisoSorteo from "./components/sorteo/AvisoSorteo";
+import { useSorteoDirecto } from "./utils/sorteoDirecto";
 import logoLojo from "./assets/logo-lojo.jpg";
 import {
   construirTextoPedidoWhatsApp,
@@ -849,6 +852,35 @@ export default function App() {
   const [numerosSorteoCliente, setNumerosSorteoCliente] = useState([]);
   const [cargandoSorteo, setCargandoSorteo] = useState(false);
   const [errorSorteo, setErrorSorteo] = useState("");
+  // Sorteo en directo: aviso de la fecha/hora de cada cuadrícula donde juega
+  // el cliente y, a esa hora, pantalla con la rotación de números. Mismo
+  // interruptor que el resto del Sorteo (cuando se quite es_pruebas de las
+  // demás partes, basta quitarlo también aquí).
+  const [revisionPremioSorteo, setRevisionPremioSorteo] = useState(0);
+  const sorteoDirectoAbiertoRef = useRef(false);
+  const sorteoActivoParaCliente = Boolean(clienteIdentificado?.es_pruebas && configuracionSorteoCliente);
+  const sorteoEnDirecto = useSorteoDirecto({
+    modo: "cliente",
+    token: clienteIdentificado?.token || "",
+    habilitado: sorteoActivoParaCliente,
+    // Si el sorteo se resuelve y la pantalla en directo ya no está abierta
+    // (el cliente la cerró antes), se comprueba enseguida si ha ganado.
+    onResuelta: () => {
+      if (!sorteoDirectoAbiertoRef.current) setRevisionPremioSorteo((n) => n + 1);
+    },
+  });
+  sorteoDirectoAbiertoRef.current = Boolean(sorteoEnDirecto.directo);
+  const idSorteoDirectoPrevio = useRef(null);
+  useEffect(() => {
+    // Al cerrarse la pantalla del sorteo (botón o fin automático) se
+    // comprueba si el cliente tiene premio pendiente y, si es así, sale la
+    // celebración de siempre.
+    const idActual = sorteoEnDirecto.directo?.id ?? null;
+    if (idSorteoDirectoPrevio.current !== null && idActual === null) {
+      setRevisionPremioSorteo((n) => n + 1);
+    }
+    idSorteoDirectoPrevio.current = idActual;
+  }, [sorteoEnDirecto.directo?.id]);
 
   const [premiosRuleta, setPremiosRuleta] = useState([]);
   const [configuracionRuleta, setConfiguracionRuleta] = useState(null);
@@ -989,7 +1021,7 @@ export default function App() {
     return () => {
       cancelado = true;
     };
-  }, [clienteIdentificado?.token]);
+  }, [clienteIdentificado?.token, revisionPremioSorteo]);
 
   async function cerrarCelebracionPremioSorteo() {
     const premio = premioSorteoPendiente;
@@ -4252,6 +4284,17 @@ export default function App() {
         <CelebracionPremio premio={premioSorteoPendiente} onCerrar={cerrarCelebracionPremioSorteo} />
       )}
 
+      {sorteoActivoParaCliente && sorteoEnDirecto.directo && (
+        <SorteoDirecto
+          key={`${sorteoEnDirecto.directo.id}-${sorteoEnDirecto.directo.inicioAt}`}
+          edicion={sorteoEnDirecto.directo}
+          getAhora={sorteoEnDirecto.getAhora}
+          variante="movil"
+          misNumeros={sorteoEnDirecto.directo.misNumeros}
+          onCerrar={() => sorteoEnDirecto.cerrar(sorteoEnDirecto.directo.id)}
+        />
+      )}
+
       {!appInstalada && clienteToken && (
         <div style={styles.installBanner} role="region" aria-label="Instalar aplicación">
           <div style={styles.installBannerIcon}>
@@ -4465,6 +4508,12 @@ export default function App() {
             <div style={styles.bingoModalBody}>
               <h2 style={{ margin: "0 0 12px" }}>🎟️ Mi Sorteo</h2>
 
+              {sorteoEnDirecto.proximas.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <AvisoSorteo proximas={sorteoEnDirecto.proximas} getAhora={sorteoEnDirecto.getAhora} />
+                </div>
+              )}
+
               {cargandoSorteo && <div style={styles.bingoStatusBox}>Cargando tus números...</div>}
               {!cargandoSorteo && errorSorteo && <div style={styles.bingoErrorBox}>{errorSorteo}</div>}
 
@@ -4676,6 +4725,13 @@ export default function App() {
                       <Grid3X3 size={17} />
                       Juegos
                     </button>
+                  )}
+                  {sorteoActivoParaCliente && sorteoEnDirecto.proximas.length > 0 && (
+                    <AvisoSorteo
+                      proximas={sorteoEnDirecto.proximas}
+                      getAhora={sorteoEnDirecto.getAhora}
+                      onAbrir={abrirMiSorteo}
+                    />
                   )}
                   {cargandoFavoritos && <small>Cargando favoritos...</small>}
                   {errorFavoritos && <small style={styles.favoritesError}>{errorFavoritos}</small>}
