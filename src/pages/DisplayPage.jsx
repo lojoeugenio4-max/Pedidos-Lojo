@@ -5,7 +5,12 @@ import BingoDrumStage from "../components/BingoDrumStage";
 import SorteoGrid from "../components/sorteo/SorteoGrid";
 import SorteoDirecto from "../components/sorteo/SorteoDirecto";
 import { formatearFechaSorteo, useSorteoDirecto } from "../utils/sorteoDirecto";
-import { cantarNumeroSorteo, playSorteoDing } from "../utils/sorteoSound";
+import {
+  audioSorteoActivo,
+  cantarNumeroSorteo,
+  desbloquearAudioSorteo,
+  playSorteoDing,
+} from "../utils/sorteoSound";
 import { leerVistaReposo } from "../utils/pantallaGrande";
 import logoLojo from "../assets/logo-lojo.jpg";
 
@@ -202,7 +207,63 @@ function DisplayWheel({ premios = [], girando, premioFinal }) {
   );
 }
 
+// Los navegadores no dejan sonar nada hasta que alguien toca la página. Si la
+// TV se ha recargado (p. ej. al desplegar una versión nueva) y nadie la ha
+// tocado, ni el Bingo, ni la Ruleta ni el Sorteo pueden sonar: este botón
+// pequeño avisa y basta un toque (en cualquier parte) para activarlo.
+function AvisoSonidoTV() {
+  const [bloqueado, setBloqueado] = useState(false);
+
+  useEffect(() => {
+    const revisar = () => setBloqueado(!audioSorteoActivo());
+    revisar();
+    const intervalo = window.setInterval(revisar, 1000);
+    const desbloquear = () => {
+      desbloquearAudioSorteo().then(revisar);
+    };
+    const eventos = ["pointerdown", "keydown", "touchstart"];
+    eventos.forEach((evento) => window.addEventListener(evento, desbloquear, true));
+    return () => {
+      window.clearInterval(intervalo);
+      eventos.forEach((evento) => window.removeEventListener(evento, desbloquear, true));
+    };
+  }, []);
+
+  if (!bloqueado) return null;
+  return (
+    <button
+      type="button"
+      style={{
+        position: "fixed",
+        right: 14,
+        bottom: 14,
+        zIndex: 6000,
+        border: 0,
+        borderRadius: 999,
+        padding: "10px 18px",
+        background: "#facc15",
+        color: "#422006",
+        fontWeight: 900,
+        fontSize: 15,
+        cursor: "pointer",
+        boxShadow: "0 8px 22px rgba(0,0,0,.45)",
+      }}
+    >
+      🔊 Toca aquí para activar el sonido
+    </button>
+  );
+}
+
 export default function DisplayPage() {
+  return (
+    <>
+      <DisplayPageContenido />
+      <AvisoSonidoTV />
+    </>
+  );
+}
+
+function DisplayPageContenido() {
   const [premios, setPremios] = useState([]);
   const [estado, setEstado] = useState(() => estadoDeReposo());
   const [entrada, setEntrada] = useState(null);
