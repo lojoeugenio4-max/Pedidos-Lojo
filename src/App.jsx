@@ -29,6 +29,7 @@ import SorteoDirecto from "./components/sorteo/SorteoDirecto";
 import AvisoSorteo from "./components/sorteo/AvisoSorteo";
 import MisNumerosSorteo from "./components/sorteo/MisNumerosSorteo";
 import { useSorteoDirecto } from "./utils/sorteoDirecto";
+import { desbloquearAudioSorteo } from "./utils/sorteoSound";
 import logoLojo from "./assets/logo-lojo.jpg";
 import {
   construirTextoPedidoWhatsApp,
@@ -874,6 +875,20 @@ export default function App() {
     },
   });
   sorteoDirectoAbiertoRef.current = Boolean(sorteoEnDirecto.directo);
+  // El móvil solo deja sonar el audio si el cliente ha tocado la pantalla
+  // (sobre todo el iPhone). Con el primer toque en la app se deja el audio
+  // despierto, para que cuando empiece el sorteo en directo ya pueda sonar.
+  useEffect(() => {
+    if (!sorteoActivoParaCliente) return undefined;
+    const eventos = ["touchend", "pointerup", "click", "keydown"];
+    const despertar = () => {
+      desbloquearAudioSorteo().then((ok) => {
+        if (ok) eventos.forEach((evento) => window.removeEventListener(evento, despertar, true));
+      });
+    };
+    eventos.forEach((evento) => window.addEventListener(evento, despertar, true));
+    return () => eventos.forEach((evento) => window.removeEventListener(evento, despertar, true));
+  }, [sorteoActivoParaCliente]);
   const idSorteoDirectoPrevio = useRef(null);
   useEffect(() => {
     // Al cerrarse la pantalla del sorteo (botón o fin automático) se
@@ -4341,6 +4356,7 @@ export default function App() {
           edicion={sorteoEnDirecto.directo}
           getAhora={sorteoEnDirecto.getAhora}
           variante="movil"
+          sonido
           misNumeros={sorteoEnDirecto.directo.misNumeros}
           onCerrar={() => sorteoEnDirecto.cerrar(sorteoEnDirecto.directo.id)}
         />
