@@ -146,6 +146,208 @@ export function playSorteoFanfarria() {
   }
 }
 
+// --- Redoble de tambor, platillos y voz del Sorteo en directo ---------------
+
+let bufferRuido = null;
+
+// Ruido blanco (3 s) reutilizable: es la "materia prima" del parche de la
+// caja y de los platillos.
+function obtenerBufferRuido(ctx) {
+  if (!bufferRuido || bufferRuido.sampleRate !== ctx.sampleRate) {
+    const longitud = Math.floor(ctx.sampleRate * 3);
+    const buffer = ctx.createBuffer(1, longitud, ctx.sampleRate);
+    const datos = buffer.getChannelData(0);
+    for (let i = 0; i < longitud; i += 1) datos[i] = Math.random() * 2 - 1;
+    bufferRuido = buffer;
+  }
+  return bufferRuido;
+}
+
+function crearSalidaConCompresor(ctx, volumen = 1) {
+  const master = ctx.createGain();
+  master.gain.value = volumen;
+  const compresor = ctx.createDynamicsCompressor();
+  compresor.threshold.value = -14;
+  compresor.ratio.value = 6;
+  master.connect(compresor);
+  compresor.connect(ctx.destination);
+  return { master, compresor };
+}
+
+// REDOBLE de caja mientras giran las ruedas: golpes rápidos y seguidos que
+// van a más (crescendo) hasta el momento de revelar. Se programan todos de
+// una vez con el reloj del audio (así no se corta si la pantalla va justa).
+// desdeMs/hastaMs son milisegundos desde el arranque del sorteo: si la
+// pantalla se abre a mitad, el redoble entra ya en el punto que toca.
+// Devuelve una función para pararlo.
+export function iniciarRedobleSorteo({ desdeMs = 0, hastaMs = 15500 } = {}) {
+  try {
+    const ctx = obtenerAudioContext();
+    if (!ctx) return () => {};
+    const duracion = (hastaMs - desdeMs) / 1000;
+    if (duracion < 0.3) return () => {};
+
+    const ruido = obtenerBufferRuido(ctx);
+    const { master } = crearSalidaConCompresor(ctx, 0.9);
+    const inicio = ctx.currentTime + 0.05;
+    const golpesPorSegundo = 17;
+    const total = Math.floor(duracion * golpesPorSegundo);
+
+    for (let i = 0; i < total; i += 1) {
+      const at = inicio + i / golpesPorSegundo;
+      // 0 al arrancar el sorteo, 1 al revelar: el redoble sube de volumen.
+      const progreso = Math.min(1, (desdeMs / 1000 + i / golpesPorSegundo) / (hastaMs / 1000));
+      const fuerza = 0.14 + 0.62 * Math.pow(progreso, 1.4);
+      const acento = i % 2 === 0 ? 1 : 0.72;
+
+      // Parche: ruido filtrado, seco y corto (como la bordonera de una caja).
+      const fuente = ctx.createBufferSource();
+      fuente.buffer = ruido;
+      const filtro = ctx.createBiquadFilter();
+      filtro.type = "bandpass";
+      filtro.frequency.value = 2300 + (i % 2) * 350;
+      filtro.Q.value = 0.7;
+      const ganancia = ctx.createGain();
+      ganancia.gain.setValueAtTime(0.0001, at);
+      ganancia.gain.exponentialRampToValueAtTime(fuerza * acento, at + 0.004);
+      ganancia.gain.exponentialRampToValueAtTime(0.0001, at + 0.075);
+      fuente.connect(filtro).connect(ganancia).connect(master);
+      fuente.start(at, Math.random() * 2, 0.09);
+
+      // Cuerpo del tambor: tono grave que cae rápido.
+      const cuerpo = ctx.createOscillator();
+      const cuerpoGanancia = ctx.createGain();
+      cuerpo.type = "sine";
+      cuerpo.frequency.setValueAtTime(210, at);
+      cuerpo.frequency.exponentialRampToValueAtTime(130, at + 0.05);
+      cuerpoGanancia.gain.setValueAtTime(0.0001, at);
+      cuerpoGanancia.gain.exponentialRampToValueAtTime(fuerza * 0.55 * acento, at + 0.004);
+      cuerpoGanancia.gain.exponentialRampToValueAtTime(0.0001, at + 0.06);
+      cuerpo.connect(cuerpoGanancia).connect(master);
+      cuerpo.start(at);
+      cuerpo.stop(at + 0.08);
+    }
+
+    return () => {
+      try {
+        master.gain.cancelScheduledValues(ctx.currentTime);
+        master.gain.setTargetAtTime(0, ctx.currentTime, 0.02);
+        window.setTimeout(() => master.disconnect(), 400);
+      } catch {
+        // nada que hacer
+      }
+    };
+  } catch (error) {
+    console.warn("Audio del Sorteo no disponible:", error);
+    return () => {};
+  }
+}
+
+// PLATILLOS fuertes (crash de batería) + bombo, al aparecer el número.
+export function playSorteoPlatillos() {
+  try {
+    const ctx = obtenerAudioContext();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const { master } = crearSalidaConCompresor(ctx, 1);
+
+    // Chapa brillante: ruido con los graves recortados y caída larga.
+    const ruido = ctx.createBufferSource();
+    ruido.buffer = obtenerBufferRuido(ctx);
+    const agudos = ctx.createBiquadFilter();
+    agudos.type = "highpass";
+    agudos.frequency.value = 5200;
+    const ruidoGanancia = ctx.createGain();
+    ruidoGanancia.gain.setValueAtTime(0.0001, t);
+    ruidoGanancia.gain.exponentialRampToValueAtTime(1.0, t + 0.004);
+    ruidoGanancia.gain.exponentialRampToValueAtTime(0.25, t + 0.35);
+    ruidoGanancia.gain.exponentialRampToValueAtTime(0.0001, t + 2.8);
+    ruido.connect(agudos).connect(ruidoGanancia).connect(master);
+    ruido.start(t, 0, 3);
+
+    // Metal: varias ondas cuadradas desafinadas dan el "cling" del platillo.
+    const metal = ctx.createGain();
+    metal.gain.setValueAtTime(0.0001, t);
+    metal.gain.exponentialRampToValueAtTime(0.16, t + 0.005);
+    metal.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+    const filtroMetal = ctx.createBiquadFilter();
+    filtroMetal.type = "highpass";
+    filtroMetal.frequency.value = 6500;
+    metal.connect(filtroMetal).connect(master);
+    [4160, 5430, 6790, 8210, 9540, 11000].forEach((frecuencia) => {
+      const osc = ctx.createOscillator();
+      osc.type = "square";
+      osc.frequency.value = frecuencia;
+      osc.connect(metal);
+      osc.start(t);
+      osc.stop(t + 1.7);
+    });
+
+    // Bombo que empuja el golpe.
+    const bombo = ctx.createOscillator();
+    const bomboGanancia = ctx.createGain();
+    bombo.type = "sine";
+    bombo.frequency.setValueAtTime(120, t);
+    bombo.frequency.exponentialRampToValueAtTime(45, t + 0.35);
+    bomboGanancia.gain.setValueAtTime(0.0001, t);
+    bomboGanancia.gain.exponentialRampToValueAtTime(0.95, t + 0.01);
+    bomboGanancia.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    bombo.connect(bomboGanancia).connect(master);
+    bombo.start(t);
+    bombo.stop(t + 0.65);
+
+    window.setTimeout(() => master.disconnect(), 3500);
+  } catch (error) {
+    console.warn("Audio del Sorteo no disponible:", error);
+  }
+}
+
+function vozEspanola() {
+  try {
+    const voces = window.speechSynthesis.getVoices?.() || [];
+    return (
+      voces.find((voz) => /^es[-_]ES/i.test(voz.lang)) ||
+      voces.find((voz) => /^es/i.test(voz.lang)) ||
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
+// Cómo se dice el número: los de una cifra con "cero" delante ("cero siete")
+// para que quede claro que es el 07 de la cuadrícula.
+function numeroHablado(numero) {
+  const n = Number(numero);
+  return n < 10 ? `cero ${n}` : String(n);
+}
+
+// La voz CANTA el número (despacio, con énfasis) y remata con "¡Enhorabuena!".
+// Se corta cualquier voz anterior para que no se pise.
+export function cantarResultadoSorteo({ numero }) {
+  try {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    if (!Number.isFinite(Number(numero))) return;
+    window.speechSynthesis.cancel();
+    const voz = vozEspanola();
+
+    const decir = (texto, { rate, pitch }) => {
+      const utter = new SpeechSynthesisUtterance(texto);
+      utter.lang = "es-ES";
+      if (voz) utter.voice = voz;
+      utter.rate = rate;
+      utter.pitch = pitch;
+      utter.volume = 1;
+      window.speechSynthesis.speak(utter);
+    };
+
+    decir(numeroHablado(numero), { rate: 0.75, pitch: 1.15 });
+    decir("¡Enhorabuena!", { rate: 0.9, pitch: 1.2 });
+  } catch (error) {
+    console.warn("Voz del Sorteo no disponible:", error);
+  }
+}
+
 function decirEnVoz(texto) {
   try {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
