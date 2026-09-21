@@ -19,16 +19,15 @@ function aInputLocal(iso) {
   return `${fecha.getFullYear()}-${dos(fecha.getMonth() + 1)}-${dos(fecha.getDate())}T${dos(fecha.getHours())}:${dos(fecha.getMinutes())}`;
 }
 
-// Cuándo se sorteó la cuadrícula (instante en que arrancó el sorteo en
-// directo). Las anteriores al sorteo en directo no lo tienen guardado.
-function textoSorteada(edicion) {
-  return edicion.sorteo_inicio_at
-    ? `Sorteada el ${formatearFechaSorteo(Date.parse(edicion.sorteo_inicio_at))}`
-    : "";
+// Cuándo se sorteó la cuadrícula: el instante en que arrancó el sorteo en
+// directo o, en las anteriores a ese sistema, cuando se resolvió (resuelta_at).
+function textoSorteado(edicion) {
+  const cuando = edicion.sorteo_inicio_at || edicion.resuelta_at;
+  return cuando ? `Sorteado el ${formatearFechaSorteo(Date.parse(cuando))}` : "";
 }
 
 function etiquetaEstado(edicion) {
-  if (edicion.estado === "resuelta") return textoSorteada(edicion) || "Resuelta";
+  if (edicion.estado === "resuelta") return textoSorteado(edicion) || "Resuelta";
   if (edicion.sorteo_inicio_at) return "🎰 Sorteando en directo…";
   if (edicion.sorteo_programado_at) {
     return `📅 Sorteo el ${formatearFechaSorteo(Date.parse(edicion.sorteo_programado_at))}`;
@@ -532,7 +531,7 @@ export default function SorteoEditions() {
             titulo={`Sorteo ${edicionAbierta.numero}`}
             subtitulo={
               edicionAbierta.estado === "resuelta"
-                ? `🏁 ${textoSorteada(edicionAbierta) || "Sorteo resuelto"}`
+                ? `🏁 ${textoSorteado(edicionAbierta) || "Sorteo resuelto"}`
                 : edicionAbierta.sorteo_programado_at
                   ? `📅 Sorteo el ${formatearFechaSorteo(Date.parse(edicionAbierta.sorteo_programado_at))}`
                   : ""
