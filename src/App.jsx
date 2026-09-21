@@ -852,6 +852,7 @@ export default function App() {
   const [numerosSorteoCliente, setNumerosSorteoCliente] = useState([]);
   const [cargandoSorteo, setCargandoSorteo] = useState(false);
   const [errorSorteo, setErrorSorteo] = useState("");
+  const [motivoSorteoNoDisponible, setMotivoSorteoNoDisponible] = useState("");
   // Sorteo en directo: aviso de la fecha/hora de cada cuadrícula donde juega
   // el cliente y, a esa hora, pantalla con la rotación de números. Mismo
   // interruptor que el resto del Sorteo (cuando se quite es_pruebas de las
@@ -1406,18 +1407,25 @@ export default function App() {
       const { data, error } = await supabase
         .from("promociones_sorteo")
         .select("*")
-        .order("updated_at", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false });
       if (!activo) return;
       if (error) {
         console.error("No se pudo comprobar la disponibilidad del Sorteo:", error);
         setConfiguracionSorteoCliente(null);
+        setMotivoSorteoNoDisponible(`Error al cargar: ${error.message || "sin detalle"}`);
         return;
       }
-      const hoy = getTodayISO();
       const promociones = data || [];
-      const vigente = promociones.find((item) => item.activa && (!item.fecha_inicio || item.fecha_inicio <= hoy) && (!item.fecha_fin || item.fecha_fin >= hoy));
+      // El Sorteo NO caduca por fecha: sigue vigente mientras esté marcado
+      // como activo en el Admin. Las fechas que pueda tener la fila
+      // (fecha_inicio / fecha_fin) se ignoran a propósito.
+      const vigente = promociones.find((item) => item.activa);
       setConfiguracionSorteoCliente(vigente || null);
+      // Motivo visible en el botón (solo cuando no está disponible), para
+      // no tener que abrir la consola del navegador en el móvil.
+      if (vigente) setMotivoSorteoNoDisponible("");
+      else if (promociones.length === 0) setMotivoSorteoNoDisponible("No hay ningún Sorteo creado");
+      else setMotivoSorteoNoDisponible("Sorteo no activo");
     }
     cargarDisponibilidadSorteo();
     return () => { activo = false; };
@@ -4484,7 +4492,7 @@ export default function App() {
                   <span style={styles.juegoTarjetaIcono}>🎟️</span>
                   <span style={styles.juegoTarjetaTitulo}>Sorteo</span>
                   {!configuracionSorteoCliente && (
-                    <span style={styles.juegoTarjetaSubtitulo}>Aún no disponible</span>
+                    <span style={styles.juegoTarjetaSubtitulo}>{motivoSorteoNoDisponible || "Aún no disponible"}</span>
                   )}
                 </button>
               </div>
