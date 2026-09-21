@@ -3,6 +3,8 @@ import { supabase } from "../supabaseClient";
 import StoreWheel from "../components/StoreWheel";
 import BingoDrumStage from "../components/BingoDrumStage";
 import SorteoGrid from "../components/sorteo/SorteoGrid";
+import SorteoDirecto from "../components/sorteo/SorteoDirecto";
+import { formatearFechaSorteo, useSorteoDirecto } from "../utils/sorteoDirecto";
 import { cantarNumeroSorteo, playSorteoDing } from "../utils/sorteoSound";
 import { leerVistaReposo } from "../utils/pantallaGrande";
 import logoLojo from "../assets/logo-lojo.jpg";
@@ -209,6 +211,10 @@ export default function DisplayPage() {
   const [sorteoGrids, setSorteoGrids] = useState([]);
   // undefined = cargando; null = no hay Sorteo configurado.
   const [sorteoReposoGrid, setSorteoReposoGrid] = useState(undefined);
+  // Sorteo programado desde el Admin: a su hora se arranca solo y ocupa la
+  // pantalla entera (por encima de Ruleta, Bingo o el reposo) con la
+  // rotación de números, hasta que termina y se ha visto el ganador.
+  const sorteoEnDirecto = useSorteoDirecto({ modo: "tv" });
 
   useEffect(() => {
     cargarPremios();
@@ -533,6 +539,18 @@ export default function DisplayPage() {
   const esJackpot =
     premioFinal?.tipo_sonido === "jackpot" || premioFinal?.tipo_sonido === "sirena";
 
+  if (sorteoEnDirecto.directo) {
+    return (
+      <SorteoDirecto
+        key={`${sorteoEnDirecto.directo.id}-${sorteoEnDirecto.directo.inicioAt}`}
+        edicion={sorteoEnDirecto.directo}
+        getAhora={sorteoEnDirecto.getAhora}
+        variante="tv"
+        sonido
+      />
+    );
+  }
+
   if (estado.startsWith("bingo")) {
     // El bombo trae su propia cabecera y su propio fondo (igual que esta
     // pantalla trae la suya para la Ruleta), así que aquí no se envuelve
@@ -562,7 +580,11 @@ export default function DisplayPage() {
             <div style={styles.sorteoKicker}>CASH LOJO · 🎟️ SORTEO</div>
             <p style={styles.sorteoSubtitle}>
               {sorteoReposoGrid
-                ? `${sorteoReposoGrid.edition_nombre || "Sorteo"} · ${ocupadas} de 100 números repartidos`
+                ? `${sorteoReposoGrid.edition_nombre || "Sorteo"} · ${ocupadas} de 100 números repartidos${
+                    sorteoEnDirecto.proximas[0]
+                      ? ` · 📅 Sorteo el ${formatearFechaSorteo(sorteoEnDirecto.proximas[0].programadoAt)}`
+                      : ""
+                  }`
                 : sorteoReposoGrid === null
                   ? "No hay ningún Sorteo activo"
                   : "Cargando Sorteo..."}
