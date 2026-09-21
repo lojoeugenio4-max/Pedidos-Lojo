@@ -11,10 +11,10 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../supabaseClient";
 import { lanzarConfeti } from "../../utils/confetti";
 import {
-  cantarNumeroSorteo,
-  playSorteoFanfarria,
+  cantarResultadoSorteo,
+  iniciarRedobleSorteo,
   playSorteoParada,
-  playSorteoTick,
+  playSorteoPlatillos,
 } from "../../utils/sorteoSound";
 import {
   SORTEO_T_DECENAS_MS,
@@ -123,8 +123,22 @@ export default function SorteoDirecto({
       resultado: t >= SORTEO_T_REVELAR_MS,
     };
   }
-  const ultimoDigito = useRef({ unidades: -1, decenas: -1 });
-  const ultimoTick = useRef(0);
+  const tInicial = useRef(t).current;
+  const temporizadorVoz = useRef(null);
+
+  // Redoble de tambor mientras giran las ruedas (solo en la TV). Si la
+  // pantalla se abre a mitad del sorteo, entra en el punto que toca.
+  useEffect(() => {
+    if (!sonido || tInicial >= SORTEO_T_REVELAR_MS) return undefined;
+    return iniciarRedobleSorteo({ desdeMs: tInicial, hastaMs: SORTEO_T_REVELAR_MS });
+  }, [sonido, tInicial]);
+
+  useEffect(
+    () => () => {
+      if (temporizadorVoz.current) window.clearTimeout(temporizadorVoz.current);
+    },
+    []
+  );
 
   // Reloj de la animación: se repinta en cada fotograma hasta poco después
   // de revelar el resultado; luego ya no hace falta.
@@ -161,20 +175,6 @@ export default function SorteoDirecto({
   useEffect(() => {
     const marca = disparado.current;
 
-    if (sonido) {
-      const posU = Math.floor(posicionRueda(t, edicion.unidades, SORTEO_T_UNIDADES_MS));
-      const posD = Math.floor(posicionRueda(t, edicion.decenas, SORTEO_T_DECENAS_MS));
-      const cambio =
-        (t < SORTEO_T_UNIDADES_MS && posU !== ultimoDigito.current.unidades) ||
-        (t < SORTEO_T_DECENAS_MS && posD !== ultimoDigito.current.decenas);
-      ultimoDigito.current = { unidades: posU, decenas: posD };
-      const ahoraMs = performance.now();
-      if (cambio && ahoraMs - ultimoTick.current > 80) {
-        ultimoTick.current = ahoraMs;
-        playSorteoTick();
-      }
-    }
-
     if (!marca.unidades && t >= SORTEO_T_UNIDADES_MS) {
       marca.unidades = true;
       if (sonido) playSorteoParada();
@@ -187,11 +187,13 @@ export default function SorteoDirecto({
       marca.resultado = true;
       lanzarConfeti({ duracionMs: 7000 });
       if (sonido) {
-        playSorteoFanfarria();
-        cantarNumeroSorteo({ numero: numeroFinal });
+        // Platillazo al aparecer el número y, un instante después (para que
+        // se oigan los platillos), la voz canta el número y felicita.
+        playSorteoPlatillos();
+        temporizadorVoz.current = window.setTimeout(() => cantarResultadoSorteo({ numero: numeroFinal }), 1100);
       }
     }
-  }, [t, sonido, edicion.unidades, edicion.decenas, numeroFinal]);
+  }, [t, sonido, numeroFinal]);
 
   const revelado = t >= SORTEO_T_REVELAR_MS;
   const fase = t < SORTEO_T_UNIDADES_MS ? "unidades" : t < SORTEO_T_DECENAS_MS ? "decenas" : revelado ? "resultado" : "suspense";
