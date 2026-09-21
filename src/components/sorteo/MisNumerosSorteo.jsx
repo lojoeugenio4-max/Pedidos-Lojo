@@ -66,7 +66,7 @@ function MiniCuadricula({ mios, premiado }) {
   );
 }
 
-export default function MisNumerosSorteo({ numeros = [], proximas = [] }) {
+export default function MisNumerosSorteo({ numeros = [], proximas = [], fechasSorteo = {} }) {
   const grupos = agruparPorCuadricula(numeros);
   const total = numeros.length;
   const fechaPorEdicion = new Map(proximas.map((p) => [p.numero, p.programadoAt]));
@@ -80,6 +80,8 @@ export default function MisNumerosSorteo({ numeros = [], proximas = [] }) {
 
       {grupos.map((g) => {
         const fecha = fechaPorEdicion.get(g.orden);
+        // Cuándo se sorteó (solo las cuadrículas sorteadas con el sorteo en directo).
+        const sorteadaEn = g.resuelta ? fechasSorteo[g.orden] : null;
         return (
           <section key={g.nombre} style={{ ...estilos.tarjeta, ...(g.resuelta ? estilos.tarjetaResuelta : null), ...(g.ganador ? estilos.tarjetaGanadora : null) }}>
             <header style={estilos.cabecera}>
@@ -88,6 +90,8 @@ export default function MisNumerosSorteo({ numeros = [], proximas = [] }) {
                 {g.resuelta ? "Sorteado" : "En juego"}
               </span>
             </header>
+
+            {sorteadaEn && <div style={estilos.detalle}>🏁 Sorteada el {formatearFechaSorteo(sorteadaEn)}</div>}
 
             {g.ganador ? (
               <div style={estilos.ganadorAviso}>🏆 ¡Enhorabuena, uno de tus números ha sido el premiado!</div>
