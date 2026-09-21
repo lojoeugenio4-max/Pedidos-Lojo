@@ -109,6 +109,8 @@ export default function SorteoDirecto({
 }) {
   const esTV = variante === "tv";
   const alto = esTV ? "min(46vh, 34vw)" : "min(30vh, 40vw)";
+  // En el móvil el cliente puede silenciarlo con el botón del altavoz.
+  const [sonidoOn, setSonidoOn] = useState(sonido);
 
   const numeroFinal = edicion.decenas * 10 + edicion.unidades;
 
@@ -129,24 +131,24 @@ export default function SorteoDirecto({
 
   // ¿Está despierto el audio? (los navegadores lo bloquean hasta que alguien
   // toca la pantalla). Se vigila para arrancar el redoble en cuanto se pueda.
-  const [audioActivo, setAudioActivo] = useState(() => (sonido ? audioSorteoActivo() : false));
+  const [audioActivo, setAudioActivo] = useState(() => (sonidoOn ? audioSorteoActivo() : false));
   useEffect(() => {
-    if (!sonido) return undefined;
+    if (!sonidoOn) return undefined;
     const revisar = () => setAudioActivo(audioSorteoActivo());
     revisar();
     const intervalo = window.setInterval(revisar, 400);
     return () => window.clearInterval(intervalo);
-  }, [sonido]);
+  }, [sonidoOn]);
 
   // Redoble de tambor mientras giran las ruedas (solo en la TV). Arranca en
   // el punto que toca del sorteo: sirve tanto si la pantalla se abre a mitad
   // como si el audio se desbloquea con un toque a mitad del sorteo.
   useEffect(() => {
-    if (!sonido || !audioActivo) return undefined;
+    if (!sonidoOn || !audioActivo) return undefined;
     const tAhora = Math.max(0, getAhora() - edicion.inicioAt);
     if (tAhora >= SORTEO_T_REVELAR_MS) return undefined;
     return iniciarRedobleSorteo({ desdeMs: tAhora, hastaMs: SORTEO_T_REVELAR_MS });
-  }, [sonido, audioActivo, getAhora, edicion.inicioAt]);
+  }, [sonidoOn, audioActivo, getAhora, edicion.inicioAt]);
 
   useEffect(
     () => () => {
@@ -191,7 +193,7 @@ export default function SorteoDirecto({
     const marca = disparado.current;
     // Si el audio sigue bloqueado, nada suena (y no se acumula para sonar
     // tarde cuando se desbloquee).
-    const sonar = sonido && audioSorteoActivo();
+    const sonar = sonidoOn && audioSorteoActivo();
 
     if (!marca.unidades && t >= SORTEO_T_UNIDADES_MS) {
       marca.unidades = true;
@@ -208,10 +210,16 @@ export default function SorteoDirecto({
         // Platillazo al aparecer el número y, un instante después (para que
         // se oigan los platillos), la voz canta el número y felicita.
         playSorteoPlatillos();
-        temporizadorVoz.current = window.setTimeout(() => cantarResultadoSorteo({ numero: numeroFinal }), 1100);
+        // En la TV siempre se felicita; en el móvil solo si el número premiado
+        // es de ese cliente (al resto no se le dice "enhorabuena").
+        const felicitar = esTV || misNumeros.includes(numeroFinal);
+        temporizadorVoz.current = window.setTimeout(
+          () => cantarResultadoSorteo({ numero: numeroFinal, felicitar }),
+          1100
+        );
       }
     }
-  }, [t, sonido, numeroFinal]);
+  }, [t, sonidoOn, numeroFinal, esTV, misNumeros]);
 
   const revelado = t >= SORTEO_T_REVELAR_MS;
   const fase = t < SORTEO_T_UNIDADES_MS ? "unidades" : t < SORTEO_T_DECENAS_MS ? "decenas" : revelado ? "resultado" : "suspense";
@@ -226,13 +234,20 @@ export default function SorteoDirecto({
   const esMio = misNumeros.includes(numeroFinal);
   const premio = edicion.premioTexto;
 
+  // Un toque/clic despierta el audio (obligatorio en los navegadores, sobre
+  // todo en el iPhone). En cuanto suena, el redoble entra en su punto.
+  const activarAudio = () => {
+    desbloquearAudioSorteo().then((ok) => ok && setAudioActivo(true));
+  };
+
   return (
     <div
       style={{ ...estilos.pantalla, zIndex: esTV ? 5000 : 10100 }}
       role="dialog"
       aria-modal="true"
       aria-label="Sorteo en directo"
-      onPointerDown={sonido && !audioActivo ? () => desbloquearAudioSorteo().then((ok) => ok && setAudioActivo(true)) : undefined}
+      onPointerDown={sonidoOn && !audioActivo ? activarAudio : undefined}
+      onClick={sonidoOn && !audioActivo ? activarAudio : undefined}
     >
       <style>{`
         @keyframes lojoSorteoLatido { 0%,100% { transform: scale(1); opacity: .9; } 50% { transform: scale(1.06); opacity: 1; } }
@@ -246,6 +261,26 @@ export default function SorteoDirecto({
           <div style={{ ...estilos.kicker, fontSize: esTV ? "clamp(18px, 2.6vh, 30px)" : 15 }}>CASH LOJO · 🎟️ SORTEO EN DIRECTO</div>
           <div style={{ ...estilos.subtitulo, fontSize: esTV ? "clamp(14px, 2vh, 22px)" : 13 }}>{edicion.nombre}</div>
         </div>
+        {!esTV && sonido && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (sonidoOn) {
+                try {
+                  window.speechSynthesis?.cancel();
+                } catch {
+                  // nada
+                }
+              }
+              setSonidoOn((v) => !v);
+            }}
+            style={estilos.cerrar}
+            aria-label={sonidoOn ? "Silenciar el sonido" : "Activar el sonido"}
+          >
+            {sonidoOn ? "🔊" : "🔇"}
+          </button>
+        )}
         {!esTV && onCerrar && (
           <button type="button" onClick={onCerrar} style={estilos.cerrar} aria-label="Cerrar sorteo">
             ✕
@@ -314,12 +349,17 @@ export default function SorteoDirecto({
         </div>
       </main>
 
-      {sonido && !audioActivo && (
+      {esTV && sonidoOn && !audioActivo && (
         <div style={estilos.avisoSonido}>🔊 Toca la pantalla para activar el sonido</div>
       )}
 
       {!esTV && (
         <footer style={estilos.pie}>
+          {sonidoOn && !audioActivo && (
+            <button type="button" onClick={activarAudio} style={estilos.avisoSonidoMovil}>
+              🔊 Toca aquí para oír el sorteo
+            </button>
+          )}
           {misNumeros.length > 0 && (
             <div style={estilos.misNumeros}>
               Tus números:{" "}
@@ -477,6 +517,17 @@ const estilos = {
     animation: "lojoSorteoLatido 1.2s ease-in-out infinite",
     cursor: "pointer",
     whiteSpace: "nowrap",
+  },
+  avisoSonidoMovil: {
+    border: 0,
+    borderRadius: 999,
+    padding: "11px 22px",
+    background: "#facc15",
+    color: "#422006",
+    fontSize: 15,
+    fontWeight: 900,
+    cursor: "pointer",
+    animation: "lojoSorteoLatido 1.2s ease-in-out infinite",
   },
   pie: { flexShrink: 0, display: "grid", gap: 10, justifyItems: "center", paddingBottom: "env(safe-area-inset-bottom, 0px)" },
   misNumeros: { fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,.85)", textAlign: "center" },
