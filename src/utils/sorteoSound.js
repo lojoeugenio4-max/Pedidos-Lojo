@@ -360,7 +360,7 @@ function numeroHablado(numero) {
 
 // La voz CANTA el número (despacio, con énfasis) y remata con "¡Enhorabuena!".
 // Se corta cualquier voz anterior para que no se pise.
-export function cantarResultadoSorteo({ numero }) {
+export function cantarResultadoSorteo({ numero, felicitar = true }) {
   try {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     if (!Number.isFinite(Number(numero))) return;
@@ -378,7 +378,7 @@ export function cantarResultadoSorteo({ numero }) {
     };
 
     decir(numeroHablado(numero), { rate: 0.75, pitch: 1.15 });
-    decir("¡Enhorabuena!", { rate: 0.9, pitch: 1.2 });
+    if (felicitar) decir("¡Enhorabuena!", { rate: 0.9, pitch: 1.2 });
   } catch (error) {
     console.warn("Voz del Sorteo no disponible:", error);
   }
