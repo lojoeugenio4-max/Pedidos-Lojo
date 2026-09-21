@@ -74,7 +74,7 @@ async function cargarCuadriculaSorteoActiva() {
   const consultaEdicion = () =>
     supabase
       .from("sorteo_editions")
-      .select("id, estado, sorteo_inicio_at, sorteo_programado_at")
+      .select("id, estado, sorteo_inicio_at, resuelta_at, sorteo_programado_at")
       .eq("promocion_id", promo.id)
       .order("numero", { ascending: false })
       .limit(1);
@@ -106,7 +106,9 @@ async function cargarCuadriculaSorteoActiva() {
   return {
     ...grid,
     estado: edicion.estado,
-    sorteo_inicio_at: edicion.sorteo_inicio_at || null,
+    // Instante del sorteo: el del sorteo en directo o, en las cuadrículas
+    // anteriores a ese sistema, cuando se resolvieron.
+    sorteo_inicio_at: edicion.sorteo_inicio_at || edicion.resuelta_at || null,
     sorteo_programado_at: edicion.sorteo_programado_at || null,
   };
 }
@@ -606,7 +608,7 @@ export default function DisplayPage() {
               titulo={sorteoReposoGrid.edition_nombre}
               subtitulo={
                 sorteoReposoGrid.estado === "resuelta" && sorteoReposoGrid.sorteo_inicio_at
-                  ? `🏁 Sorteada el ${formatearFechaSorteo(Date.parse(sorteoReposoGrid.sorteo_inicio_at))}`
+                  ? `🏁 Sorteado el ${formatearFechaSorteo(Date.parse(sorteoReposoGrid.sorteo_inicio_at))}`
                   : sorteoReposoGrid.sorteo_programado_at
                     ? `📅 Sorteo el ${formatearFechaSorteo(Date.parse(sorteoReposoGrid.sorteo_programado_at))}`
                     : ""
