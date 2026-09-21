@@ -19,8 +19,16 @@ function aInputLocal(iso) {
   return `${fecha.getFullYear()}-${dos(fecha.getMonth() + 1)}-${dos(fecha.getDate())}T${dos(fecha.getHours())}:${dos(fecha.getMinutes())}`;
 }
 
+// Cuándo se sorteó la cuadrícula (instante en que arrancó el sorteo en
+// directo). Las anteriores al sorteo en directo no lo tienen guardado.
+function textoSorteada(edicion) {
+  return edicion.sorteo_inicio_at
+    ? `Sorteada el ${formatearFechaSorteo(Date.parse(edicion.sorteo_inicio_at))}`
+    : "";
+}
+
 function etiquetaEstado(edicion) {
-  if (edicion.estado === "resuelta") return "Resuelta";
+  if (edicion.estado === "resuelta") return textoSorteada(edicion) || "Resuelta";
   if (edicion.sorteo_inicio_at) return "🎰 Sorteando en directo…";
   if (edicion.sorteo_programado_at) {
     return `📅 Sorteo el ${formatearFechaSorteo(Date.parse(edicion.sorteo_programado_at))}`;
@@ -82,6 +90,16 @@ export default function SorteoEditions() {
   useEffect(() => {
     if (edicionAbierta?.estado === "resuelta") recargarCuadricula(edicionAbierta.id);
   }, [edicionAbierta?.estado]);
+
+  // Mientras hay una cuadrícula abierta en pantalla, se vuelve a pedir cada
+  // pocos segundos para que aparezcan los números que se van asignando en
+  // caja (antes solo se cargaba al pulsar «Ver cuadrícula»).
+  useEffect(() => {
+    if (!edicionAbierta?.id) return undefined;
+    const id = edicionAbierta.id;
+    const intervalo = window.setInterval(() => recargarCuadricula(id), REFRESCO_ADMIN_MS);
+    return () => window.clearInterval(intervalo);
+  }, [edicionAbierta?.id]);
 
   async function cargarEdiciones(silencioso = false) {
     if (!silencioso) {
@@ -512,6 +530,13 @@ export default function SorteoEditions() {
           </div>
           <SorteoGrid
             titulo={`Sorteo ${edicionAbierta.numero}`}
+            subtitulo={
+              edicionAbierta.estado === "resuelta"
+                ? `🏁 ${textoSorteada(edicionAbierta) || "Sorteo resuelto"}`
+                : edicionAbierta.sorteo_programado_at
+                  ? `📅 Sorteo el ${formatearFechaSorteo(Date.parse(edicionAbierta.sorteo_programado_at))}`
+                  : ""
+            }
             casillas={cuadricula.casillas}
             numeroPremiado={cuadricula.numero_premiado}
             compacto
