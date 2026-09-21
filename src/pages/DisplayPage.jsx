@@ -74,7 +74,7 @@ async function cargarCuadriculaSorteoActiva() {
   const consultaEdicion = () =>
     supabase
       .from("sorteo_editions")
-      .select("id")
+      .select("id, estado, sorteo_inicio_at, sorteo_programado_at")
       .eq("promocion_id", promo.id)
       .order("numero", { ascending: false })
       .limit(1);
@@ -100,7 +100,15 @@ async function cargarCuadriculaSorteoActiva() {
     console.error("No se pudo cargar la cuadrícula del Sorteo para la TV:", gridError);
     return undefined;
   }
-  return grid || null;
+  if (!grid) return null;
+  // Se añaden las fechas para poder enseñar junto a la cuadrícula cuándo se
+  // sorteó (o cuándo se sortea).
+  return {
+    ...grid,
+    estado: edicion.estado,
+    sorteo_inicio_at: edicion.sorteo_inicio_at || null,
+    sorteo_programado_at: edicion.sorteo_programado_at || null,
+  };
 }
 
 function DisplayWheel({ premios = [], girando, premioFinal }) {
@@ -596,6 +604,13 @@ export default function DisplayPage() {
             <SorteoGrid
               key={sorteoReposoGrid.edition_id}
               titulo={sorteoReposoGrid.edition_nombre}
+              subtitulo={
+                sorteoReposoGrid.estado === "resuelta" && sorteoReposoGrid.sorteo_inicio_at
+                  ? `🏁 Sorteada el ${formatearFechaSorteo(Date.parse(sorteoReposoGrid.sorteo_inicio_at))}`
+                  : sorteoReposoGrid.sorteo_programado_at
+                    ? `📅 Sorteo el ${formatearFechaSorteo(Date.parse(sorteoReposoGrid.sorteo_programado_at))}`
+                    : ""
+              }
               casillas={sorteoReposoGrid.casillas}
               numeroPremiado={sorteoReposoGrid.numero_premiado ?? null}
             />
