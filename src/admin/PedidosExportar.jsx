@@ -82,14 +82,21 @@ function construirContenidoCSV(cabecera, filas) {
   return [cabecera, ...filas].map((fila) => fila.map(escaparCSV).join(";")).join("\r\n");
 }
 
-function filaCSVDesdeMovimiento(fila, codigoLojoPorToken = {}) {
+function filaCSVDesdeMovimiento(fila, codigoLojoPorToken = {}, codigoLojoPorArticulo = {}) {
+  // Preferimos el Código Lojo ACTUAL del artículo (si lo conocemos, buscando
+  // por articulo_id) antes que el código que se guardó en el momento del
+  // pedido: así, si el código de un artículo estaba mal puesto y luego se
+  // corrigió en el Admin, el CSV ya no arrastra el código viejo.
+  const codigoActual =
+    fila.articulo_id != null ? codigoLojoPorArticulo[fila.articulo_id] : null;
+
   return [
     fila.pedido_id || fila.id || "",
     fila.created_at ? new Date(fila.created_at).toLocaleString("es-ES") : "",
     (fila.cliente_token && codigoLojoPorToken[fila.cliente_token]) || "",
     fila.customer_name || "",
     fila.departamento || "",
-    fila.codigo_articulo || "",
+    codigoActual || fila.codigo_articulo || "",
     fila.nombre_articulo || "",
     formatearNumero(fila.cajas),
     formatearNumero(fila.unidades),
@@ -109,6 +116,9 @@ export default function PedidosExportar() {
 
   const [movimientos, setMovimientos] = useState([]);
   const [codigoLojoPorToken, setCodigoLojoPorToken] = useState({});
+  // Código Lojo ACTUAL de cada artículo (clave: id del artículo), para no
+  // depender del código "congelado" que se guardó en el momento del pedido.
+  const [codigoLojoPorArticulo, setCodigoLojoPorArticulo] = useState({});
   const [exportados, setExportados] = useState({});
   const [desde, setDesde] = useState(hoyEstadistico);
   const [hasta, setHasta] = useState(hoyEstadistico);
@@ -172,6 +182,17 @@ export default function PedidosExportar() {
         if (cliente.token) mapa[cliente.token] = cliente.codigo_lojo || "";
       });
       setCodigoLojoPorToken(mapa);
+    })();
+
+    (async () => {
+      const { data } = await supabase.from("articulos").select("id, codigo_lojo");
+      const mapa = {};
+      (data || []).forEach((articulo) => {
+        if (articulo.id != null && String(articulo.codigo_lojo || "").trim()) {
+          mapa[articulo.id] = String(articulo.codigo_lojo).trim();
+        }
+      });
+      setCodigoLojoPorArticulo(mapa);
     })();
 
     (async () => {
@@ -252,7 +273,7 @@ export default function PedidosExportar() {
       const { data, error: movimientosError } = await supabase
         .from("estadisticas_movimientos")
         .select(
-          "id, pedido_id, created_at, codigo_articulo, nombre_articulo, departamento, cajas, unidades, customer_name, cliente_token"
+          "id, pedido_id, created_at, codigo_articulo, articulo_id, nombre_articulo, departamento, cajas, unidades, customer_name, cliente_token"
         )
         .gte("created_at", inicio)
         .lt("created_at", fin)
@@ -336,7 +357,7 @@ export default function PedidosExportar() {
         const { data, error: movError } = await supabase
           .from("estadisticas_movimientos")
           .select(
-            "id, pedido_id, created_at, codigo_articulo, nombre_articulo, departamento, cajas, unidades, customer_name, cliente_token"
+            "id, pedido_id, created_at, codigo_articulo, articulo_id, nombre_articulo, departamento, cajas, unidades, customer_name, cliente_token"
           )
           .order("created_at", { ascending: true })
           .range(desdeMov, desdeMov + TAMANO_PAGINA - 1);
@@ -482,7 +503,7 @@ export default function PedidosExportar() {
         const filasCSV = pedido.lineas
           .slice()
           .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
-          .map((fila) => filaCSVDesdeMovimiento(fila, codigoLojoPorToken));
+          .map((fila) => filaCSVDesdeMovimiento(fila, codigoLojoPorToken, codigoLojoPorArticulo));
 
         const contenido = construirContenidoCSV(CABECERA_CSV_PEDIDO, filasCSV);
 
@@ -982,7 +1003,11 @@ export default function PedidosExportar() {
                   {pedidoDetalle.lineas.map((linea) => (
                     <tr key={linea.id} style={tr}>
                       <td style={td}>{linea.departamento || "—"}</td>
-                      <td style={td}>{linea.codigo_articulo || "—"}</td>
+                      <td style={td}>
+                        {(linea.articulo_id != null && codigoLojoPorArticulo[linea.articulo_id]) ||
+                          linea.codigo_articulo ||
+                          "—"}
+                      </td>
                       <td style={td}>{linea.nombre_articulo || "—"}</td>
                       <td style={td}>{formatearNumero(linea.cajas)}</td>
                       <td style={td}>{formatearNumero(linea.unidades)}</td>
@@ -1049,7 +1074,11 @@ export default function PedidosExportar() {
                   .map((linea) => (
                     <tr key={linea.id}>
                       <td>{linea.departamento || "—"}</td>
-                      <td>{linea.codigo_articulo || "—"}</td>
+                      <td>
+                        {(linea.articulo_id != null && codigoLojoPorArticulo[linea.articulo_id]) ||
+                          linea.codigo_articulo ||
+                          "—"}
+                      </td>
                       <td>{linea.nombre_articulo || "—"}</td>
                       <td>{formatearNumero(linea.cajas)}</td>
                       <td>{formatearNumero(linea.unidades)}</td>
