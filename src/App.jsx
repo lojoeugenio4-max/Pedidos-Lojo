@@ -2242,6 +2242,29 @@ export default function App() {
     }
 
     cargarCatalogo();
+
+    // Si alguien corrige un artículo en el Admin (por ejemplo su Código
+    // Lojo) mientras un cliente ya tiene la app abierta, sin esto el
+    // cliente se quedaría con los datos con los que cargó la página la
+    // primera vez, aunque pasen horas o días sin cerrar la pestaña — y
+    // cualquier pedido que hiciera mientras tanto arrastraría el dato
+    // antiguo. Con esta suscripción, en cuanto cambia algo en "articulos"
+    // se vuelve a pedir el catálogo entero, así todas las pestañas
+    // abiertas quedan al día enseguida.
+    const canalArticulos = supabase
+      .channel("articulos-cambios")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "articulos" },
+        () => {
+          cargarCatalogo();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canalArticulos);
+    };
   }, [t.catalogError]);
 
   const ordenarProductos = (lista) =>
@@ -3430,6 +3453,14 @@ export default function App() {
 
           return {
             pedido_id: pedidoId,
+            // Guardamos también el id del artículo (además del código en texto)
+            // para poder consultar, en el momento de exportar o revisar el
+            // pedido, cuál es el Código Lojo ACTUAL de ese artículo. Así, si el
+            // código de un artículo estaba mal puesto y se corrige más tarde en
+            // el Admin, los pedidos ya guardados dejan de arrastrar el código
+            // viejo/incompleto en vez de quedarse con la "foto" del momento en
+            // que se hizo el pedido.
+            articulo_id: product.id ? Number(product.id) : null,
             codigo_articulo:
               codigoLojo || (codigoRespaldo ? `SIN LOJO (${codigoRespaldo})` : ""),
             nombre_articulo: product.name || product.nombre || "",
