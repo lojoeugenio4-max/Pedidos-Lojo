@@ -2886,14 +2886,18 @@ export default function App() {
     if (!configuracionSorteoCliente) return null;
 
     const variedadMinima = Math.max(1, Number(configuracionSorteoCliente.variedad_minima || 10));
+    const maximoPorPedido = Math.max(
+      1,
+      Number(configuracionSorteoCliente.maximo_numeros_pedido || 4)
+    );
     const departamentosPermitidos = new Set(departamentosSorteoCliente.map((id) => String(id)));
 
     const articulosValidos = new Set();
 
     orderedItems.forEach((item) => {
+      // Solo cuentan las cajas: las unidades sueltas no dan número de Sorteo.
       const cajas = Number(item.boxes || 0);
-      const unidades = Number(item.units || 0);
-      if (cajas <= 0 && unidades <= 0) return;
+      if (cajas <= 0) return;
 
       if (configuracionSorteoCliente.modo === "departamentos") {
         const departamentoId = String(item?.product?.departamento_id ?? "");
@@ -2904,7 +2908,9 @@ export default function App() {
     });
 
     const variedadActual = articulosValidos.size;
-    const numerosConseguidos = Math.floor(variedadActual / variedadMinima);
+    const numerosSinTope = Math.floor(variedadActual / variedadMinima);
+    const numerosConseguidos = Math.min(numerosSinTope, maximoPorPedido);
+    const topeAlcanzado = numerosSinTope >= maximoPorPedido;
     const variedadParaSiguiente = variedadActual % variedadMinima;
     const variedadRestanteSiguiente =
       variedadParaSiguiente === 0 ? variedadMinima : variedadMinima - variedadParaSiguiente;
@@ -2914,6 +2920,8 @@ export default function App() {
       variedadActual,
       variedadMinima,
       numerosConseguidos,
+      maximoPorPedido,
+      topeAlcanzado,
       variedadRestante: Math.max(0, variedadMinima - variedadActual),
       variedadRestanteSiguiente,
     };
@@ -3853,14 +3861,21 @@ export default function App() {
 
   async function registrarPedidoParaSorteo(itemsPedido, pedidoId) {
     // Igual que Bingo: la SQL decide qué artículos cuentan (todos, o solo
-    // los de ciertos departamentos, según promociones_sorteo.modo).
+    // los de ciertos departamentos, según promociones_sorteo.modo). Aquí
+    // forzamos unidades a 0: para el Sorteo solo deben contar las cajas,
+    // nunca las unidades sueltas. Esto es una defensa adicional en el
+    // cliente — la SQL de registrar_pedido_sorteo debe aplicar la misma
+    // regla (y el tope de números) por su cuenta, ya que este RPC se
+    // puede llamar igualmente sin pasar por esta pantalla.
     if (!clienteToken || !configuracionSorteoCliente) return null;
 
-    const items = itemsPedido.map((item) => ({
-      articulo_id: item?.product?.id ?? null,
-      cajas: Number(item.boxes || 0),
-      unidades: Number(item.units || 0),
-    }));
+    const items = itemsPedido
+      .map((item) => ({
+        articulo_id: item?.product?.id ?? null,
+        cajas: Number(item.boxes || 0),
+        unidades: 0,
+      }))
+      .filter((item) => item.cajas > 0);
 
     const { data, error } = await supabase.rpc("registrar_pedido_sorteo", {
       p_token: clienteToken,
@@ -4959,7 +4974,11 @@ export default function App() {
                 />
               </div>
               <div style={styles.ruletaProgressMessage}>
-                {resumenSorteoPedido.numerosConseguidos > 0
+                {resumenSorteoPedido.topeAlcanzado
+                  ? `Tienes ${resumenSorteoPedido.numerosConseguidos} ${
+                      resumenSorteoPedido.numerosConseguidos === 1 ? "número" : "números"
+                    } de Sorteo, el máximo por pedido (${resumenSorteoPedido.maximoPorPedido}).`
+                  : resumenSorteoPedido.numerosConseguidos > 0
                   ? `Tienes ${resumenSorteoPedido.numerosConseguidos} ${
                       resumenSorteoPedido.numerosConseguidos === 1 ? "número" : "números"
                     } de Sorteo. Te faltan ${resumenSorteoPedido.variedadRestanteSiguiente} artículos diferentes para el siguiente.`
