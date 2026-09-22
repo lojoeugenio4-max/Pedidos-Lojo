@@ -85,6 +85,7 @@ export default function RuletaArticulos() {
         .select(`
           id,
           codigo,
+          codigo_lojo,
           nombre,
           activo,
           permite_unidades,
@@ -134,7 +135,7 @@ export default function RuletaArticulos() {
     const palabras = texto.split(/\s+/).filter(Boolean);
 
     return articulos.filter((articulo) => {
-      const codigo = String(articulo.codigo || "").trim();
+      const codigo = String(articulo.codigo_lojo || "").trim();
       const seleccionado = seleccionadosPorCodigo.has(codigo);
 
       const coincideDepartamento =
@@ -147,7 +148,7 @@ export default function RuletaArticulos() {
         (vistaFiltro === "FUERA_RULETA" && !seleccionado);
 
       const searchable = normalizar(
-        `${articulo.codigo || ""} ${articulo.nombre || ""} ${
+        `${articulo.codigo || ""} ${articulo.codigo_lojo || ""} ${articulo.nombre || ""} ${
           articulo.departamentos?.nombre || ""
         }`
       );
@@ -162,7 +163,7 @@ export default function RuletaArticulos() {
 
   const articulosFiltradosNoSeleccionados = useMemo(() => {
     return articulosFiltrados.filter((articulo) => {
-      const codigo = String(articulo.codigo || "").trim();
+      const codigo = String(articulo.codigo_lojo || "").trim();
       return codigo && !seleccionadosPorCodigo.has(codigo);
     });
   }, [articulosFiltrados, seleccionadosPorCodigo]);
@@ -170,7 +171,7 @@ export default function RuletaArticulos() {
   async function agregarArticulo(articulo, cantidadInicial = 1) {
     if (!promocion) return null;
 
-    const codigo = String(articulo.codigo || "").trim();
+    const codigo = String(articulo.codigo_lojo || "").trim();
 
     if (!codigo) {
       setError("Este artículo no tiene código.");
@@ -227,7 +228,7 @@ export default function RuletaArticulos() {
     const articulosParaInsertar = articulosFiltradosNoSeleccionados.map((articulo) => ({
       promocion_id: promocion.id,
       articulo_id: articulo.id,
-      codigo_articulo: String(articulo.codigo || "").trim(),
+      codigo_articulo: String(articulo.codigo_lojo || "").trim(),
       nombre_articulo: articulo.nombre || "",
       cantidad_minima: 1,
     }));
@@ -313,7 +314,7 @@ export default function RuletaArticulos() {
   }
 
   async function cambiarEstadoRuleta(articulo, seleccionadoActual) {
-    const codigo = String(articulo.codigo || "").trim();
+    const codigo = String(articulo.codigo_lojo || "").trim();
     const item = seleccionadosPorCodigo.get(codigo);
 
     if (seleccionadoActual && item) {
@@ -497,7 +498,7 @@ export default function RuletaArticulos() {
                 </tr>
               ) : (
                 articulosFiltrados.slice(0, 220).map((articulo) => {
-                  const codigo = String(articulo.codigo || "").trim();
+                  const codigo = String(articulo.codigo_lojo || "").trim();
                   const itemSeleccionado = seleccionadosPorCodigo.get(codigo);
                   const seleccionado = Boolean(itemSeleccionado);
                   const guardandoEste =
@@ -513,8 +514,10 @@ export default function RuletaArticulos() {
                       <td style={td}>
                         <strong>{articulo.nombre}</strong>
 
-                        {articulo.codigo && (
-                          <div style={codigoTexto}>Código: {articulo.codigo}</div>
+                        {articulo.codigo_lojo ? (
+                          <div style={codigoTexto}>Código Lojo: {articulo.codigo_lojo}</div>
+                        ) : (
+                          <div style={codigoTexto}>⚠️ Sin Código Lojo — no se puede añadir a la ruleta</div>
                         )}
                       </td>
 
