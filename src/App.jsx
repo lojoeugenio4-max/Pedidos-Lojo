@@ -2890,6 +2890,10 @@ export default function App() {
       1,
       Number(configuracionSorteoCliente.maximo_numeros_pedido || 4)
     );
+    const maximoPorDia = Math.max(
+      1,
+      Number(configuracionSorteoCliente.maximo_numeros_dia || 4)
+    );
     const departamentosPermitidos = new Set(departamentosSorteoCliente.map((id) => String(id)));
 
     const articulosValidos = new Set();
@@ -2921,6 +2925,7 @@ export default function App() {
       variedadMinima,
       numerosConseguidos,
       maximoPorPedido,
+      maximoPorDia,
       topeAlcanzado,
       variedadRestante: Math.max(0, variedadMinima - variedadActual),
       variedadRestanteSiguiente,
@@ -4984,6 +4989,9 @@ export default function App() {
                     } de Sorteo. Te faltan ${resumenSorteoPedido.variedadRestanteSiguiente} artículos diferentes para el siguiente.`
                   : `Te faltan ${resumenSorteoPedido.variedadRestante} artículos diferentes para conseguir un número de Sorteo.`}
               </div>
+              <div style={styles.ruletaProgressNote}>
+                Solo cuentan los artículos por cajas. Máximo {resumenSorteoPedido.maximoPorPedido} por pedido y {resumenSorteoPedido.maximoPorDia} al día.
+              </div>
             </div>
           )}
         </section>
@@ -5605,6 +5613,37 @@ export default function App() {
               </div>
             )}
 
+            {resumenSorteoPedido && orderedItems.length > 0 && (
+              <div
+                style={
+                  resumenSorteoPedido.cumple
+                    ? styles.bingoSummaryOk
+                    : styles.bingoSummaryPending
+                }
+              >
+                <div style={styles.ruletaSummaryTitle}>Promoción Sorteo</div>
+                <div style={styles.ruletaSummaryText}>
+                  Llevas {resumenSorteoPedido.variedadActual} {resumenSorteoPedido.variedadActual === 1 ? "artículo válido" : "artículos válidos"} para Sorteo.
+                </div>
+                {resumenSorteoPedido.topeAlcanzado ? (
+                  <div style={styles.bingoSummaryMessage}>
+                    Has conseguido {resumenSorteoPedido.numerosConseguidos} {resumenSorteoPedido.numerosConseguidos === 1 ? "número" : "números"} de Sorteo, el máximo permitido por pedido.
+                  </div>
+                ) : resumenSorteoPedido.numerosConseguidos > 0 ? (
+                  <div style={styles.bingoSummaryMessage}>
+                    Has conseguido {resumenSorteoPedido.numerosConseguidos} {resumenSorteoPedido.numerosConseguidos === 1 ? "número" : "números"} de Sorteo. Te faltan {resumenSorteoPedido.variedadRestanteSiguiente} artículos diferentes más para el siguiente.
+                  </div>
+                ) : (
+                  <div style={styles.bingoSummaryMessage}>
+                    Te faltan {resumenSorteoPedido.variedadRestante} {resumenSorteoPedido.variedadRestante === 1 ? "artículo distinto en cajas" : "artículos distintos en cajas"} para conseguir un número de Sorteo.
+                  </div>
+                )}
+                <div style={styles.bingoSummaryNote}>
+                  Solo cuentan los artículos comprados por cajas (las unidades sueltas no dan número). Máximo {resumenSorteoPedido.maximoPorPedido} {resumenSorteoPedido.maximoPorPedido === 1 ? "número" : "números"} por pedido y {resumenSorteoPedido.maximoPorDia} al día por cliente.
+                </div>
+              </div>
+            )}
+
             {orderedItems.length === 0 ? (
               <p style={styles.emptyBox}>{t.noItemsWithQuantity}</p>
             ) : (
@@ -5821,6 +5860,13 @@ const styles = {
     fontSize: "13px",
     lineHeight: "1.25",
     fontWeight: "800",
+  },
+
+  ruletaProgressNote: {
+    marginTop: "4px",
+    fontSize: "12px",
+    lineHeight: "1.25",
+    opacity: 0.75,
   },
 
   ruletaProductStatusPending: {
