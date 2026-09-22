@@ -7,6 +7,8 @@ const configuracionVacia = {
   activa: false,
   modo: "todos",
   variedad_minima: 10,
+  maximo_numeros_pedido: 4,
+  maximo_numeros_dia: 4,
   mensaje_cliente: "Tu pedido cumple las condiciones para participar en el Sorteo.",
 };
 
@@ -47,6 +49,8 @@ export default function SorteoConfiguracion() {
         activa: Boolean(promo.activa),
         modo: promo.modo || "todos",
         variedad_minima: promo.variedad_minima ?? 10,
+        maximo_numeros_pedido: promo.maximo_numeros_pedido ?? 4,
+        maximo_numeros_dia: promo.maximo_numeros_dia ?? 4,
         mensaje_cliente: promo.mensaje_cliente || "",
       });
 
@@ -87,6 +91,8 @@ export default function SorteoConfiguracion() {
         activa: configuracion.activa,
         modo: configuracion.modo,
         variedad_minima: Math.max(1, Number(configuracion.variedad_minima || 10)),
+        maximo_numeros_pedido: Math.max(1, Number(configuracion.maximo_numeros_pedido || 4)),
+        maximo_numeros_dia: Math.max(1, Number(configuracion.maximo_numeros_dia || 4)),
         mensaje_cliente: configuracion.mensaje_cliente || "",
       };
 
@@ -166,6 +172,37 @@ export default function SorteoConfiguracion() {
         />
       </label>
 
+      <div style={{ display: "flex", gap: 16 }}>
+        <label style={campo}>
+          <span>Máximo de números por pedido</span>
+          <input
+            style={input}
+            type="number"
+            min={1}
+            value={configuracion.maximo_numeros_pedido}
+            onChange={(e) => cambiarCampo("maximo_numeros_pedido", e.target.value)}
+          />
+        </label>
+
+        <label style={campo}>
+          <span>Máximo de números por cliente y día</span>
+          <input
+            style={input}
+            type="number"
+            min={1}
+            value={configuracion.maximo_numeros_dia}
+            onChange={(e) => cambiarCampo("maximo_numeros_dia", e.target.value)}
+          />
+        </label>
+      </div>
+
+      <div style={ayuda}>
+        Solo las cajas cuentan para el Sorteo: las unidades sueltas nunca dan número, por muchas
+        referencias distintas que sumen. Aunque un pedido tenga variedad de sobra, nunca se asignan
+        más números de los indicados arriba por pedido, ni más del máximo diario aunque el cliente
+        haga varios pedidos el mismo día.
+      </div>
+
       <div style={campo}>
         <span>Artículos que cuentan</span>
         <div style={{ display: "flex", gap: 16 }}>
@@ -233,3 +270,4 @@ const departamentosBox = { display: "flex", flexWrap: "wrap", gap: "8px 18px", p
 const boton = { border: 0, borderRadius: 10, padding: "11px 18px", background: "#059669", color: "#fff", fontWeight: 800, fontSize: 15, cursor: "pointer", justifySelf: "start" };
 const avisoError = { padding: "9px 12px", borderRadius: 9, background: "#fef2f2", color: "#991b1b", fontSize: 13, fontWeight: 700 };
 const avisoOk = { padding: "9px 12px", borderRadius: 9, background: "#f0fdf4", color: "#166534", fontSize: 13, fontWeight: 700 };
+const ayuda = { margin: 0, padding: "10px 12px", borderRadius: 10, background: "#f9fafb", border: "1px solid #e5e7eb", color: "#4b5563", fontSize: 13, lineHeight: 1.35 };
