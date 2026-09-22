@@ -844,9 +844,7 @@ export default function App() {
   const [articulosBingoCliente, setArticulosBingoCliente] = useState([]);
   const [fechaLimiteBingoPropia, setFechaLimiteBingoPropia] = useState(null);
 
-  // Sorteo: en construcción, solo activo para el cliente de pruebas
-  // (clienteIdentificado.es_pruebas) mientras se valida en real. Nada
-  // de esto se muestra ni se registra para el resto de clientes.
+  // Sorteo: disponible para todos los clientes identificados.
   const [configuracionSorteoCliente, setConfiguracionSorteoCliente] = useState(null);
   const [departamentosSorteoCliente, setDepartamentosSorteoCliente] = useState([]);
   const [mostrarJuegos, setMostrarJuegos] = useState(false);
@@ -858,12 +856,10 @@ export default function App() {
   const [fechasSorteoCliente, setFechasSorteoCliente] = useState({});
   const [motivoSorteoNoDisponible, setMotivoSorteoNoDisponible] = useState("");
   // Sorteo en directo: aviso de la fecha/hora de cada cuadrícula donde juega
-  // el cliente y, a esa hora, pantalla con la rotación de números. Mismo
-  // interruptor que el resto del Sorteo (cuando se quite es_pruebas de las
-  // demás partes, basta quitarlo también aquí).
+  // el cliente y, a esa hora, pantalla con la rotación de números.
   const [revisionPremioSorteo, setRevisionPremioSorteo] = useState(0);
   const sorteoDirectoAbiertoRef = useRef(false);
-  const sorteoActivoParaCliente = Boolean(clienteIdentificado?.es_pruebas && configuracionSorteoCliente);
+  const sorteoActivoParaCliente = Boolean(configuracionSorteoCliente);
   const sorteoEnDirecto = useSorteoDirecto({
     modo: "cliente",
     token: clienteIdentificado?.token || "",
@@ -1415,13 +1411,6 @@ export default function App() {
   useEffect(() => {
     let activo = true;
     async function cargarDisponibilidadSorteo() {
-      // Solo tiene sentido consultarlo para el cliente de pruebas: el
-      // resto de clientes no debe ver ni registrar nada del Sorteo
-      // mientras esté en fase de validación en real.
-      if (!clienteIdentificado?.es_pruebas) {
-        setConfiguracionSorteoCliente(null);
-        return;
-      }
       const { data, error } = await supabase
         .from("promociones_sorteo")
         .select("*")
@@ -1447,7 +1436,7 @@ export default function App() {
     }
     cargarDisponibilidadSorteo();
     return () => { activo = false; };
-  }, [clienteIdentificado?.es_pruebas]);
+  }, []);
 
   useEffect(() => {
     let activo = true;
@@ -1692,7 +1681,7 @@ export default function App() {
   }
 
   async function abrirMiSorteo() {
-    if (!clienteIdentificado?.es_pruebas || !clienteToken) return;
+    if (!clienteToken) return;
 
     setMostrarMiSorteo(true);
     setCargandoSorteo(true);
@@ -2894,7 +2883,7 @@ export default function App() {
   );
 
   const resumenSorteoPedido = useMemo(() => {
-    if (!clienteIdentificado?.es_pruebas || !configuracionSorteoCliente) return null;
+    if (!configuracionSorteoCliente) return null;
 
     const variedadMinima = Math.max(1, Number(configuracionSorteoCliente.variedad_minima || 10));
     const departamentosPermitidos = new Set(departamentosSorteoCliente.map((id) => String(id)));
@@ -2930,7 +2919,6 @@ export default function App() {
     };
   }, [
     orderedItems,
-    clienteIdentificado?.es_pruebas,
     configuracionSorteoCliente,
     departamentosSorteoCliente,
   ]);
@@ -3866,8 +3854,7 @@ export default function App() {
   async function registrarPedidoParaSorteo(itemsPedido, pedidoId) {
     // Igual que Bingo: la SQL decide qué artículos cuentan (todos, o solo
     // los de ciertos departamentos, según promociones_sorteo.modo).
-    // Solo se llama para el cliente de pruebas mientras se valida en real.
-    if (!clienteIdentificado?.es_pruebas || !clienteToken || !configuracionSorteoCliente) return null;
+    if (!clienteToken || !configuracionSorteoCliente) return null;
 
     const items = itemsPedido.map((item) => ({
       articulo_id: item?.product?.id ?? null,
@@ -4251,28 +4238,26 @@ export default function App() {
     }
 
     let participacionSorteo = null;
-    if (clienteIdentificado?.es_pruebas) {
-      try {
-        participacionSorteo = await conLimiteDeTiempo(
-          registrarPedidoParaSorteo(itemsPedido, pedidoIdEstable)
-        );
-      } catch (error) {
-        const detalleErrorSorteo = [
-          error?.code ? `Código: ${error.code}` : null,
-          error?.message ? `Mensaje: ${error.message}` : null,
-          error?.details ? `Detalle: ${error.details}` : null,
-          error?.hint ? `Sugerencia: ${error.hint}` : null,
-        ]
-          .filter(Boolean)
-          .join("\n");
+    try {
+      participacionSorteo = await conLimiteDeTiempo(
+        registrarPedidoParaSorteo(itemsPedido, pedidoIdEstable)
+      );
+    } catch (error) {
+      const detalleErrorSorteo = [
+        error?.code ? `Código: ${error.code}` : null,
+        error?.message ? `Mensaje: ${error.message}` : null,
+        error?.details ? `Detalle: ${error.details}` : null,
+        error?.hint ? `Sugerencia: ${error.hint}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
 
-        // El Sorteo está en pruebas: un fallo aquí nunca debe bloquear el
-        // envío del pedido, solo se registra en consola.
-        console.error(
-          "No se pudo registrar el pedido para el Sorteo (se envía igualmente):",
-          detalleErrorSorteo || error
-        );
-      }
+      // Un fallo aquí nunca debe bloquear el envío del pedido, solo se
+      // registra en consola.
+      console.error(
+        "No se pudo registrar el pedido para el Sorteo (se envía igualmente):",
+        detalleErrorSorteo || error
+      );
     }
 
     let participacionJuegos = null;
@@ -4771,23 +4756,10 @@ export default function App() {
                     <Star size={16} fill={soloFavoritos ? "currentColor" : "none"} />
                     {soloFavoritos ? "Ver todos" : `Mis favoritos (${favoritos.size})`}
                   </button>
-                  {configuracionBingoCliente && !clienteIdentificado?.es_pruebas && (
-                    <button
-                      type="button"
-                      onClick={abrirMiBingo}
-                      style={styles.bingoButton}
-                      title={fechaLimiteBingoPropia ? `Disponible hasta el ${new Date(fechaLimiteBingoPropia).toLocaleDateString("es-ES")}` : "Bingo activo"}
-                    >
-                      <Grid3X3 size={17} />
-                      Mi Bingo{fechaLimiteBingoPropia ? ` · hasta ${new Date(fechaLimiteBingoPropia).toLocaleDateString("es-ES")}` : ""}
-                    </button>
-                  )}
-                  {/* Pestaña "Juegos" (Bingo + Sorteo en pantalla de selección):
-                      de momento solo para el cliente de pruebas, mientras se
-                      valida el Sorteo en real. Cuando se confirme, basta con
-                      quitar la condición es_pruebas de aquí y del bloque de
-                      arriba para que sustituya a "Mi Bingo" para todos. */}
-                  {clienteIdentificado?.es_pruebas && (
+                  {/* Pestaña "Juegos" (Bingo + Sorteo en pantalla de selección),
+                      ya disponible para todos los clientes identificados;
+                      sustituye al antiguo botón "Mi Bingo" independiente. */}
+                  {(configuracionBingoCliente || configuracionSorteoCliente) && (
                     <button type="button" onClick={() => setMostrarJuegos(true)} style={styles.bingoButton}>
                       <Grid3X3 size={17} />
                       Juegos
