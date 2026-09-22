@@ -9,7 +9,7 @@ export default function Sorteo() {
         Por cada N artículos distintos (configurable) el cliente recibe un número del 00 al 99 en la cuadrícula activa. Al llenarse las 100 casillas se abre otra automáticamente. El sorteo lo hace el sistema al azar, en directo, en la fecha y hora que programes para cada cuadrícula.
       </p>
       <div style={aviso}>
-        En construcción: de momento el Sorteo solo se activa para el cliente marcado como "de pruebas" (es_pruebas), para poder probarlo en real sin que el resto de clientes vea nada nuevo.
+        Disponible para todos los clientes identificados. Actívalo o desactívalo con la casilla "Sorteo activo" de abajo.
       </div>
       <SorteoConfiguracion />
       <SorteoEditions />
