@@ -2363,7 +2363,11 @@ export default function App() {
         .map((articulo) => {
         const oferta = getActiveOffer(articulo.ofertas);
         const articuloId = normalizePromoValue(articulo.id);
-        const codigoArticulo = normalizePromoValue(articulo.codigo);
+        // Usamos el Código Lojo (no el código interno) para que coincida
+        // con lo que guarda el Admin de Ruleta y con lo que se guarda en
+        // cada pedido; así la comprobación de "¿este artículo cuenta para
+        // la ruleta?" es consistente en toda la app.
+        const codigoArticulo = normalizePromoValue(articulo.codigo_lojo);
         const nombreArticulo = normalizePromoValue(articulo.nombre);
         const participaRuleta =
           idsArticulosRuleta.has(articuloId) ||
