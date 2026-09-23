@@ -405,9 +405,20 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
       mapa.get(clave).pedidos.push(fila);
     });
 
-    return Array.from(mapa.values()).sort((a, b) =>
-      (a.codigoLojo || a.nombre).localeCompare(b.codigoLojo || b.nombre, "es", { sensitivity: "base" })
-    );
+    // Orden por Fecha Pedido, el más nuevo arriba:
+    // - dentro de cada cliente, sus QR del más nuevo al más antiguo;
+    // - los clientes, según su pedido pendiente más reciente.
+    // Así se mantiene el agrupado por cliente (fondos alternos).
+    const tiempo = (fila) => {
+      const t = new Date(fila?.created_at || 0).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+    const lista = Array.from(mapa.values());
+    lista.forEach((grupo) => {
+      grupo.pedidos.sort((a, b) => tiempo(b) - tiempo(a));
+      grupo.masReciente = tiempo(grupo.pedidos[0]);
+    });
+    return lista.sort((a, b) => b.masReciente - a.masReciente);
   }, [filas]);
 
   const gruposFiltrados = useMemo(() => {
