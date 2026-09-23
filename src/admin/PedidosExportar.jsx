@@ -727,7 +727,7 @@ export default function PedidosExportar() {
       </div>
 
       {vistaPrincipal === "qr" ? (
-        <QrPendientes />
+        <QrPendientes onClienteSinMasQr={() => setVistaPrincipal("pedidos")} />
       ) : (
         <>
       {!soportado && (
