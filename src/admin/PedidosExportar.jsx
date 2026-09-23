@@ -9,7 +9,10 @@ import {
   escribirCSVEnCarpeta,
   nombreArchivoSeguro,
 } from "../utils/carpetaPedidosRecibidos";
-import QrPendientes from "./QrPendientes";
+import QrPendientes, {
+  hayQueVolverAQrPendientes,
+  limpiarVolverAQrPendientes,
+} from "./QrPendientes";
 import { abrirPantallaGrande, leerVistaReposo } from "../utils/pantallaGrande";
 
 function fechaLocalISO(fecha = new Date()) {
@@ -106,7 +109,16 @@ function filaCSVDesdeMovimiento(fila, codigoLojoPorToken = {}, codigoLojoPorArti
 export default function PedidosExportar() {
   const hoyEstadistico = diaEstadisticoActualISO();
 
-  const [vistaPrincipal, setVistaPrincipal] = useState("pedidos");
+  // Normalmente se abre en "Pedidos"; pero si venimos de jugar un QR lanzado
+  // desde "QR pendientes", se vuelve directamente a esa vista (con el
+  // buscador tal como estaba), para seguir con el siguiente QR del mismo
+  // cliente sin tener que buscarlo otra vez.
+  const [vistaPrincipal, setVistaPrincipal] = useState(() =>
+    hayQueVolverAQrPendientes() ? "qr" : "pedidos"
+  );
+  useEffect(() => {
+    limpiarVolverAQrPendientes();
+  }, []);
 
   // Pantalla grande (TV): qué se deja mostrando entre cliente y cliente y
   // aviso si el navegador bloquea la ventana.
