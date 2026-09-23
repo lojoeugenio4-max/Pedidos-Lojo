@@ -78,6 +78,40 @@ function irAPantallaDeJuego(codigo) {
   window.location.href = url.toString();
 }
 
+// Une la lista de siempre (Bingo/Ruleta) con la de Sorteo pendiente:
+// - si el pedido ya está en la lista, se le añade su número de Sorteo;
+// - si solo tiene Sorteo pendiente, se añade como fila nueva.
+function combinarConSorteo(filasPrincipales, filasSorteo) {
+  const porPedido = new Map();
+  filasPrincipales.forEach((fila) => {
+    porPedido.set(String(fila.order_id), {
+      ...fila,
+      tiene_bingo_o_ruleta: true,
+      sorteo_remaining: 0,
+    });
+  });
+  filasSorteo.forEach((fila) => {
+    const clave = String(fila.order_id);
+    const restantes = Number(fila.sorteo_remaining || 0);
+    const existente = porPedido.get(clave);
+    if (existente) {
+      existente.sorteo_remaining = restantes;
+      if (!existente.codigo_lojo && fila.codigo_lojo) existente.codigo_lojo = fila.codigo_lojo;
+    } else {
+      porPedido.set(clave, {
+        ...fila,
+        bingo_remaining: 0,
+        roulette_remaining: 0,
+        tiene_bingo_o_ruleta: false,
+        sorteo_remaining: restantes,
+      });
+    }
+  });
+  // Se mantiene el orden de la lista de siempre; los QR que solo tienen
+  // Sorteo van detrás (luego se agrupan por cliente igualmente).
+  return Array.from(porPedido.values());
+}
+
 function formatearFechaHora(valor) {
   if (!valor) return "—";
   return new Date(valor).toLocaleString("es-ES");
@@ -98,6 +132,7 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
   const [filas, setFilas] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
+  const [avisoSorteo, setAvisoSorteo] = useState("");
   // Se recupera lo último escrito en el buscador (ver CLAVE_BUSQUEDA_QR).
   const [busqueda, setBusquedaEstado] = useState(() => leerSesion(CLAVE_BUSQUEDA_QR));
   const busquedaRecuperadaRef = useRef(Boolean(leerSesion(CLAVE_BUSQUEDA_QR)));
@@ -121,10 +156,26 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
     if (mostrarCargando) setCargando(true);
     setError("");
     try {
-      const { data, error: rpcError } = await supabase.rpc("admin_listar_qr_pendientes");
-      if (rpcError) throw rpcError;
+      // Se piden a la vez la lista de siempre (Bingo/Ruleta) y la de números
+      // de Sorteo pendientes, y se combinan por pedido.
+      const [principal, sorteo] = await Promise.all([
+        supabase.rpc("admin_listar_qr_pendientes"),
+        supabase.rpc("admin_listar_qr_pendientes_sorteo"),
+      ]);
+      if (principal.error) throw principal.error;
+      if (sorteo.error) {
+        // Si aún no está creada la función del Sorteo, la lista de siempre
+        // sigue funcionando igual; solo se avisa.
+        console.warn("QR pendientes: no se pudo cargar el Sorteo:", sorteo.error);
+      }
+      const combinadas = combinarConSorteo(principal.data || [], sorteo.error ? [] : sorteo.data || []);
       if (montado.current) {
-        setFilas(data || []);
+        setFilas(combinadas);
+        setAvisoSorteo(
+          sorteo.error
+            ? "No se muestran los números de Sorteo: falta ejecutar migracion_qr_pendientes_sorteo.sql en Supabase."
+            : ""
+        );
         cargaInicialHechaRef.current = true;
       }
     } catch (err) {
@@ -145,10 +196,20 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
     }
     setEliminandoIds((prev) => new Set(prev).add(pedido.order_id));
     try {
-      const { error: rpcError } = await supabase.rpc("admin_borrar_qr_pendiente", {
-        p_order_id: pedido.order_id,
-      });
-      if (rpcError) throw rpcError;
+      // El borrado de siempre solo si ese QR tiene Bingo/Ruleta pendiente; si
+      // además (o solo) tiene Sorteo, se anula su Sorteo pendiente.
+      if (pedido.tiene_bingo_o_ruleta) {
+        const { error: rpcError } = await supabase.rpc("admin_borrar_qr_pendiente", {
+          p_order_id: pedido.order_id,
+        });
+        if (rpcError) throw rpcError;
+      }
+      if (pedido.sorteo_remaining > 0) {
+        const { error: rpcSorteoError } = await supabase.rpc("admin_anular_sorteo_pendiente", {
+          p_order_id: String(pedido.order_id),
+        });
+        if (rpcSorteoError) throw rpcSorteoError;
+      }
       setFilas((prev) => prev.filter((fila) => fila.order_id !== pedido.order_id));
     } catch (err) {
       setError(err?.message || "No se pudo eliminar el código.");
@@ -173,12 +234,20 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
     setBorrandoAntiguos(true);
     setError("");
     try {
+      const antes = new Date(fechaLimiteBorrado).toISOString();
       const { data, error: rpcError } = await supabase.rpc("admin_borrar_qr_pendientes_antiguos", {
-        p_antes: new Date(fechaLimiteBorrado).toISOString(),
+        p_antes: antes,
       });
       if (rpcError) throw rpcError;
+      const { data: dataSorteo, error: rpcSorteoError } = await supabase.rpc(
+        "admin_anular_sorteos_pendientes_antiguos",
+        { p_antes: antes }
+      );
+      if (rpcSorteoError) throw rpcSorteoError;
       await cargar({ mostrarCargando: false });
-      window.alert(`Eliminados ${data ?? 0} código(s).`);
+      window.alert(
+        `Eliminados ${data ?? 0} código(s) de Bingo/Ruleta y ${dataSorteo ?? 0} pendiente(s) de Sorteo.`
+      );
     } catch (err) {
       setError(err?.message || "No se pudieron eliminar los códigos antiguos.");
     } finally {
@@ -375,7 +444,7 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
         <div>
           <h2 style={titulo}>QR pendientes</h2>
           <p style={subtitulo}>
-            Códigos de clientes con Bingo y/o Ruleta aún sin leer en caja. Desaparecen solos al instante
+            Códigos de clientes con Bingo, Ruleta y/o números de Sorteo aún sin leer en caja. Desaparecen solos al instante
             en cuanto se leen.
           </p>
         </div>
@@ -436,6 +505,7 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
       </form>
 
       {error && <div style={cajaError}>{error}</div>}
+      {avisoSorteo && <div style={cajaAviso}>{avisoSorteo}</div>}
 
       <p style={contador}>
         {totalPedidosPendientes} QR pendiente{totalPedidosPendientes === 1 ? "" : "s"} · {gruposFiltrados.length}{" "}
@@ -451,6 +521,7 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
               <th style={th}>Nombre</th>
               <th style={th}>🎱 Bolas</th>
               <th style={th}>🎡 Ruleta</th>
+              <th style={th}>🔢 Sorteo</th>
               <th style={th}>QR</th>
               <th style={th}>Código QR</th>
               <th style={th}></th>
@@ -459,7 +530,7 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
           <tbody>
             {gruposFiltrados.length === 0 && !cargando && (
               <tr>
-                <td style={td} colSpan={8}>
+                <td style={td} colSpan={9}>
                   {filas.length === 0
                     ? "No hay ningún QR pendiente de leer ahora mismo."
                     : "Ningún cliente coincide con la búsqueda."}
@@ -483,6 +554,15 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
                   <td style={td}>
                     {pedido.roulette_remaining > 0 ? (
                       <span style={badgeRuleta}>{pedido.roulette_remaining}</span>
+                    ) : (
+                      <span style={celdaVacia}>—</span>
+                    )}
+                  </td>
+                  <td style={td}>
+                    {pedido.sorteo_remaining > 0 ? (
+                      <span style={badgeSorteo} title="Números de Sorteo que se le asignarán al pasar el QR">
+                        {pedido.sorteo_remaining}
+                      </span>
                     ) : (
                       <span style={celdaVacia}>—</span>
                     )}
@@ -658,6 +738,24 @@ const filaGrupoImpar = { background: "#eef2ff", borderBottom: "1px solid #f3f4f6
 const imagenQr = { display: "block", borderRadius: "6px", background: "#fff" };
 
 const celdaVacia = { color: "#9ca3af" };
+
+const badgeSorteo = {
+  display: "inline-block",
+  padding: "3px 10px",
+  borderRadius: "999px",
+  background: "#dcfce7",
+  color: "#166534",
+  fontWeight: 800,
+};
+
+const cajaAviso = {
+  padding: "10px 14px",
+  borderRadius: "10px",
+  background: "#fef3c7",
+  color: "#92400e",
+  fontSize: "13px",
+  fontWeight: 600,
+};
 
 const badgeBingo = {
   display: "inline-block",
