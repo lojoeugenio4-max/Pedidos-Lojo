@@ -41,7 +41,9 @@ function leerParametrosURL() {
 
 export default function AdminPanel() {
   const [{ seccionInicial, modoAlmacen }] = useState(leerParametrosURL);
-  const [opcion, setOpcion] = useState(seccionInicial || "articulos");
+  // Al entrar en el Admin se abre siempre en "Pedidos recibidos" (salvo que
+  // la URL pida otra sección con "?admin&seccion=...").
+  const [opcion, setOpcion] = useState(seccionInicial || "pedidos");
   const [tamano, setTamano] = useState({
     ancho: typeof window !== "undefined" ? window.innerWidth : 1440,
     alto: typeof window !== "undefined" ? window.innerHeight : 900,
