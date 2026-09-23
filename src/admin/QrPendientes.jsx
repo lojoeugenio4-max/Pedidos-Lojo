@@ -30,9 +30,49 @@ function normalizarBusqueda(texto) {
 // el código solo y salta directamente a Ruleta/Bingo — igual que si se
 // hubiera escrito/escaneado ahí mismo. Así no hay que duplicar nada de esa
 // lógica aquí.
+// Al ir a jugar desde aquí se recarga la página entera (cambia la URL), así
+// que todo el estado de esta pestaña se perdía: al terminar el juego se
+// volvía a "Pedidos recibidos" en la vista de Pedidos y con el buscador
+// vacío, y si ese cliente tenía más de un QR pendiente había que volver a
+// entrar en "QR pendientes" y escribir otra vez su nombre. Ahora se guarda
+// en sessionStorage (solo dura mientras esté abierta esta pestaña del
+// navegador) tanto lo escrito en el buscador como un aviso de "volver a QR
+// pendientes", que PedidosExportar lee al montarse tras terminar el juego.
+const CLAVE_BUSQUEDA_QR = "lojo-qr-pendientes-busqueda";
+const CLAVE_VOLVER_A_QR = "lojo-volver-a-qr-pendientes";
+
+function leerSesion(clave) {
+  try {
+    return window.sessionStorage.getItem(clave) || "";
+  } catch {
+    return "";
+  }
+}
+
+function guardarSesion(clave, valor) {
+  try {
+    if (valor) window.sessionStorage.setItem(clave, valor);
+    else window.sessionStorage.removeItem(clave);
+  } catch {
+    // Sin sessionStorage (modo privado muy restrictivo): simplemente no se recuerda.
+  }
+}
+
+// Lo usa PedidosExportar para decidir si abrir directamente la vista de QR
+// pendientes. Se lee al montar y se borra después (limpiarVolverAQrPendientes)
+// para que solo actúe una vez: justo al volver del juego lanzado desde aquí.
+export function hayQueVolverAQrPendientes() {
+  return leerSesion(CLAVE_VOLVER_A_QR) === "1";
+}
+
+export function limpiarVolverAQrPendientes() {
+  guardarSesion(CLAVE_VOLVER_A_QR, "");
+}
+
 function irAPantallaDeJuego(codigo) {
   const limpio = String(codigo || "").trim();
   if (!limpio) return;
+  guardarSesion(CLAVE_VOLVER_A_QR, "1");
   const url = new URL(window.location.href);
   url.search = `?store=1&code=${encodeURIComponent(limpio)}`;
   window.location.href = url.toString();
@@ -58,7 +98,14 @@ export default function QrPendientes() {
   const [filas, setFilas] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
-  const [busqueda, setBusqueda] = useState("");
+  // Se recupera lo último escrito en el buscador (ver CLAVE_BUSQUEDA_QR).
+  const [busqueda, setBusquedaEstado] = useState(() => leerSesion(CLAVE_BUSQUEDA_QR));
+  const busquedaRecuperadaRef = useRef(Boolean(leerSesion(CLAVE_BUSQUEDA_QR)));
+  function setBusqueda(valor) {
+    busquedaRecuperadaRef.current = false;
+    setBusquedaEstado(valor);
+    guardarSesion(CLAVE_BUSQUEDA_QR, valor);
+  }
   const [codigoLectura, setCodigoLectura] = useState("");
   const [eliminandoIds, setEliminandoIds] = useState(new Set());
   const [fechaLimiteBorrado, setFechaLimiteBorrado] = useState("");
@@ -297,6 +344,17 @@ export default function QrPendientes() {
         normalizarBusqueda(grupo.codigoLojo).includes(termino)
     );
   }, [grupos, busqueda]);
+
+  // Si la búsqueda recuperada ya no encuentra a nadie (ese cliente ya ha
+  // leído todos sus QR), se vacía sola para no dejar la lista en blanco.
+  // Solo se hace con la búsqueda recuperada al volver, nunca mientras
+  // alguien está escribiendo.
+  useEffect(() => {
+    if (!busquedaRecuperadaRef.current || cargando || filas.length === 0) return;
+    busquedaRecuperadaRef.current = false;
+    if (gruposFiltrados.length === 0) setBusqueda("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filas, cargando, gruposFiltrados.length]);
 
   const totalPedidosPendientes = filas.length;
 
