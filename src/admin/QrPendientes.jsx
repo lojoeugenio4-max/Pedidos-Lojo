@@ -94,7 +94,7 @@ function formatearFechaHora(valor) {
 // intervalo mucho más largo para no resultar molesto.
 const INTERVALO_REFRESCO_RESPALDO_MS = 120000;
 
-export default function QrPendientes() {
+export default function QrPendientes({ onClienteSinMasQr } = {}) {
   const [filas, setFilas] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
@@ -111,6 +111,9 @@ export default function QrPendientes() {
   const [fechaLimiteBorrado, setFechaLimiteBorrado] = useState("");
   const [borrandoAntiguos, setBorrandoAntiguos] = useState(false);
   const montado = useRef(true);
+  // Se pone a true tras la primera carga correcta de la lista, para no
+  // decidir nada sobre la búsqueda recuperada antes de tener los datos.
+  const cargaInicialHechaRef = useRef(false);
   const inputLecturaRef = useRef(null);
   const temporizadorLecturaRef = useRef(null);
 
@@ -120,7 +123,10 @@ export default function QrPendientes() {
     try {
       const { data, error: rpcError } = await supabase.rpc("admin_listar_qr_pendientes");
       if (rpcError) throw rpcError;
-      if (montado.current) setFilas(data || []);
+      if (montado.current) {
+        setFilas(data || []);
+        cargaInicialHechaRef.current = true;
+      }
     } catch (err) {
       if (montado.current) {
         setError(
@@ -345,14 +351,19 @@ export default function QrPendientes() {
     );
   }, [grupos, busqueda]);
 
-  // Si la búsqueda recuperada ya no encuentra a nadie (ese cliente ya ha
-  // leído todos sus QR), se vacía sola para no dejar la lista en blanco.
-  // Solo se hace con la búsqueda recuperada al volver, nunca mientras
-  // alguien está escribiendo.
+  // Al volver del juego con la búsqueda recuperada: si ese cliente ya no
+  // tiene más QR pendientes, se vacía el buscador y se avisa al padre
+  // (PedidosExportar) para volver a la vista normal de Pedidos. Si le quedan
+  // QR, se queda aquí con su nombre ya puesto para pasar el siguiente.
+  // Solo se hace una vez al volver, nunca mientras alguien está escribiendo.
   useEffect(() => {
-    if (!busquedaRecuperadaRef.current || cargando || filas.length === 0) return;
+    if (!busquedaRecuperadaRef.current || cargando) return;
+    if (!cargaInicialHechaRef.current) return;
     busquedaRecuperadaRef.current = false;
-    if (gruposFiltrados.length === 0) setBusqueda("");
+    if (gruposFiltrados.length === 0) {
+      setBusqueda("");
+      onClienteSinMasQr?.();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filas, cargando, gruposFiltrados.length]);
 
