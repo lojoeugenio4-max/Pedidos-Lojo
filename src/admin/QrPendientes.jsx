@@ -40,6 +40,10 @@ function normalizarBusqueda(texto) {
 // pendientes", que PedidosExportar lee al montarse tras terminar el juego.
 const CLAVE_BUSQUEDA_QR = "lojo-qr-pendientes-busqueda";
 const CLAVE_VOLVER_A_QR = "lojo-volver-a-qr-pendientes";
+// Token exacto del cliente que se acaba de pasar por caja: con él la lista
+// se filtra solo a ESE cliente (el buscador por texto podía coincidir con
+// otros, p. ej. el código "12" también encuentra el "123").
+const CLAVE_CLIENTE_QR = "lojo-qr-pendientes-cliente";
 
 function leerSesion(clave) {
   try {
@@ -112,6 +116,50 @@ function combinarConSorteo(filasPrincipales, filasSorteo) {
   return Array.from(porPedido.values());
 }
 
+// La llama StorePage al terminar TODOS los juegos de un QR. Comprueba si
+// ese mismo cliente tiene más QR pendientes (de otros pedidos/días):
+// - si los tiene, deja preparado que "Pedidos recibidos" se abra en la
+//   vista "QR pendientes" filtrada a ese cliente;
+// - si no, deja todo limpio para que se abra en la vista normal de Pedidos.
+// Devuelve true si el cliente tiene más QR pendientes.
+export async function prepararVueltaTrasJugar({ customerToken, customerName, orderIdActual } = {}) {
+  guardarSesion(CLAVE_VOLVER_A_QR, "");
+  guardarSesion(CLAVE_BUSQUEDA_QR, "");
+  guardarSesion(CLAVE_CLIENTE_QR, "");
+
+  const token = customerToken ? String(customerToken) : "";
+  const nombre = customerName ? String(customerName) : "";
+  if (!token && !nombre) return false;
+
+  try {
+    const [principal, sorteo] = await Promise.all([
+      supabase.rpc("admin_listar_qr_pendientes"),
+      supabase.rpc("admin_listar_qr_pendientes_sorteo"),
+    ]);
+    if (principal.error) throw principal.error;
+    const filas = combinarConSorteo(principal.data || [], sorteo.error ? [] : sorteo.data || []);
+
+    const delCliente = filas.filter((fila) => {
+      const esCliente = token
+        ? String(fila.customer_token || "") === token
+        : String(fila.customer_name || "") === nombre;
+      const esElQueAcabamosDeJugar =
+        orderIdActual != null && String(fila.order_id) === String(orderIdActual);
+      return esCliente && !esElQueAcabamosDeJugar;
+    });
+    if (delCliente.length === 0) return false;
+
+    const texto = delCliente.find((f) => f.codigo_lojo)?.codigo_lojo || delCliente[0].customer_name || nombre;
+    guardarSesion(CLAVE_BUSQUEDA_QR, String(texto || ""));
+    guardarSesion(CLAVE_CLIENTE_QR, token);
+    guardarSesion(CLAVE_VOLVER_A_QR, "1");
+    return true;
+  } catch (err) {
+    console.warn("No se pudo comprobar si el cliente tiene más QR pendientes:", err);
+    return false;
+  }
+}
+
 function formatearFechaHora(valor) {
   if (!valor) return "—";
   return new Date(valor).toLocaleString("es-ES");
@@ -136,8 +184,13 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
   // Se recupera lo último escrito en el buscador (ver CLAVE_BUSQUEDA_QR).
   const [busqueda, setBusquedaEstado] = useState(() => leerSesion(CLAVE_BUSQUEDA_QR));
   const busquedaRecuperadaRef = useRef(Boolean(leerSesion(CLAVE_BUSQUEDA_QR)));
+  const [clienteExacto, setClienteExacto] = useState(() => leerSesion(CLAVE_CLIENTE_QR));
   function setBusqueda(valor) {
     busquedaRecuperadaRef.current = false;
+    // En cuanto alguien toca el buscador a mano, deja de filtrarse por el
+    // cliente exacto y se busca por texto como siempre.
+    setClienteExacto("");
+    guardarSesion(CLAVE_CLIENTE_QR, "");
     setBusquedaEstado(valor);
     guardarSesion(CLAVE_BUSQUEDA_QR, valor);
   }
@@ -422,6 +475,7 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
   }, [filas]);
 
   const gruposFiltrados = useMemo(() => {
+    if (clienteExacto) return grupos.filter((grupo) => grupo.clave === clienteExacto);
     const termino = normalizarBusqueda(busqueda);
     if (!termino) return grupos;
     return grupos.filter(
@@ -429,7 +483,7 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
         normalizarBusqueda(grupo.nombre).includes(termino) ||
         normalizarBusqueda(grupo.codigoLojo).includes(termino)
     );
-  }, [grupos, busqueda]);
+  }, [grupos, busqueda, clienteExacto]);
 
   // Al volver del juego con la búsqueda recuperada: si ese cliente ya no
   // tiene más QR pendientes, se vacía el buscador y se avisa al padre
