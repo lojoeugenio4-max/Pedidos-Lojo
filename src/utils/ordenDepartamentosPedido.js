@@ -10,10 +10,24 @@ export const DEPARTAMENTOS_PRIORITARIOS_PEDIDO = [
   "AGUAS",
 ];
 
+// Normaliza el nombre para comparar sin que afecten mayúsculas, tildes,
+// espacios dobles o los espacios alrededor de la barra: así "Refrescos
+// 2L/1.5L", "REFRESCOS 2L / 1.5L" o "Bebidas energeticas" se reconocen igual.
+function normalizarDepartamento(nombreDepartamento) {
+  return String(nombreDepartamento || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s*\/\s*/g, "/")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const PRIORITARIOS_NORMALIZADOS = DEPARTAMENTOS_PRIORITARIOS_PEDIDO.map(normalizarDepartamento);
+
 function indicePrioridadDepartamento(nombreDepartamento) {
-  const normalizado = String(nombreDepartamento || "").trim().toUpperCase();
-  const indice = DEPARTAMENTOS_PRIORITARIOS_PEDIDO.indexOf(normalizado);
-  return indice === -1 ? DEPARTAMENTOS_PRIORITARIOS_PEDIDO.length : indice;
+  const indice = PRIORITARIOS_NORMALIZADOS.indexOf(normalizarDepartamento(nombreDepartamento));
+  return indice === -1 ? PRIORITARIOS_NORMALIZADOS.length : indice;
 }
 
 /**
@@ -29,5 +43,21 @@ export function compararDepartamentosPedido(deptA, deptB) {
 
   return String(deptA || "").localeCompare(String(deptB || ""), "es", {
     sensitivity: "base",
+  });
+}
+
+/**
+ * Ordena las líneas de un pedido tal como se guardan en
+ * estadisticas_movimientos (campos departamento y nombre_articulo), con el
+ * mismo criterio que el resumen del cliente y el WhatsApp. Se usa en
+ * "Pedidos recibidos" (pantalla, impresión y CSV para el almacén).
+ */
+export function ordenarLineasPedido(lineas = []) {
+  return lineas.slice().sort((a, b) => {
+    const porDepartamento = compararDepartamentosPedido(a.departamento, b.departamento);
+    if (porDepartamento !== 0) return porDepartamento;
+    return String(a.nombre_articulo || "").localeCompare(String(b.nombre_articulo || ""), "es", {
+      sensitivity: "base",
+    });
   });
 }
