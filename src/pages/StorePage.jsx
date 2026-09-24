@@ -7,6 +7,7 @@ import { calcularPremiosConseguidos } from "../utils/bingoWinLogic";
 import { notificarQrLeido } from "../utils/qrPendientesEvento";
 import { abrirPantallaGrande } from "../utils/pantallaGrande";
 import PedidosExportar from "../admin/PedidosExportar";
+import { prepararVueltaTrasJugar } from "../admin/QrPendientes";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
 const BINGO_CONTROL_CHANNEL = "lojo-bingo-control";
@@ -327,6 +328,7 @@ export default function StorePage() {
   // convertida en un Admin completo y obligaba a abrir OTRA pestaña nueva
   // para volver a escanear, acumulando pestañas repetidas del mismo módulo.
   const [mostrarPedidosRecibidos, setMostrarPedidosRecibidos] = useState(false);
+  const finalizandoRef = useRef(false);
 
   const [codigo, setCodigo] = useState("");
   const [entrada, setEntrada] = useState(null);
@@ -500,7 +502,7 @@ export default function StorePage() {
       channel?.close?.();
       window.removeEventListener("storage", handleStorage);
     };
-  }, [codigo, entitlement?.code, entitlement?.roulette_available]);
+  }, [codigo, entitlement?.code, entitlement?.roulette_available, entitlement?.sorteo_available]);
 
   useEffect(() => {
     const codeFromUrl = extraerCodigoQr(
@@ -577,7 +579,34 @@ export default function StorePage() {
       "validate_game_qr",
       { p_code: code }
     );
-    const unified = Array.isArray(unifiedRaw) ? unifiedRaw[0] : unifiedRaw;
+    let unified = Array.isArray(unifiedRaw) ? unifiedRaw[0] : unifiedRaw;
+
+    // Red de seguridad para el Sorteo: si validate_game_qr no marca el
+    // Sorteo como disponible pero el pedido SÍ tiene números de Sorteo sin
+    // asignar (mismo criterio que la lista de "QR pendientes"), se ofrece
+    // igualmente el botón de Sorteo junto a Ruleta y Bombo.
+    if (!unifiedError && unified?.ok && !unified.sorteo_available && unified.order_id) {
+      try {
+        const { data: sorteoFila } = await supabase
+          .from("game_entitlements")
+          .select("sorteo_eligible, sorteo_plays_total, sorteo_revelado")
+          .eq("order_id", unified.order_id)
+          .maybeSingle();
+        if (
+          sorteoFila?.sorteo_eligible &&
+          Number(sorteoFila.sorteo_plays_total || 0) > 0 &&
+          sorteoFila.sorteo_revelado !== true
+        ) {
+          unified = {
+            ...unified,
+            sorteo_available: true,
+            sorteo_plays_total: Number(sorteoFila.sorteo_plays_total),
+          };
+        }
+      } catch (err) {
+        console.warn("No se pudo comprobar el Sorteo pendiente del pedido:", err);
+      }
+    }
 
     if (!unifiedError && unified?.ok) {
       setCodigo(code);
@@ -990,7 +1019,13 @@ export default function StorePage() {
         return;
       }
 
-      setEstado(entitlement?.roulette_available ? "bingo-result-with-roulette" : "bingo-result");
+      // Si queda Ruleta o Sorteo por jugar, se ofrece "ELEGIR SIGUIENTE
+      // JUEGO" (antes solo se miraba la Ruleta y el Sorteo se perdía).
+      setEstado(
+        entitlement?.roulette_available || entitlement?.sorteo_available
+          ? "bingo-result-with-roulette"
+          : "bingo-result"
+      );
 
       enviarEventoDisplay("bingo-result", {
         entrada: entitlement,
@@ -1210,9 +1245,26 @@ export default function StorePage() {
   // Antes navegaba a "?admin&seccion=pedidos" (cambio de URL); ahora se
   // queda en esta misma pestaña y solo muestra el panel de Pedidos
   // recibidos incrustado, ver mostrarPedidosRecibidos más abajo.
-  function finalizarPartida() {
+  // Al terminar, si este mismo cliente tiene más QR pendientes (de otros
+  // pedidos/días), "Pedidos recibidos" se abre directamente en la vista
+  // "QR pendientes" filtrada a ese cliente; si no, en la vista de Pedidos.
+  async function finalizarPartida() {
+    if (finalizandoRef.current) return;
+    finalizandoRef.current = true;
+    const cliente = entitlement
+      ? {
+          customerToken: entitlement.customer_token,
+          customerName: entitlement.customer_name,
+          orderIdActual: entitlement.order_id,
+        }
+      : {};
     reset();
-    setMostrarPedidosRecibidos(true);
+    try {
+      await prepararVueltaTrasJugar(cliente);
+    } finally {
+      finalizandoRef.current = false;
+      setMostrarPedidosRecibidos(true);
+    }
   }
 
   // Vuelve del panel de Pedidos recibidos a la pantalla de escaneo, sin
