@@ -14,6 +14,7 @@ import QrPendientes, {
   limpiarVolverAQrPendientes,
 } from "./QrPendientes";
 import { abrirPantallaGrande, leerVistaReposo } from "../utils/pantallaGrande";
+import { ordenarLineasPedido } from "../utils/ordenDepartamentosPedido";
 
 function fechaLocalISO(fecha = new Date()) {
   const year = fecha.getFullYear();
@@ -512,9 +513,7 @@ export default function PedidosExportar() {
 
     for (const pedido of pedidosAExportar) {
       try {
-        const filasCSV = pedido.lineas
-          .slice()
-          .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+        const filasCSV = ordenarLineasPedido(pedido.lineas)
           .map((fila) => filaCSVDesdeMovimiento(fila, codigoLojoPorToken, codigoLojoPorArticulo));
 
         const contenido = construirContenidoCSV(CABECERA_CSV_PEDIDO, filasCSV);
@@ -1012,7 +1011,7 @@ export default function PedidosExportar() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pedidoDetalle.lineas.map((linea) => (
+                  {ordenarLineasPedido(pedidoDetalle.lineas).map((linea) => (
                     <tr key={linea.id} style={tr}>
                       <td style={td}>{linea.departamento || "—"}</td>
                       <td style={td}>
@@ -1080,10 +1079,7 @@ export default function PedidosExportar() {
                 </tr>
               </thead>
               <tbody>
-                {pedido.lineas
-                  .slice()
-                  .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
-                  .map((linea) => (
+                {ordenarLineasPedido(pedido.lineas).map((linea) => (
                     <tr key={linea.id}>
                       <td>{linea.departamento || "—"}</td>
                       <td>
