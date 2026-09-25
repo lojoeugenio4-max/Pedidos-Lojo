@@ -294,6 +294,7 @@ const departmentTranslations = {
     OFERTAS: "优惠",
     NOVEDAD: "新品",
     "ARTÍCULOS BUSCADOS": "搜索到的商品",
+    "OTROS ARTÍCULOS": "其他商品",
     AGUA: "水",
     CERVEZAS: "啤酒",
     "REFRESCOS LATAS": "罐装饮料",
@@ -2487,7 +2488,8 @@ export default function App() {
         nombreDepartamento === "RULETA" ||
         nombreDepartamento === "BINGO" ||
         nombreDepartamento === "TODOS" ||
-        nombreDepartamento === "ARTÍCULOS BUSCADOS"
+        nombreDepartamento === "ARTÍCULOS BUSCADOS" ||
+        nombreDepartamento === "OTROS ARTÍCULOS"
       ) {
         return;
       }
@@ -2638,36 +2640,36 @@ export default function App() {
         : [];
     }
 
-    // Al buscar en "TODOS" solo cuentan los departamentos de verdad. Los
-    // grupos promocionales (OFERTAS, NOVEDAD, RULETA, BINGO) repiten
-    // artículos que ya están en su departamento, y con la búsqueda el mismo
-    // artículo salía varias veces. Sin búsqueda se ven igual que siempre.
+    // En "TODOS" solo cuentan los departamentos de verdad, haya búsqueda o
+    // no. Los grupos promocionales (OFERTAS, NOVEDAD, RULETA, BINGO) repiten
+    // artículos que ya están en su departamento real, y el mismo artículo
+    // salía varias veces. Esos grupos siguen disponibles eligiéndolos en el
+    // desplegable de departamentos.
     const GRUPOS_PROMOCIONALES = ["OFERTAS", "NOVEDAD", "RULETA", "BINGO"];
 
     const visibleDepartments = departamentosCatalogo
-      .filter((department) => !cleanSearch || !GRUPOS_PROMOCIONALES.includes(department.name))
+      .filter((department) => !GRUPOS_PROMOCIONALES.includes(department.name))
       .map((department) => ({
         ...department,
         products: ordenarProductos(filterBySearch(department.products)),
       }))
       .filter((department) => department.products.length > 0);
 
-    if (!cleanSearch) {
-      return visibleDepartments;
-    }
-
-    // Artículos que coinciden pero no están en ningún departamento real
-    // (p. ej. solo salían en un grupo promocional) más los ocultos: cada
-    // uno aparece una sola vez, en "ARTÍCULOS BUSCADOS".
+    // Artículos visibles que no están en ningún departamento real (p. ej.
+    // solo aparecían en un grupo promocional) y, al buscar, también los
+    // ocultos: cada uno aparece UNA sola vez, en un grupo final, para que
+    // quitar los grupos promocionales no haga desaparecer ningún artículo.
     const yaMostrados = new Set(
       visibleDepartments.flatMap((department) => department.products.map((product) => String(product.id)))
     );
     const sueltos = [];
     [
-      ...productosVisibles.filter((product) => productMatchesSearch(product, cleanSearch)),
-      ...productos
-        .filter((product) => product.oculto)
-        .filter((product) => productMatchesSearch(product, cleanSearch)),
+      ...filterBySearch(productosVisibles),
+      ...(cleanSearch
+        ? productos
+            .filter((product) => product.oculto)
+            .filter((product) => productMatchesSearch(product, cleanSearch))
+        : []),
     ].forEach((product) => {
       const id = String(product.id);
       if (yaMostrados.has(id)) return;
@@ -2677,7 +2679,7 @@ export default function App() {
 
     if (sueltos.length > 0) {
       visibleDepartments.push({
-        name: "ARTÍCULOS BUSCADOS",
+        name: cleanSearch ? "ARTÍCULOS BUSCADOS" : "OTROS ARTÍCULOS",
         products: ordenarProductos(sueltos),
       });
     }
