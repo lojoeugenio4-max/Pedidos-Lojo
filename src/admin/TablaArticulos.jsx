@@ -59,7 +59,7 @@ export default function TablaArticulos({
             <th style={{ ...th, width: "80px" }}>Código</th>
             <th style={{ ...th, width: "100px" }}>Cód. Lojo</th>
             <th style={th}>Artículo</th>
-            <th style={{ ...th, width: "140px" }}>Departamento</th>
+            <th style={{ ...th, width: "140px" }}>Departamento / Ubicación</th>
             <th style={{ ...th, width: "90px" }}>Precio</th>
             <th style={{ ...th, minWidth: "260px" }}>Oferta</th>
             <th style={{ ...th, width: "110px" }}>Estado</th>
@@ -125,6 +125,17 @@ export default function TablaArticulos({
                   <span style={departmentBadge}>
                     {articulo.departamentos?.nombre || "-"}
                   </span>
+                  <div
+                    style={{
+                      marginTop: 6,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: articulo.ubicacion ? "#0f766e" : "#9ca3af",
+                    }}
+                    title={articulo.ubicacion?.nombre || "Sin ubicación"}
+                  >
+                    📍 {articulo.ubicacion ? articulo.ubicacion.codigo : "Sin ubicación"}
+                  </div>
                 </td>
 
                 <td style={td}>
