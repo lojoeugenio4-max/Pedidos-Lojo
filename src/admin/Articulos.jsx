@@ -4,10 +4,13 @@ import { supabaseStorage } from "../supabaseStorageClient";
 import FormArticulo from "./FormArticulo";
 import TablaArticulos from "./TablaArticulos";
 import { comprimirImagen } from "../utils/comprimirImagen";
+import { cargarUbicacionesPorArticulo } from "../utils/ordenUbicacionPedido";
 
 export default function Articulos() {
   const [articulos, setArticulos] = useState([]);
   const [departamentos, setDepartamentos] = useState([]);
+  const [ubicaciones, setUbicaciones] = useState([]);
+  const [ubicacionesDisponibles, setUbicacionesDisponibles] = useState(false);
   const [busqueda, setBusqueda] = useState("");
   const [filtro, setFiltro] = useState("visibles");
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
@@ -20,6 +23,7 @@ export default function Articulos() {
     codigo_lojo: "",
     nombre: "",
     departamento_id: "",
+    ubicacion_id: "",
     precio: "",
     permite_unidades: true,
     activo: true,
@@ -74,7 +78,18 @@ export default function Articulos() {
       alert("Error cargando departamentos");
     }
 
-    setArticulos(articulosData || []);
+    // La ubicación se carga aparte (ver cargarUbicacionesPorArticulo):
+    // si todavía no existe la tabla en Supabase, los artículos cargan igual.
+    const resultadoUbicaciones = await cargarUbicacionesPorArticulo(supabase);
+    setUbicaciones(resultadoUbicaciones.ubicaciones);
+    setUbicacionesDisponibles(resultadoUbicaciones.ok);
+
+    setArticulos(
+      (articulosData || []).map((articulo) => {
+        const ubicacion = resultadoUbicaciones.porArticulo[String(articulo.id)] || null;
+        return { ...articulo, ubicacion, ubicacion_id: ubicacion?.id ?? null };
+      })
+    );
     setDepartamentos(departamentosData || []);
     setCargando(false);
   }
@@ -132,6 +147,7 @@ export default function Articulos() {
       codigo_lojo: "",
       nombre: "",
       departamento_id: "",
+      ubicacion_id: "",
       precio: "",
       permite_unidades: true,
       activo: true,
@@ -160,6 +176,7 @@ export default function Articulos() {
       codigo_lojo: articulo.codigo_lojo || "",
       nombre: articulo.nombre || "",
       departamento_id: String(articulo.departamento_id || ""),
+      ubicacion_id: String(articulo.ubicacion_id || ""),
       precio: articulo.precio ?? "",
       permite_unidades: Boolean(articulo.permite_unidades),
       activo: Boolean(articulo.activo),
@@ -257,6 +274,12 @@ export default function Articulos() {
         oculto: form.oculto,
         foto: nombreFoto,
       };
+
+      // Solo se guarda la ubicación si la tabla ya existe en Supabase
+      // (migracion_ubicaciones.sql ejecutada); si no, se guardaría con error.
+      if (ubicacionesDisponibles) {
+        datosArticulo.ubicacion_id = form.ubicacion_id ? Number(form.ubicacion_id) : null;
+      }
 
       let articuloId = editando?.id;
 
@@ -450,7 +473,7 @@ export default function Articulos() {
   const articulosFiltrados = articulos.filter((articulo) => {
     const texto = `${articulo.codigo} ${articulo.nombre} ${
       articulo.departamentos?.nombre || ""
-    }`.toLowerCase();
+    } ${articulo.ubicacion?.codigo || ""} ${articulo.ubicacion?.nombre || ""}`.toLowerCase();
 
     const tieneOferta =
       Array.isArray(articulo.ofertas) && articulo.ofertas.length > 0;
@@ -463,6 +486,7 @@ export default function Articulos() {
       (filtro === "inactivos" && !articulo.activo) ||
       (filtro === "novedades" && articulo.novedad) ||
       (filtro === "sin_foto" && !articulo.foto) ||
+      (filtro === "sin_ubicacion" && !articulo.ubicacion_id) ||
       (filtro === "sin_lojo" &&
         !String(articulo.codigo_lojo || "").trim()) ||
       (filtro === "con_oferta" && tieneOferta) ||
@@ -523,6 +547,8 @@ export default function Articulos() {
           <FormArticulo
             form={form}
             departamentos={departamentos}
+            ubicaciones={ubicaciones}
+            ubicacionesDisponibles={ubicacionesDisponibles}
             preview={preview}
             onChange={cambiarCampo}
             onFotoChange={seleccionarFoto}
@@ -539,7 +565,7 @@ export default function Articulos() {
             <span style={searchIcon}>🔎</span>
             <input
               type="text"
-              placeholder="Buscar por código, nombre o departamento..."
+              placeholder="Buscar por código, nombre, departamento o ubicación..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               style={searchInput}
@@ -573,6 +599,9 @@ export default function Articulos() {
           </FilterButton>
           <FilterButton active={filtro === "sin_lojo"} onClick={() => setFiltro("sin_lojo")}>
             ⚠️ Sin código Lojo
+          </FilterButton>
+          <FilterButton active={filtro === "sin_ubicacion"} onClick={() => setFiltro("sin_ubicacion")}>
+            📍 Sin ubicación
           </FilterButton>
           <FilterButton active={filtro === "con_oferta"} onClick={() => setFiltro("con_oferta")}>
             Con oferta
