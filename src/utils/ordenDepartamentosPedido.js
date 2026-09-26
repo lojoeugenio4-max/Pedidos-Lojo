@@ -15,7 +15,7 @@ export const DEPARTAMENTOS_PRIORITARIOS_PEDIDO = [
 // 2L/1.5L", "REFRESCOS 2L / 1.5L" o "Bebidas energeticas" se reconocen igual.
 function normalizarDepartamento(nombreDepartamento) {
   return String(nombreDepartamento || "")
-    .normalize("NFD")
+    .normalize("NFD")A
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
     .replace(/\s*\/\s*/g, "/")
@@ -23,11 +23,28 @@ function normalizarDepartamento(nombreDepartamento) {
     .trim();
 }
 
-const PRIORITARIOS_NORMALIZADOS = DEPARTAMENTOS_PRIORITARIOS_PEDIDO.map(normalizarDepartamento);
+// Reglas de reconocimiento de los departamentos prioritarios. No se exige
+// el nombre EXACTO: basta con que el nombre del departamento (tal como
+// está en Supabase, sin tildes y en mayúsculas) encaje con la regla. Así
+// da igual que en el Admin se llame "AGUA" o "AGUAS", "ENERGÉTICAS" o
+// "BEBIDAS ENERGÉTICAS", "CERVEZA" o "CERVEZAS", "REFRESCOS 2L/1,5L" o
+// "REFRESCOS 2L / 1.5L". Antes se exigía coincidencia exacta, y en cuanto
+// un departamento tenía un nombre algo distinto (o se renombraba en el
+// Admin) dejaba de reconocerse y el pedido salía desordenado.
+// El orden de esta lista es el orden en que salen en el pedido.
+const REGLAS_PRIORITARIAS = [
+  (n) => /^CERVEZ/.test(n), // CERVEZAS
+  (n) => /REFRESC/.test(n) && !/LATA/.test(n) && /(2 ?L|1[.,]5)/.test(n), // REFRESCOS 2L / 1.5L
+  (n) => /REFRESC/.test(n) && /LATA/.test(n), // REFRESCOS LATAS
+  (n) => /ENERG/.test(n), // BEBIDAS ENERGÉTICAS
+  (n) => /^AGUAS?\b/.test(n), // AGUAS
+];
 
 function indicePrioridadDepartamento(nombreDepartamento) {
-  const indice = PRIORITARIOS_NORMALIZADOS.indexOf(normalizarDepartamento(nombreDepartamento));
-  return indice === -1 ? PRIORITARIOS_NORMALIZADOS.length : indice;
+  const normalizado = normalizarDepartamento(nombreDepartamento);
+  if (!normalizado) return REGLAS_PRIORITARIAS.length;
+  const indice = REGLAS_PRIORITARIAS.findIndex((regla) => regla(normalizado));
+  return indice === -1 ? REGLAS_PRIORITARIAS.length : indice;
 }
 
 /**
