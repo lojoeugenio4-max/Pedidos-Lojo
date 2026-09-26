@@ -1,6 +1,8 @@
 export default function FormArticulo({
   form,
   departamentos,
+  ubicaciones = [],
+  ubicacionesDisponibles = true,
   preview,
   onChange,
   onFotoChange,
@@ -122,6 +124,25 @@ export default function FormArticulo({
               {departamentos.map((departamento) => (
                 <option key={departamento.id} value={departamento.id}>
                   {departamento.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={field}>
+            <span style={label}>Ubicación</span>
+            <select
+              value={form.ubicacion_id}
+              onChange={(e) => onChange("ubicacion_id", e.target.value)}
+              style={input}
+              disabled={!ubicacionesDisponibles}
+            >
+              <option value="">
+                {ubicacionesDisponibles ? "Sin ubicación" : "Ubicaciones no disponibles"}
+              </option>
+              {ubicaciones.map((ubicacion) => (
+                <option key={ubicacion.id} value={ubicacion.id}>
+                  {ubicacion.codigo} — {ubicacion.nombre}
                 </option>
               ))}
             </select>
@@ -427,7 +448,8 @@ const gridThreeEqual = {
 
 const gridThree = {
   display: "grid",
-  gridTemplateColumns: "1.4fr 0.9fr 1fr",
+  // Departamento · Ubicación · Precio · casillas. Si no cabe, baja de línea.
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
   gap: "18px",
   alignItems: "end",
 };
