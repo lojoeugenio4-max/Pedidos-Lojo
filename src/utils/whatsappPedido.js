@@ -1,4 +1,4 @@
-import { compararDepartamentosPedido } from "./ordenDepartamentosPedido";
+import { compararPorUbicacion } from "./ordenUbicacionPedido";
 
 function normalizarRespuestaJuego(raw) {
   let value = Array.isArray(raw) ? raw[0] : raw;
@@ -221,28 +221,16 @@ export function construirTextoPedidoWhatsApp({
     lines.push("");
   }
 
-  const itemsOrdenados = [...itemsPedido].sort((a, b) => {
-    const departamentoA = String(
-      a.product.department || a.product.departamento || "SIN DEPARTAMENTO"
-    );
-
-    const departamentoB = String(
-      b.product.department || b.product.departamento || "SIN DEPARTAMENTO"
-    );
-
-    const compararDepartamento = compararDepartamentosPedido(
-      departamentoA,
-      departamentoB
-    );
-
-    if (compararDepartamento !== 0) return compararDepartamento;
-
-    return String(a.product.name || "").localeCompare(
-      String(b.product.name || ""),
-      "es",
-      { sensitivity: "base" }
-    );
-  });
+  // Mismo orden que la preparación en almacén: por código de ubicación y,
+  // al final, los artículos sin ubicación por orden alfabético.
+  const itemsOrdenados = [...itemsPedido].sort((a, b) =>
+    compararPorUbicacion(
+      a.ubicacion?.codigo,
+      a.product?.name,
+      b.ubicacion?.codigo,
+      b.product?.name
+    )
+  );
 
   itemsOrdenados.forEach((item) => {
     const product = item.product;
