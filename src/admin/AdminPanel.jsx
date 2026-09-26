@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import MenuAdmin from "./MenuAdmin";
 import Articulos from "./Articulos";
 import Departamentos from "./Departamentos";
+import Ubicaciones from "./Ubicaciones";
 import Ofertas from "./Ofertas";
 import Pushes from "./Pushes";
 import Estadisticas from "./Estadisticas";
@@ -17,6 +18,7 @@ const OPCIONES_VALIDAS = [
   "clientes",
   "articulos",
   "departamentos",
+  "ubicaciones",
   "ofertas",
   "promociones",
   "pushes",
@@ -160,6 +162,7 @@ export default function AdminPanel() {
           <div style={cardInner}>
             {opcion === "articulos" && <Articulos />}
             {opcion === "departamentos" && <Departamentos />}
+            {opcion === "ubicaciones" && <Ubicaciones />}
             {opcion === "ofertas" && <Ofertas />}
             {opcion === "clientes" && <Clientes />}
             {opcion === "promociones" && <Promociones />}
