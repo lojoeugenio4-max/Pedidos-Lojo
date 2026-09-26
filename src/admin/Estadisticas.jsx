@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { compararDepartamentosPedido } from "../utils/ordenDepartamentosPedido";
+import {
+  cargarUbicacionesPorArticulo,
+  compararPorUbicacion,
+  ubicacionDeLinea,
+} from "../utils/ordenUbicacionPedido";
 
 function fechaLocalISO(fecha = new Date()) {
   const year = fecha.getFullYear();
@@ -389,6 +393,15 @@ export default function Estadisticas() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
   const [pedidoSeleccionado, setPedidoSeleccionado] = useState(null);
+  // Ubicación ACTUAL de cada artículo, para ordenar el detalle del pedido
+  // (y su impresión) por código de ubicación.
+  const [ubicacionPorArticulo, setUbicacionPorArticulo] = useState({});
+
+  useEffect(() => {
+    cargarUbicacionesPorArticulo(supabase).then((resultado) =>
+      setUbicacionPorArticulo(resultado.porArticulo)
+    );
+  }, []);
 
   useEffect(() => {
     cargarEstadisticas(hoyEstadistico, hoyEstadistico);
@@ -427,7 +440,7 @@ export default function Estadisticas() {
 
       const { data, error: movimientosError } = await supabase
         .from("estadisticas_movimientos")
-        .select("id, pedido_id, created_at, codigo_articulo, nombre_articulo, departamento, cajas, unidades, customer_name, cliente_token")
+        .select("id, pedido_id, created_at, codigo_articulo, articulo_id, nombre_articulo, departamento, cajas, unidades, customer_name, cliente_token")
         .gte("created_at", inicio)
         .lt("created_at", fin)
         .order("created_at", { ascending: true });
@@ -865,18 +878,14 @@ export default function Estadisticas() {
             : { incluido: false, cumple: false },
         };
       })
-      .sort((a, b) => {
-        const porDepartamento = compararDepartamentosPedido(
-          a.departamento,
-          b.departamento
-        );
-        if (porDepartamento !== 0) return porDepartamento;
-        return String(a.nombre_articulo || "").localeCompare(
-          String(b.nombre_articulo || ""),
-          "es",
-          { sensitivity: "base" }
-        );
-      });
+      .sort((a, b) =>
+        compararPorUbicacion(
+          ubicacionDeLinea(a, ubicacionPorArticulo)?.codigo,
+          a.nombre_articulo,
+          ubicacionDeLinea(b, ubicacionPorArticulo)?.codigo,
+          b.nombre_articulo
+        )
+      );
 
     const bingoBolas = pedidoSeleccionado?.pedido_id
       ? bingoDrawsPorOrderId.get(String(pedidoSeleccionado.pedido_id)) || []
@@ -907,6 +916,7 @@ export default function Estadisticas() {
     promocionesRuletaPorId,
     entitlementsPorPedido,
     bingoDrawsPorOrderId,
+    ubicacionPorArticulo,
   ]);
 
 
