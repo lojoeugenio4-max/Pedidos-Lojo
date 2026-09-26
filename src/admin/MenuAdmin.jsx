@@ -25,6 +25,12 @@ export default function MenuAdmin({
       descripcion: "Organización del catálogo",
     },
     {
+      id: "ubicaciones",
+      icono: "📍",
+      titulo: "Ubicaciones",
+      descripcion: "Orden de preparación de pedidos",
+    },
+    {
       id: "ofertas",
       icono: "🏷️",
       titulo: "Ofertas",
