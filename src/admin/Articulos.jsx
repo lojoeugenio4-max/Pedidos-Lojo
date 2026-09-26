@@ -11,6 +11,11 @@ export default function Articulos() {
   const [departamentos, setDepartamentos] = useState([]);
   const [ubicaciones, setUbicaciones] = useState([]);
   const [ubicacionesDisponibles, setUbicacionesDisponibles] = useState(false);
+  // Asignación masiva de ubicación: artículos marcados en el listado.
+  const [seleccionados, setSeleccionados] = useState(() => new Set());
+  const [ubicacionMasiva, setUbicacionMasiva] = useState("");
+  const [asignandoMasivo, setAsignandoMasivo] = useState(false);
+  const [mensajeMasivo, setMensajeMasivo] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [filtro, setFiltro] = useState("visibles");
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
@@ -447,6 +452,61 @@ export default function Articulos() {
     await cargarDatos();
   }
 
+  // Pone la misma ubicación (o la quita) a todos los artículos marcados.
+  async function asignarUbicacionMasiva() {
+    const ids = Array.from(seleccionados);
+    if (!ids.length) return alert("Marca primero los artículos en el listado");
+    if (!ubicacionMasiva) return alert("Elige la ubicación que quieres asignar");
+
+    const quitar = ubicacionMasiva === "__ninguna__";
+    const ubicacion = quitar
+      ? null
+      : ubicaciones.find((u) => String(u.id) === String(ubicacionMasiva)) || null;
+    if (!quitar && !ubicacion) return alert("Ubicación no encontrada");
+
+    const textoDestino = quitar
+      ? "QUITAR la ubicación a"
+      : `asignar la ubicación ${ubicacion.codigo} — ${ubicacion.nombre} a`;
+    if (!confirm(`¿Seguro que quieres ${textoDestino} ${ids.length} artículo(s)?`)) return;
+
+    setAsignandoMasivo(true);
+    setMensajeMasivo("");
+
+    try {
+      // Por bloques, para no pasar el límite de longitud de la petición.
+      const BLOQUE = 150;
+      for (let i = 0; i < ids.length; i += BLOQUE) {
+        const bloque = ids.slice(i, i + BLOQUE);
+        const { error } = await supabase
+          .from("articulos")
+          .update({ ubicacion_id: quitar ? null : Number(ubicacion.id) })
+          .in("id", bloque);
+        if (error) throw error;
+      }
+
+      const idsSet = new Set(ids);
+      setArticulos((prev) =>
+        prev.map((articulo) =>
+          idsSet.has(articulo.id)
+            ? { ...articulo, ubicacion, ubicacion_id: ubicacion?.id ?? null }
+            : articulo
+        )
+      );
+      setSeleccionados(new Set());
+      setMensajeMasivo(
+        quitar
+          ? `✅ Ubicación quitada a ${ids.length} artículo(s).`
+          : `✅ ${ids.length} artículo(s) asignados a ${ubicacion.codigo} — ${ubicacion.nombre}.`
+      );
+    } catch (error) {
+      console.error(error);
+      alert("Error asignando la ubicación. No se ha completado el cambio; vuelve a intentarlo.");
+      await cargarDatos();
+    } finally {
+      setAsignandoMasivo(false);
+    }
+  }
+
   const resumen = useMemo(() => {
     const activos = articulos.filter((articulo) => articulo.activo).length;
     const inactivos = articulos.filter((articulo) => !articulo.activo).length;
@@ -629,10 +689,59 @@ export default function Articulos() {
           </button>
         </div>
 
+        {ubicacionesDisponibles && (
+          <div style={barraMasiva}>
+            <strong style={{ whiteSpace: "nowrap" }}>
+              📍 {seleccionados.size} marcado{seleccionados.size === 1 ? "" : "s"}
+            </strong>
+            <select
+              value={ubicacionMasiva}
+              onChange={(e) => setUbicacionMasiva(e.target.value)}
+              style={selectMasivo}
+            >
+              <option value="">Elegir ubicación…</option>
+              {ubicaciones.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.codigo} — {u.nombre}
+                </option>
+              ))}
+              <option value="__ninguna__">✖ Quitar ubicación</option>
+            </select>
+            <button
+              type="button"
+              style={botonMasivo(!seleccionados.size || !ubicacionMasiva || asignandoMasivo)}
+              disabled={!seleccionados.size || !ubicacionMasiva || asignandoMasivo}
+              onClick={asignarUbicacionMasiva}
+            >
+              {asignandoMasivo ? "Asignando…" : "Asignar a los marcados"}
+            </button>
+            {seleccionados.size > 0 && (
+              <button
+                type="button"
+                style={botonDesmarcar}
+                onClick={() => setSeleccionados(new Set())}
+              >
+                Desmarcar todo
+              </button>
+            )}
+            <span style={ayudaMasiva}>
+              Consejo: filtra por “📍 Sin ubicación” o busca (p. ej. “cruzcampo”), marca la casilla de
+              la cabecera para marcar toda la lista, o usa Mayúsculas + clic para marcar un rango.
+            </span>
+            {mensajeMasivo && <span style={mensajeOk}>{mensajeMasivo}</span>}
+          </div>
+        )}
+
         {cargando ? (
           <div style={loadingBox}>Cargando artículos...</div>
         ) : (
           <TablaArticulos
+            seleccionable={ubicacionesDisponibles}
+            seleccionados={seleccionados}
+            onCambiarSeleccion={(nuevos) => {
+              setSeleccionados(nuevos);
+              setMensajeMasivo("");
+            }}
             articulos={articulosFiltrados}
             onEditar={editarArticulo}
             onDesactivar={desactivarArticulo}
@@ -910,3 +1019,50 @@ const loadingBox = {
   borderRadius: "16px",
 };
 
+
+const barraMasiva = {
+  position: "sticky",
+  top: 0,
+  zIndex: 5,
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "10px",
+  padding: "12px 14px",
+  margin: "0 0 12px",
+  background: "#f0fdfa",
+  border: "1px solid #99f6e4",
+  borderRadius: "14px",
+  color: "#134e4a",
+};
+
+const selectMasivo = {
+  minWidth: "240px",
+  padding: "10px 12px",
+  border: "1px solid #5eead4",
+  borderRadius: "10px",
+  background: "#ffffff",
+};
+
+const botonMasivo = (desactivado) => ({
+  padding: "10px 16px",
+  border: "none",
+  borderRadius: "10px",
+  background: desactivado ? "#94a3b8" : "#0f766e",
+  color: "#ffffff",
+  fontWeight: 700,
+  cursor: desactivado ? "not-allowed" : "pointer",
+});
+
+const botonDesmarcar = {
+  padding: "10px 14px",
+  border: "1px solid #cbd5e1",
+  borderRadius: "10px",
+  background: "#ffffff",
+  color: "#334155",
+  cursor: "pointer",
+};
+
+const ayudaMasiva = { flexBasis: "100%", fontSize: "12px", color: "#0f766e" };
+
+const mensajeOk = { flexBasis: "100%", fontWeight: 700, color: "#15803d" };
