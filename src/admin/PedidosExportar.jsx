@@ -14,7 +14,11 @@ import QrPendientes, {
   limpiarVolverAQrPendientes,
 } from "./QrPendientes";
 import { abrirPantallaGrande, leerVistaReposo } from "../utils/pantallaGrande";
-import { ordenarLineasPedido } from "../utils/ordenDepartamentosPedido";
+import {
+  cargarUbicacionesPorArticulo,
+  ordenarLineasPedido,
+  ubicacionDeLinea,
+} from "../utils/ordenUbicacionPedido";
 
 function fechaLocalISO(fecha = new Date()) {
   const year = fecha.getFullYear();
@@ -132,6 +136,15 @@ export default function PedidosExportar() {
   // Código Lojo ACTUAL de cada artículo (clave: id del artículo), para no
   // depender del código "congelado" que se guardó en el momento del pedido.
   const [codigoLojoPorArticulo, setCodigoLojoPorArticulo] = useState({});
+  // Ubicación ACTUAL de cada artículo: ordena ver/imprimir/CSV por código
+  // de ubicación (sin ubicación, al final y por orden alfabético).
+  const [ubicacionPorArticulo, setUbicacionPorArticulo] = useState({});
+
+  useEffect(() => {
+    cargarUbicacionesPorArticulo(supabase).then((resultado) =>
+      setUbicacionPorArticulo(resultado.porArticulo)
+    );
+  }, []);
   const [exportados, setExportados] = useState({});
   const [desde, setDesde] = useState(hoyEstadistico);
   const [hasta, setHasta] = useState(hoyEstadistico);
@@ -513,7 +526,7 @@ export default function PedidosExportar() {
 
     for (const pedido of pedidosAExportar) {
       try {
-        const filasCSV = ordenarLineasPedido(pedido.lineas)
+        const filasCSV = ordenarLineasPedido(pedido.lineas, ubicacionPorArticulo)
           .map((fila) => filaCSVDesdeMovimiento(fila, codigoLojoPorToken, codigoLojoPorArticulo));
 
         const contenido = construirContenidoCSV(CABECERA_CSV_PEDIDO, filasCSV);
@@ -1003,6 +1016,7 @@ export default function PedidosExportar() {
               <table style={tabla}>
                 <thead>
                   <tr>
+                    <th style={th}>Ubicación</th>
                     <th style={th}>Departamento</th>
                     <th style={th}>Código Lojo</th>
                     <th style={th}>Artículo</th>
@@ -1011,8 +1025,11 @@ export default function PedidosExportar() {
                   </tr>
                 </thead>
                 <tbody>
-                  {ordenarLineasPedido(pedidoDetalle.lineas).map((linea) => (
+                  {ordenarLineasPedido(pedidoDetalle.lineas, ubicacionPorArticulo).map((linea) => (
                     <tr key={linea.id} style={tr}>
+                      <td style={{ ...td, fontWeight: 700 }}>
+                        {ubicacionDeLinea(linea, ubicacionPorArticulo)?.codigo || "—"}
+                      </td>
                       <td style={td}>{linea.departamento || "—"}</td>
                       <td style={td}>
                         {(linea.articulo_id != null && codigoLojoPorArticulo[linea.articulo_id]) ||
@@ -1071,6 +1088,7 @@ export default function PedidosExportar() {
             <table>
               <thead>
                 <tr>
+                  <th>Ubicación</th>
                   <th>Departamento</th>
                   <th>Código Lojo</th>
                   <th>Artículo</th>
@@ -1079,8 +1097,11 @@ export default function PedidosExportar() {
                 </tr>
               </thead>
               <tbody>
-                {ordenarLineasPedido(pedido.lineas).map((linea) => (
+                {ordenarLineasPedido(pedido.lineas, ubicacionPorArticulo).map((linea) => (
                     <tr key={linea.id}>
+                      <td>
+                        <strong>{ubicacionDeLinea(linea, ubicacionPorArticulo)?.codigo || "—"}</strong>
+                      </td>
                       <td>{linea.departamento || "—"}</td>
                       <td>
                         {(linea.articulo_id != null && codigoLojoPorArticulo[linea.articulo_id]) ||
