@@ -37,7 +37,10 @@ import {
   abrirUrlWhatsapp,
 } from "./utils/whatsappPedido";
 import { calcularVentanaPedido, pedidoEstaExportado } from "./utils/pedidoEdicion";
-import { compararDepartamentosPedido } from "./utils/ordenDepartamentosPedido";
+import {
+  cargarUbicacionesPorArticulo,
+  compararPorUbicacion,
+} from "./utils/ordenUbicacionPedido";
 
 const WHATSAPP_NUMBER = "34670716744";
 const ORDER_STORAGE_KEY = "cash-lojo-pedido";
@@ -727,6 +730,21 @@ export default function App() {
 
   const [articulos, setArticulos] = useState([]);
   const [departamentos, setDepartamentos] = useState([]);
+  // Ubicación de almacén de cada artículo ({ [articulo_id]: {codigo, nombre} }).
+  // Solo sirve para ordenar el pedido (resumen y WhatsApp) por el código de
+  // ubicación. Se carga aparte del catálogo: si falla, el catálogo no se
+  // ve afectado y el pedido sale simplemente por orden alfabético.
+  const [ubicacionPorArticulo, setUbicacionPorArticulo] = useState({});
+
+  useEffect(() => {
+    let cancelado = false;
+    cargarUbicacionesPorArticulo(supabase).then((resultado) => {
+      if (!cancelado) setUbicacionPorArticulo(resultado.porArticulo);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, []);
   const [pushOferta, setPushOferta] = useState(null);
   const [pushCerrado, setPushCerrado] = useState(false);
   const [mostrarVolverPush, setMostrarVolverPush] = useState(false);
@@ -2803,21 +2821,20 @@ export default function App() {
           boxes,
           units,
           notes: itemNotes,
+          // Ubicación de almacén (o null). La usa también el WhatsApp.
+          ubicacion: ubicacionPorArticulo[String(product.id)] || null,
         };
       })
       .filter(Boolean)
-      .sort((a, b) => {
-        const porDepartamento = compararDepartamentosPedido(
-          a.product.department || a.product.departamento,
-          b.product.department || b.product.departamento
-        );
-        if (porDepartamento !== 0) return porDepartamento;
-
-        return String(a.product.name).localeCompare(String(b.product.name), "es", {
-          sensitivity: "base",
-        });
-      });
-  }, [quantities, productos]);
+      .sort((a, b) =>
+        compararPorUbicacion(
+          a.ubicacion?.codigo,
+          a.product.name,
+          b.ubicacion?.codigo,
+          b.product.name
+        )
+      );
+  }, [quantities, productos, ubicacionPorArticulo]);
 
   const selectedCount = orderedItems.filter(
     (item) => item.boxes > 0 || item.units > 0
