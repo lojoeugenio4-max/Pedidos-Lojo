@@ -15,7 +15,7 @@ export const DEPARTAMENTOS_PRIORITARIOS_PEDIDO = [
 // 2L/1.5L", "REFRESCOS 2L / 1.5L" o "Bebidas energeticas" se reconocen igual.
 function normalizarDepartamento(nombreDepartamento) {
   return String(nombreDepartamento || "")
-    .normalize("NFD")A
+    .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
     .replace(/\s*\/\s*/g, "/")
