@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { supabaseStorage } from "../supabaseStorageClient";
 
 export default function TablaArticulos({
@@ -6,7 +7,46 @@ export default function TablaArticulos({
   onDesactivar,
   onActivar,
   onEliminar,
+  // Selección múltiple (para asignar ubicación a muchos artículos a la vez)
+  seleccionable = false,
+  seleccionados = new Set(),
+  onCambiarSeleccion = () => {},
 }) {
+  // Último artículo marcado, para poder marcar un rango con Mayúsculas+clic.
+  const ultimoIndiceRef = useRef(null);
+
+  const idsVisibles = articulos.map((articulo) => articulo.id);
+  const todosMarcados =
+    idsVisibles.length > 0 && idsVisibles.every((id) => seleccionados.has(id));
+  const algunoMarcado = idsVisibles.some((id) => seleccionados.has(id));
+
+  function marcarTodos(marcar) {
+    const nuevos = new Set(seleccionados);
+    idsVisibles.forEach((id) => (marcar ? nuevos.add(id) : nuevos.delete(id)));
+    onCambiarSeleccion(nuevos);
+  }
+
+  function alternarArticulo(indice, evento) {
+    const id = articulos[indice].id;
+    const marcar = !seleccionados.has(id);
+    const nuevos = new Set(seleccionados);
+
+    if (evento.shiftKey && ultimoIndiceRef.current !== null) {
+      const desde = Math.min(ultimoIndiceRef.current, indice);
+      const hasta = Math.max(ultimoIndiceRef.current, indice);
+      for (let i = desde; i <= hasta; i += 1) {
+        if (marcar) nuevos.add(articulos[i].id);
+        else nuevos.delete(articulos[i].id);
+      }
+    } else if (marcar) {
+      nuevos.add(id);
+    } else {
+      nuevos.delete(id);
+    }
+
+    ultimoIndiceRef.current = indice;
+    onCambiarSeleccion(nuevos);
+  }
   function obtenerFoto(articulo) {
     if (!articulo.foto) return null;
 
@@ -55,6 +95,20 @@ export default function TablaArticulos({
       <table style={table}>
         <thead>
           <tr>
+            {seleccionable && (
+              <th style={{ ...th, width: "44px", textAlign: "center" }}>
+                <input
+                  type="checkbox"
+                  style={casilla}
+                  checked={todosMarcados}
+                  ref={(el) => {
+                    if (el) el.indeterminate = algunoMarcado && !todosMarcados;
+                  }}
+                  onChange={(e) => marcarTodos(e.target.checked)}
+                  title="Marcar / desmarcar todos los de la lista"
+                />
+              </th>
+            )}
             <th style={{ ...th, width: "78px" }}>Foto</th>
             <th style={{ ...th, width: "80px" }}>Código</th>
             <th style={{ ...th, width: "100px" }}>Cód. Lojo</th>
@@ -68,7 +122,7 @@ export default function TablaArticulos({
         </thead>
 
         <tbody>
-          {articulos.map((articulo) => {
+          {articulos.map((articulo, indice) => {
             const tieneOferta =
               Array.isArray(articulo.ofertas) && articulo.ofertas.length > 0;
 
@@ -78,7 +132,30 @@ export default function TablaArticulos({
             const precioFormateado = formatearPrecio(articulo.precio);
 
             return (
-              <tr key={articulo.id} style={estiloFila(articulo)}>
+              <tr
+                key={articulo.id}
+                style={
+                  seleccionados.has(articulo.id)
+                    ? { ...estiloFila(articulo), background: "#ecfdf5" }
+                    : estiloFila(articulo)
+                }
+              >
+                {seleccionable && (
+                  <td
+                    style={{ ...td, textAlign: "center", cursor: "pointer" }}
+                    onClick={(e) => {
+                      if (e.target.tagName !== "INPUT") alternarArticulo(indice, e);
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      style={casilla}
+                      checked={seleccionados.has(articulo.id)}
+                      onChange={() => {}}
+                      onClick={(e) => alternarArticulo(indice, e)}
+                    />
+                  </td>
+                )}
                 <td style={td}>
                   {articulo.foto ? (
                     <img src={obtenerFoto(articulo)} alt="" style={img} />
@@ -499,3 +576,5 @@ const deleteBtn = {
   background: "#fee2e2",
   color: "#b91c1c",
 };
+
+const casilla = { width: "18px", height: "18px", cursor: "pointer" };
