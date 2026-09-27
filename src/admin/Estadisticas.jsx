@@ -3,6 +3,7 @@ import { supabase } from "../supabaseClient";
 import {
   cargarUbicacionesPorArticulo,
   compararPorUbicacion,
+  ordenarLineasPedido,
   ubicacionDeLinea,
 } from "../utils/ordenUbicacionPedido";
 
@@ -183,11 +184,28 @@ function construirContenidoCSV(cabecera, filas) {
   return [cabecera, ...filas].map((fila) => fila.map(escaparCSV).join(";")).join("\r\n");
 }
 
-function exportarPedidosCSV(movimientos, desde, hasta, codigoLojoPorToken = {}) {
-  const filas = movimientos
+// Agrupa las líneas por pedido (pedidos en orden de llegada) y, dentro de
+// cada pedido, ordena los artículos por código de ubicación (sin ubicación,
+// al final y por orden alfabético).
+function lineasOrdenadasPorPedidoYUbicacion(movimientos, ubicacionPorArticulo = {}) {
+  const porPedido = new Map();
+  movimientos
     .slice()
     .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
-    .map((fila) => filaCSVDesdeMovimiento(fila, codigoLojoPorToken));
+    .forEach((fila) => {
+      const pedidoId = String(fila.pedido_id || fila.id || "sin_id");
+      if (!porPedido.has(pedidoId)) porPedido.set(pedidoId, []);
+      porPedido.get(pedidoId).push(fila);
+    });
+  return Array.from(porPedido.values()).flatMap((filas) =>
+    ordenarLineasPedido(filas, ubicacionPorArticulo)
+  );
+}
+
+function exportarPedidosCSV(movimientos, desde, hasta, codigoLojoPorToken = {}, ubicacionPorArticulo = {}) {
+  const filas = lineasOrdenadasPorPedidoYUbicacion(movimientos, ubicacionPorArticulo).map((fila) =>
+    filaCSVDesdeMovimiento(fila, codigoLojoPorToken)
+  );
 
   descargarArchivo(`pedidos_${desde}_a_${hasta}.csv`, construirContenidoCSV(CABECERA_CSV_PEDIDO, filas));
 }
@@ -314,7 +332,7 @@ function nombreArchivoSeguro(pedidoId) {
   return texto.replace(/[^a-zA-Z0-9-_]+/g, "_") || "sin_id";
 }
 
-function exportarPedidosPorPedidoZIP(movimientos, desde, hasta, codigoLojoPorToken = {}) {
+function exportarPedidosPorPedidoZIP(movimientos, desde, hasta, codigoLojoPorToken = {}, ubicacionPorArticulo = {}) {
   const porPedido = new Map();
 
   movimientos.forEach((fila) => {
@@ -324,10 +342,11 @@ function exportarPedidosPorPedidoZIP(movimientos, desde, hasta, codigoLojoPorTok
   });
 
   const archivos = Array.from(porPedido.entries()).map(([pedidoId, filas]) => {
-    const filasOrdenadas = filas
-      .slice()
-      .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
-      .map((fila) => filaCSVDesdeMovimiento(fila, codigoLojoPorToken));
+    // Artículos del pedido por código de ubicación (sin ubicación, al final
+    // y por orden alfabético).
+    const filasOrdenadas = ordenarLineasPedido(filas, ubicacionPorArticulo).map((fila) =>
+      filaCSVDesdeMovimiento(fila, codigoLojoPorToken)
+    );
 
     return {
       nombre: `pedido_${nombreArchivoSeguro(pedidoId)}.csv`,
@@ -1060,7 +1079,7 @@ export default function Estadisticas() {
                   type="button"
                   style={exportCsvButton}
                   disabled={movimientos.length === 0}
-                  onClick={() => exportarPedidosCSV(movimientos, desde, hasta, codigoLojoPorToken)}
+                  onClick={() => exportarPedidosCSV(movimientos, desde, hasta, codigoLojoPorToken, ubicacionPorArticulo)}
                   title="Descarga un único CSV con una fila por artículo de cada pedido del periodo mostrado"
                 >
                   ⬇️ Exportar CSV
@@ -1069,7 +1088,7 @@ export default function Estadisticas() {
                   type="button"
                   style={exportZipButton}
                   disabled={movimientos.length === 0}
-                  onClick={() => exportarPedidosPorPedidoZIP(movimientos, desde, hasta, codigoLojoPorToken)}
+                  onClick={() => exportarPedidosPorPedidoZIP(movimientos, desde, hasta, codigoLojoPorToken, ubicacionPorArticulo)}
                   title="Descarga un .zip con un CSV independiente por cada pedido del periodo mostrado"
                 >
                   ⬇️ Un CSV por pedido (.zip)
