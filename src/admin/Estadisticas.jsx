@@ -902,7 +902,9 @@ export default function Estadisticas() {
           ubicacionDeLinea(a, ubicacionPorArticulo)?.codigo,
           a.nombre_articulo,
           ubicacionDeLinea(b, ubicacionPorArticulo)?.codigo,
-          b.nombre_articulo
+          b.nombre_articulo,
+          a.departamento,
+          b.departamento
         )
       );
 
