@@ -2,8 +2,10 @@
 //
 // Regla única:
 //   1. Artículos CON ubicación: por el código de la ubicación (orden
-//      "natural": 1, 2, 10… y A-1, A-2, A-10…). Si varios artículos
-//      comparten ubicación, entre ellos por nombre alfabético.
+//      "natural": 1, 2, 10… y A-1, A-2, A-10…). Dentro de una misma
+//      ubicación, agrupados por departamento (orden alfabético del
+//      departamento; los que no tienen departamento, al final) y, dentro
+//      de cada departamento, por nombre alfabético.
 //   2. Artículos SIN ubicación: al final, por nombre alfabético.
 //
 // Se usa en el resumen del cliente, en el mensaje de WhatsApp, en
@@ -26,11 +28,29 @@ function compararNombres(nombreA, nombreB) {
   });
 }
 
+// Departamentos por orden alfabético; los artículos sin departamento van
+// detrás de los que sí lo tienen.
+function compararDepartamentos(departamentoA, departamentoB) {
+  const a = textoLimpio(departamentoA);
+  const b = textoLimpio(departamentoB);
+  if (a && !b) return -1;
+  if (!a && b) return 1;
+  return compararNombres(a, b);
+}
+
 /**
  * Compara dos artículos de un pedido. Cada uno se describe con el código
- * de su ubicación (vacío o null = sin ubicación) y su nombre.
+ * de su ubicación (vacío o null = sin ubicación), su nombre y su
+ * departamento.
  */
-export function compararPorUbicacion(codigoUbicacionA, nombreA, codigoUbicacionB, nombreB) {
+export function compararPorUbicacion(
+  codigoUbicacionA,
+  nombreA,
+  codigoUbicacionB,
+  nombreB,
+  departamentoA = "",
+  departamentoB = ""
+) {
   const tieneA = textoLimpio(codigoUbicacionA) !== "";
   const tieneB = textoLimpio(codigoUbicacionB) !== "";
 
@@ -40,8 +60,13 @@ export function compararPorUbicacion(codigoUbicacionA, nombreA, codigoUbicacionB
   if (tieneA && tieneB) {
     const porUbicacion = compararCodigosUbicacion(codigoUbicacionA, codigoUbicacionB);
     if (porUbicacion !== 0) return porUbicacion;
+
+    // Misma ubicación: primero por departamento…
+    const porDepartamento = compararDepartamentos(departamentoA, departamentoB);
+    if (porDepartamento !== 0) return porDepartamento;
   }
 
+  // …y después por nombre. Los artículos sin ubicación van solo por nombre.
   return compararNombres(nombreA, nombreB);
 }
 
@@ -66,7 +91,9 @@ export function ordenarLineasPedido(lineas = [], ubicacionPorArticulo = {}) {
       ubicacionDeLinea(a, ubicacionPorArticulo)?.codigo,
       a.nombre_articulo,
       ubicacionDeLinea(b, ubicacionPorArticulo)?.codigo,
-      b.nombre_articulo
+      b.nombre_articulo,
+      a.departamento,
+      b.departamento
     )
   );
 }
