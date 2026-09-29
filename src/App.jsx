@@ -2831,7 +2831,9 @@ export default function App() {
           a.ubicacion?.codigo,
           a.product.name,
           b.ubicacion?.codigo,
-          b.product.name
+          b.product.name,
+          a.product.department || a.product.departamento,
+          b.product.department || b.product.departamento
         )
       );
   }, [quantities, productos, ubicacionPorArticulo]);
