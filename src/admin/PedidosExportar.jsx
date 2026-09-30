@@ -13,6 +13,7 @@ import QrPendientes, {
   hayQueVolverAQrPendientes,
   limpiarVolverAQrPendientes,
 } from "./QrPendientes";
+import { PremiosBingoVista, usePremiosBingo } from "./PremiosBingo";
 import { abrirPantallaGrande, leerVistaReposo } from "../utils/pantallaGrande";
 import {
   cargarUbicacionesPorArticulo,
@@ -118,6 +119,9 @@ export default function PedidosExportar() {
   // desde "QR pendientes", se vuelve directamente a esa vista (con el
   // buscador tal como estaba), para seguir con el siguiente QR del mismo
   // cliente sin tener que buscarlo otra vez.
+  // Premios de Bingo pendientes de entregar (aviso en tiempo real + pestaña).
+  const premiosBingo = usePremiosBingo({ avisarConSonido: true });
+  const regalosPendientes = premiosBingo.pendientes;
   const [vistaPrincipal, setVistaPrincipal] = useState(() =>
     hayQueVolverAQrPendientes() ? "qr" : "pedidos"
   );
@@ -689,6 +693,24 @@ export default function PedidosExportar() {
         </div>
       )}
 
+      {regalosPendientes.length > 0 && premiosBingo.entregasDisponibles && (
+        <button
+          type="button"
+          style={avisoRegaloBingoParpadeante}
+          onClick={() => setVistaPrincipal("premios")}
+          title="Ver los premios de Bingo pendientes de entregar"
+        >
+          🎁 REGALO DE BINGO POR ENTREGAR
+          {regalosPendientes.length > 1 ? ` (${regalosPendientes.length})` : ""} 🎁
+          <span style={avisoRegaloDetalle}>
+            {regalosPendientes[0].customer_name || regalosPendientes[0].customer_token} —{" "}
+            {regalosPendientes[0].etiqueta}
+            {regalosPendientes[0].regalo ? ` · ${regalosPendientes[0].regalo}` : ""}
+            {regalosPendientes.length > 1 ? ` y ${regalosPendientes.length - 1} más` : ""} · Pulsa para verlo
+          </span>
+        </button>
+      )}
+
       <div style={cabecera}>
         <div>
           <h2 style={titulo}>Pedidos recibidos</h2>
@@ -736,9 +758,19 @@ export default function PedidosExportar() {
         >
           📷 QR pendientes
         </button>
+        <button
+          type="button"
+          style={botonFiltro(vistaPrincipal === "premios")}
+          onClick={() => setVistaPrincipal("premios")}
+        >
+          🎁 Premios Bingo
+          {regalosPendientes.length > 0 && <span style={contadorRegalos}>{regalosPendientes.length}</span>}
+        </button>
       </div>
 
-      {vistaPrincipal === "qr" ? (
+      {vistaPrincipal === "premios" ? (
+        <PremiosBingoVista datos={premiosBingo} modoAlmacen />
+      ) : vistaPrincipal === "qr" ? (
         <QrPendientes onClienteSinMasQr={() => setVistaPrincipal("pedidos")} />
       ) : (
         <>
@@ -1222,6 +1254,35 @@ const botonPantallaGrande = (activo, color) => ({
 });
 
 const filtrosEstado = { display: "flex", gap: "8px" };
+
+const avisoRegaloBingoParpadeante = {
+  ...avisoPedidoPendienteParpadeante,
+  display: "block",
+  border: "none",
+  cursor: "pointer",
+  background: "linear-gradient(135deg, #b45309 0%, #f59e0b 100%)",
+  boxShadow: "0 0 0 4px #fff inset, 0 14px 34px rgba(245,158,11,.55)",
+};
+
+const avisoRegaloDetalle = {
+  display: "block",
+  marginTop: 8,
+  fontSize: "clamp(14px, 1.8vw, 20px)",
+  fontWeight: 700,
+  letterSpacing: 0,
+};
+
+const contadorRegalos = {
+  display: "inline-block",
+  marginLeft: 6,
+  minWidth: 18,
+  padding: "1px 6px",
+  borderRadius: 999,
+  background: "#dc2626",
+  color: "#fff",
+  fontSize: 11,
+  fontWeight: 900,
+};
 
 const botonFiltro = (activo) => ({
   padding: "7px 14px",
