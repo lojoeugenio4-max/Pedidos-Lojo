@@ -5,6 +5,7 @@ import StoreWheel from "../components/StoreWheel";
 import BingoDrumStage from "../components/BingoDrumStage";
 import { calcularPremiosConseguidos } from "../utils/bingoWinLogic";
 import { notificarQrLeido } from "../utils/qrPendientesEvento";
+import { notificarPremioBingo } from "../utils/premiosBingoEvento";
 import { abrirPantallaGrande } from "../utils/pantallaGrande";
 import PedidosExportar from "../admin/PedidosExportar";
 import { prepararVueltaTrasJugar } from "../admin/QrPendientes";
@@ -818,6 +819,15 @@ export default function StorePage() {
 
         const texto = nombre ? `${etiqueta} ${nombre}` : etiqueta;
         const premio = { nombre: texto, key: `${claveUnica}-${Date.now()}` };
+        // Aviso a la pantalla de almacén: hay un regalo pendiente de entregar.
+        notificarPremioBingo({
+          customerToken,
+          customerName: entitlement?.customer_name || "",
+          cartonId: estadoCarton.carton_id || null,
+          tipo: clave === "linea" || clave === "lineaEspecial" ? "linea" : "bingo",
+          etiqueta,
+          premioNombre: nombre || "",
+        });
         setPremioBingoGanado(premio);
         enviarEventoDisplay("bingo-premio", { premio });
       });
