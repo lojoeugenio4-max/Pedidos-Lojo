@@ -17,7 +17,9 @@ export default function Articulos() {
   const [asignandoMasivo, setAsignandoMasivo] = useState(false);
   const [mensajeMasivo, setMensajeMasivo] = useState("");
   const [busqueda, setBusqueda] = useState("");
-  const [filtro, setFiltro] = useState("visibles");
+  // Filtros combinables: se aplican TODOS a la vez (el artículo tiene que
+  // cumplir cada uno de los que no estén en "todos").
+  const [filtros, setFiltros] = useState(FILTROS_INICIALES);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [editando, setEditando] = useState(null);
   const [cargando, setCargando] = useState(true);
@@ -530,33 +532,76 @@ export default function Articulos() {
     };
   }, [articulos]);
 
+  function cambiarFiltro(campo, valor) {
+    setFiltros((prev) => ({ ...prev, [campo]: valor }));
+  }
+
+  function limpiarFiltros() {
+    setFiltros({ ...FILTROS_INICIALES, visibilidad: "todos" });
+    setBusqueda("");
+  }
+
+  const filtrosActivos =
+    Object.entries(filtros).filter(([, valor]) => valor !== "todos").length +
+    (busqueda.trim() ? 1 : 0);
+
   const articulosFiltrados = articulos.filter((articulo) => {
-    const texto = `${articulo.codigo} ${articulo.nombre} ${
-      articulo.departamentos?.nombre || ""
-    } ${articulo.ubicacion?.codigo || ""} ${articulo.ubicacion?.nombre || ""}`.toLowerCase();
+    const tieneOferta = Array.isArray(articulo.ofertas) && articulo.ofertas.length > 0;
+    const tienePrecio = articulo.precio !== null && articulo.precio !== undefined;
+    const tieneLojo = Boolean(String(articulo.codigo_lojo || "").trim());
 
-    const tieneOferta =
-      Array.isArray(articulo.ofertas) && articulo.ofertas.length > 0;
+    // Búsqueda libre: todas las palabras escritas tienen que aparecer
+    // (en cualquier orden) en código, código Lojo, nombre, departamento o ubicación.
+    const palabras = normalizar(busqueda).split(/\s+/).filter(Boolean);
+    if (palabras.length) {
+      const texto = normalizar(
+        `${articulo.codigo} ${articulo.codigo_lojo || ""} ${articulo.nombre} ${
+          articulo.departamentos?.nombre || ""
+        } ${articulo.ubicacion?.codigo || ""} ${articulo.ubicacion?.nombre || ""}`
+      );
+      if (!palabras.every((palabra) => texto.includes(palabra))) return false;
+    }
 
-    const coincideBusqueda = texto.includes(busqueda.toLowerCase());
+    const { departamento, ubicacion, visibilidad, estado, novedad, foto, lojo, oferta, precio } = filtros;
 
-    const coincideFiltro =
-      filtro === "todos" ||
-      (filtro === "activos" && articulo.activo) ||
-      (filtro === "inactivos" && !articulo.activo) ||
-      (filtro === "novedades" && articulo.novedad) ||
-      (filtro === "sin_foto" && !articulo.foto) ||
-      (filtro === "sin_ubicacion" && !articulo.ubicacion_id) ||
-      (filtro === "sin_lojo" &&
-        !String(articulo.codigo_lojo || "").trim()) ||
-      (filtro === "con_oferta" && tieneOferta) ||
-      (filtro === "con_precio" &&
-        articulo.precio !== null &&
-        articulo.precio !== undefined) ||
-      (filtro === "visibles" && !articulo.oculto) ||
-      (filtro === "ocultos" && articulo.oculto);
+    if (departamento === "__ninguno__" && articulo.departamento_id) return false;
+    if (
+      departamento !== "todos" &&
+      departamento !== "__ninguno__" &&
+      String(articulo.departamento_id || "") !== departamento
+    )
+      return false;
 
-    return coincideBusqueda && coincideFiltro;
+    if (ubicacion === "__ninguna__" && articulo.ubicacion_id) return false;
+    if (
+      ubicacion !== "todos" &&
+      ubicacion !== "__ninguna__" &&
+      String(articulo.ubicacion_id || "") !== ubicacion
+    )
+      return false;
+
+    if (visibilidad === "visibles" && articulo.oculto) return false;
+    if (visibilidad === "ocultos" && !articulo.oculto) return false;
+
+    if (estado === "activos" && !articulo.activo) return false;
+    if (estado === "inactivos" && articulo.activo) return false;
+
+    if (novedad === "si" && !articulo.novedad) return false;
+    if (novedad === "no" && articulo.novedad) return false;
+
+    if (foto === "con" && !articulo.foto) return false;
+    if (foto === "sin" && articulo.foto) return false;
+
+    if (lojo === "con" && !tieneLojo) return false;
+    if (lojo === "sin" && tieneLojo) return false;
+
+    if (oferta === "con" && !tieneOferta) return false;
+    if (oferta === "sin" && tieneOferta) return false;
+
+    if (precio === "con" && !tienePrecio) return false;
+    if (precio === "sin" && tienePrecio) return false;
+
+    return true;
   });
 
   return (
@@ -625,7 +670,7 @@ export default function Articulos() {
             <span style={searchIcon}>🔎</span>
             <input
               type="text"
-              placeholder="Buscar por código, nombre, departamento o ubicación..."
+              placeholder="Buscar por código, código Lojo, nombre, departamento o ubicación..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               style={searchInput}
@@ -638,40 +683,94 @@ export default function Articulos() {
           </div>
         </div>
 
-        <div style={filters}>
-          <FilterButton active={filtro === "visibles"} onClick={() => setFiltro("visibles")}>
-            Visibles
-          </FilterButton>
-          <FilterButton active={filtro === "todos"} onClick={() => setFiltro("todos")}>
-            Todos
-          </FilterButton>
-          <FilterButton active={filtro === "activos"} onClick={() => setFiltro("activos")}>
-            Activos
-          </FilterButton>
-          <FilterButton active={filtro === "inactivos"} onClick={() => setFiltro("inactivos")}>
-            Inactivos
-          </FilterButton>
-          <FilterButton active={filtro === "novedades"} onClick={() => setFiltro("novedades")}>
-            ⭐ Novedades
-          </FilterButton>
-          <FilterButton active={filtro === "sin_foto"} onClick={() => setFiltro("sin_foto")}>
-            Sin foto
-          </FilterButton>
-          <FilterButton active={filtro === "sin_lojo"} onClick={() => setFiltro("sin_lojo")}>
-            ⚠️ Sin código Lojo
-          </FilterButton>
-          <FilterButton active={filtro === "sin_ubicacion"} onClick={() => setFiltro("sin_ubicacion")}>
-            📍 Sin ubicación
-          </FilterButton>
-          <FilterButton active={filtro === "con_oferta"} onClick={() => setFiltro("con_oferta")}>
-            Con oferta
-          </FilterButton>
-          <FilterButton active={filtro === "con_precio"} onClick={() => setFiltro("con_precio")}>
-            💶 Con precio
-          </FilterButton>
-          <FilterButton active={filtro === "ocultos"} onClick={() => setFiltro("ocultos")}>
-            Ocultos
-          </FilterButton>
+        <div style={filtrosGrid}>
+          <FiltroSelect
+            etiqueta="Departamento"
+            valor={filtros.departamento}
+            onChange={(v) => cambiarFiltro("departamento", v)}
+          >
+            <option value="todos">Todos</option>
+            {departamentos.map((d) => (
+              <option key={d.id} value={String(d.id)}>
+                {d.nombre}
+              </option>
+            ))}
+            <option value="__ninguno__">— Sin departamento —</option>
+          </FiltroSelect>
+
+          <FiltroSelect
+            etiqueta="Ubicación"
+            valor={filtros.ubicacion}
+            onChange={(v) => cambiarFiltro("ubicacion", v)}
+            deshabilitado={!ubicacionesDisponibles}
+          >
+            <option value="todos">Todas</option>
+            {ubicaciones.map((u) => (
+              <option key={u.id} value={String(u.id)}>
+                {u.codigo} — {u.nombre}
+              </option>
+            ))}
+            <option value="__ninguna__">📍 Sin ubicación</option>
+          </FiltroSelect>
+
+          <FiltroSelect
+            etiqueta="Visibilidad"
+            valor={filtros.visibilidad}
+            onChange={(v) => cambiarFiltro("visibilidad", v)}
+          >
+            <option value="todos">Visibles y ocultos</option>
+            <option value="visibles">Solo visibles</option>
+            <option value="ocultos">Solo ocultos</option>
+          </FiltroSelect>
+
+          <FiltroSelect etiqueta="Estado" valor={filtros.estado} onChange={(v) => cambiarFiltro("estado", v)}>
+            <option value="todos">Activos e inactivos</option>
+            <option value="activos">Solo activos</option>
+            <option value="inactivos">Solo inactivos</option>
+          </FiltroSelect>
+
+          <FiltroSelect etiqueta="⭐ Novedad" valor={filtros.novedad} onChange={(v) => cambiarFiltro("novedad", v)}>
+            <option value="todos">Todos</option>
+            <option value="si">Solo novedades</option>
+            <option value="no">Sin novedad</option>
+          </FiltroSelect>
+
+          <FiltroSelect etiqueta="Foto" valor={filtros.foto} onChange={(v) => cambiarFiltro("foto", v)}>
+            <option value="todos">Todos</option>
+            <option value="con">Con foto</option>
+            <option value="sin">Sin foto</option>
+          </FiltroSelect>
+
+          <FiltroSelect etiqueta="Código Lojo" valor={filtros.lojo} onChange={(v) => cambiarFiltro("lojo", v)}>
+            <option value="todos">Todos</option>
+            <option value="con">Con código Lojo</option>
+            <option value="sin">⚠️ Sin código Lojo</option>
+          </FiltroSelect>
+
+          <FiltroSelect etiqueta="Oferta" valor={filtros.oferta} onChange={(v) => cambiarFiltro("oferta", v)}>
+            <option value="todos">Todos</option>
+            <option value="con">Con oferta</option>
+            <option value="sin">Sin oferta</option>
+          </FiltroSelect>
+
+          <FiltroSelect etiqueta="💶 Precio" valor={filtros.precio} onChange={(v) => cambiarFiltro("precio", v)}>
+            <option value="todos">Todos</option>
+            <option value="con">Con precio</option>
+            <option value="sin">Sin precio</option>
+          </FiltroSelect>
+        </div>
+
+        <div style={filtrosPie}>
+          <span style={textoFiltrosActivos}>
+            {filtrosActivos === 0
+              ? "Sin filtros: se muestran todos los artículos."
+              : `${filtrosActivos} filtro${filtrosActivos === 1 ? "" : "s"} aplicado${
+                  filtrosActivos === 1 ? "" : "s"
+                } a la vez.`}
+          </span>
+          <button type="button" onClick={limpiarFiltros} style={botonLimpiar} disabled={filtrosActivos === 0}>
+            ✖ Quitar filtros
+          </button>
         </div>
       </section>
 
@@ -725,7 +824,7 @@ export default function Articulos() {
               </button>
             )}
             <span style={ayudaMasiva}>
-              Consejo: filtra por “📍 Sin ubicación” o busca (p. ej. “cruzcampo”), marca la casilla de
+              Consejo: elige “📍 Sin ubicación” en el filtro Ubicación o busca (p. ej. “cruzcampo”), marca la casilla de
               la cabecera para marcar toda la lista, o usa Mayúsculas + clic para marcar un rango.
             </span>
             {mensajeMasivo && <span style={mensajeOk}>{mensajeMasivo}</span>}
@@ -763,13 +862,42 @@ function StatCard({ label, value }) {
   );
 }
 
-function FilterButton({ active, onClick, children }) {
+function FiltroSelect({ etiqueta, valor, onChange, deshabilitado = false, children }) {
+  const activo = valor !== "todos";
   return (
-    <button type="button" onClick={onClick} style={filterButton(active)}>
-      {children}
-    </button>
+    <label style={filtroCampo}>
+      <span style={filtroEtiqueta(activo)}>{etiqueta}</span>
+      <select
+        value={valor}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={deshabilitado}
+        style={filtroSelect(activo)}
+      >
+        {children}
+      </select>
+    </label>
   );
 }
+
+function normalizar(texto) {
+  return String(texto || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+const FILTROS_INICIALES = {
+  departamento: "todos",
+  ubicacion: "todos",
+  visibilidad: "visibles",
+  estado: "todos",
+  novedad: "todos",
+  foto: "todos",
+  lojo: "todos",
+  oferta: "todos",
+  precio: "todos",
+};
 
 const page = {
   minHeight: "100vh",
@@ -954,22 +1082,62 @@ const resultCounter = {
   whiteSpace: "nowrap",
 };
 
-const filters = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: "8px",
+const filtrosGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))",
+  gap: "10px",
 };
 
-const filterButton = (active) => ({
+const filtroCampo = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "5px",
+};
+
+const filtroEtiqueta = (activo) => ({
+  fontSize: "11px",
+  fontWeight: "900",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: activo ? "#1d4ed8" : "#64748b",
+});
+
+const filtroSelect = (activo) => ({
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: "12px",
+  border: activo ? "2px solid #1d4ed8" : "1px solid #dbe4ef",
+  background: activo ? "#eff6ff" : "#f8fafc",
+  color: "#111827",
+  fontWeight: activo ? "800" : "600",
+  fontSize: "14px",
+  cursor: "pointer",
+});
+
+const filtrosPie = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "10px",
+  marginTop: "12px",
+  flexWrap: "wrap",
+};
+
+const textoFiltrosActivos = {
+  fontSize: "13px",
+  fontWeight: "700",
+  color: "#475569",
+};
+
+const botonLimpiar = {
   border: "none",
   borderRadius: "999px",
-  padding: "10px 15px",
-  cursor: "pointer",
+  padding: "9px 15px",
+  background: "#fee2e2",
+  color: "#b91c1c",
   fontWeight: "900",
-  background: active ? "#111827" : "#f1f5f9",
-  color: active ? "#fff" : "#334155",
-  boxShadow: active ? "0 10px 18px rgba(17,24,39,0.18)" : "none",
-});
+  cursor: "pointer",
+};
 
 const tableShell = {
   background: "#ffffff",
