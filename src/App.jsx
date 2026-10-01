@@ -3954,35 +3954,62 @@ export default function App() {
     return result;
   }
 
-  // Inicia (o detiene) el dictado por voz en el buscador. Lo que dice el
-  // cliente se escribe en el buscador como si lo hubiera tecleado.
-  function alternarBusquedaPorVoz() {
-    const enChino = language === "zh";
+  // Dictado por voz en el buscador. Lo que dice el cliente se escribe en
+  // el buscador como si lo hubiera tecleado.
+  //
+  // "Modo voz continuo": cuando el cliente busca por voz, elige un artículo
+  // de los resultados y cierra la ficha con cantidad, se borra la búsqueda
+  // y el micrófono se vuelve a abrir solo para pedir el siguiente artículo.
+  // Se sale del modo tocando el micrófono, escribiendo en el buscador o si
+  // el cliente no dice nada durante un rato.
+  //
+  // Se escucha SIEMPRE en español, aunque la app esté en chino: los
+  // nombres de los artículos están en español, y con el reconocimiento en
+  // chino "Coca Cola" saldría escrito en caracteres chinos y no se
+  // encontraría.
+  const modoVozContinuoRef = useRef(false);
+  const reintentosSilencioVozRef = useRef(0);
+  const MAX_REINTENTOS_SILENCIO_VOZ = 2;
 
-    if (escuchandoVoz) {
-      reconocimientoVozRef.current?.stop();
-      return;
-    }
+  function textoVoz(es, zh) {
+    return language === "zh" ? zh : es;
+  }
 
+  function detenerBusquedaPorVoz() {
+    modoVozContinuoRef.current = false;
+    reintentosSilencioVozRef.current = 0;
+    reconocimientoVozRef.current?.stop();
+  }
+
+  function iniciarEscuchaVoz() {
     const Reconocimiento =
       typeof window !== "undefined" &&
       (window.SpeechRecognition || window.webkitSpeechRecognition);
 
     if (!Reconocimiento) {
+      modoVozContinuoRef.current = false;
       setAvisoVoz(
-        enChino
-          ? "此手机或浏览器不支持语音输入。"
-          : "Este móvil o navegador no permite dictar por voz."
+        textoVoz("Este móvil o navegador no permite dictar por voz.", "此手机或浏览器不支持语音输入。")
       );
       return;
     }
 
+    // Por si quedaba uno abierto.
+    try {
+      reconocimientoVozRef.current?.abort?.();
+    } catch {
+      // nada
+    }
+
     try {
       const reconocimiento = new Reconocimiento();
-      reconocimiento.lang = enChino ? "zh-CN" : "es-ES";
+      reconocimiento.lang = "es-ES";
       reconocimiento.interimResults = true;
       reconocimiento.continuous = false;
       reconocimiento.maxAlternatives = 1;
+
+      let haHablado = false;
+      let errorGrave = false;
 
       reconocimiento.onresult = (event) => {
         let texto = "";
@@ -3993,6 +4020,10 @@ export default function App() {
         // que no estorben a la búsqueda.
         texto = texto.replace(/[.,;:¡!¿?。，！？]+/g, " ").replace(/\s+/g, " ").trim();
         if (!texto) return;
+        haHablado = true;
+        modoVozContinuoRef.current = true;
+        reintentosSilencioVozRef.current = 0;
+        setAvisoVoz("");
         setSearchInput(texto);
         setSearch(texto);
         setSelectedDepartment("TODOS");
@@ -4001,21 +4032,50 @@ export default function App() {
       reconocimiento.onerror = (event) => {
         const error = event?.error;
         if (error === "not-allowed" || error === "service-not-allowed") {
+          errorGrave = true;
+          modoVozContinuoRef.current = false;
           setAvisoVoz(
-            enChino
-              ? "请在手机设置中允许使用麦克风。"
-              : "Permite el uso del micrófono en los ajustes del móvil para poder dictar."
+            textoVoz(
+              "Permite el uso del micrófono en los ajustes del móvil para poder dictar.",
+              "请在手机设置中允许使用麦克风。"
+            )
           );
-        } else if (error === "no-speech") {
-          setAvisoVoz(enChino ? "没有听到声音，请再试一次。" : "No te he oído. Pulsa el micrófono y vuelve a probar.");
-        } else if (error !== "aborted") {
-          setAvisoVoz(enChino ? "语音输入失败，请再试一次。" : "No se pudo usar el micrófono. Vuelve a probar.");
+        } else if (error !== "no-speech" && error !== "aborted") {
+          errorGrave = true;
+          modoVozContinuoRef.current = false;
+          setAvisoVoz(textoVoz("No se pudo usar el micrófono. Vuelve a probar.", "语音输入失败，请再试一次。"));
         }
       };
 
       reconocimiento.onend = () => {
+        if (reconocimientoVozRef.current === reconocimiento) {
+          reconocimientoVozRef.current = null;
+        }
         setEscuchandoVoz(false);
-        reconocimientoVozRef.current = null;
+
+        if (haHablado || errorGrave) return;
+
+        // No ha dicho nada. En modo continuo se vuelve a escuchar un par
+        // de veces antes de dejarlo.
+        if (
+          modoVozContinuoRef.current &&
+          reintentosSilencioVozRef.current < MAX_REINTENTOS_SILENCIO_VOZ
+        ) {
+          reintentosSilencioVozRef.current += 1;
+          setTimeout(() => {
+            if (modoVozContinuoRef.current) iniciarEscuchaVoz();
+          }, 250);
+          return;
+        }
+
+        modoVozContinuoRef.current = false;
+        reintentosSilencioVozRef.current = 0;
+        setAvisoVoz(
+          textoVoz(
+            "No te he oído. Pulsa el micrófono para pedir otro artículo.",
+            "没有听到声音。请按麦克风继续点单。"
+          )
+        );
       };
 
       reconocimientoVozRef.current = reconocimiento;
@@ -4025,8 +4085,46 @@ export default function App() {
     } catch (error) {
       console.warn("No se pudo iniciar el dictado por voz:", error);
       setEscuchandoVoz(false);
-      setAvisoVoz(enChino ? "语音输入失败，请再试一次。" : "No se pudo usar el micrófono. Vuelve a probar.");
+      modoVozContinuoRef.current = false;
+      setAvisoVoz(
+        textoVoz(
+          "Pulsa el micrófono para pedir otro artículo.",
+          "请按麦克风继续点单。"
+        )
+      );
     }
+  }
+
+  // Botón del micrófono: empieza a escuchar o, si ya escucha, lo para y
+  // sale del modo voz continuo.
+  function alternarBusquedaPorVoz() {
+    if (escuchandoVoz || modoVozContinuoRef.current) {
+      const estabaEscuchando = escuchandoVoz;
+      detenerBusquedaPorVoz();
+      if (estabaEscuchando) return;
+    }
+    reintentosSilencioVozRef.current = 0;
+    iniciarEscuchaVoz();
+  }
+
+  // Cierra la ficha del artículo. Si el cliente venía de una búsqueda por
+  // voz y ha puesto cantidad, se borra la búsqueda y se vuelve a escuchar
+  // para el siguiente artículo (se hace aquí, en el mismo toque del
+  // cliente, porque algunos móviles solo dejan abrir el micrófono así).
+  function cerrarFichaProducto() {
+    const idFicha = fichaProductoId;
+    setFichaProductoId(null);
+
+    if (!modoVozContinuoRef.current || !clienteIdentificado?.es_pruebas) return;
+
+    const cantidad = quantities[idFicha] || {};
+    const tieneCantidad = Number(cantidad.boxes || 0) > 0 || Number(cantidad.units || 0) > 0;
+    if (!tieneCantidad) return;
+
+    setSearchInput("");
+    setSearch("");
+    reintentosSilencioVozRef.current = 0;
+    iniciarEscuchaVoz();
   }
 
   // Si se desmonta la app mientras escucha, se corta el micrófono.
@@ -4960,6 +5058,8 @@ export default function App() {
                 type="text"
                 value={searchInput}
                 onChange={(event) => {
+                  // Escribir a mano saca del modo voz continuo.
+                  if (modoVozContinuoRef.current) detenerBusquedaPorVoz();
                   setSearchInput(event.target.value);
                   setSearch(event.target.value);
                   if (event.target.value.trim()) {
@@ -5267,7 +5367,7 @@ export default function App() {
           cantidadEscrita != null;
 
         return (
-          <div style={styles.fichaOverlay} onClick={() => setFichaProductoId(null)}>
+          <div style={styles.fichaOverlay} onClick={cerrarFichaProducto}>
             <div style={styles.fichaPanel} onClick={(event) => event.stopPropagation()}>
               <div style={styles.fichaPhotoBox}>
                 {fichaProducto.image ? (
@@ -5328,7 +5428,7 @@ export default function App() {
                 )}
                 <button
                   type="button"
-                  onClick={() => setFichaProductoId(null)}
+                  onClick={cerrarFichaProducto}
                   style={styles.fichaCloseButton}
                   aria-label="Cerrar"
                 >
@@ -5572,7 +5672,7 @@ export default function App() {
               <div style={styles.fichaFooter}>
                 <button
                   type="button"
-                  onClick={() => setFichaProductoId(null)}
+                  onClick={cerrarFichaProducto}
                   style={styles.fichaListoButton}
                 >
                   Listo
