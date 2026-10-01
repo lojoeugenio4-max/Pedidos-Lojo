@@ -15,6 +15,7 @@ import {
   ArrowUp,
   Plus,
   Minus,
+  Mic,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { supabaseStorage } from "./supabaseStorageClient";
@@ -41,6 +42,7 @@ import {
   cargarUbicacionesPorArticulo,
   compararPorUbicacion,
 } from "./utils/ordenUbicacionPedido";
+import { crearIndiceBusqueda, crearBuscador } from "./utils/busquedaTolerante";
 
 const WHATSAPP_NUMBER = "34670716744";
 const ORDER_STORAGE_KEY = "cash-lojo-pedido";
@@ -342,20 +344,6 @@ function buscarReglaBingoParaItem(item, reglas = []) {
   return reglas.find(
     (regla) => String(regla.articuloId) === String(articuloIdPedido)
   ) || null;
-}
-
-function productMatchesSearch(product, searchText) {
-  const normalizedProduct = normalizeText(
-    `${product.codigo || ""} ${product.nombre || ""} ${product.offerText || ""}`
-  );
-
-  const searchWords = normalizeText(searchText)
-    .split(/[^a-z0-9ñ]+/i)
-    .filter(Boolean);
-
-  return searchWords.every((searchWord) =>
-    normalizedProduct.includes(searchWord)
-  );
 }
 
 function getPublicPhotoUrl(fileName) {
@@ -848,6 +836,13 @@ export default function App() {
   // El acceso identificado es opcional. Sin token, la aplicación sigue
   // funcionando exactamente igual para clientes anónimos.
   const [clienteIdentificado, setClienteIdentificado] = useState(null);
+  // Búsqueda por voz (micrófono en el buscador). De momento SOLO para los
+  // clientes marcados como "Cliente de pruebas" en el Admin (es_pruebas).
+  // Usa el reconocimiento de voz del propio móvil/navegador: no tiene
+  // coste ni necesita ningún servicio externo.
+  const [escuchandoVoz, setEscuchandoVoz] = useState(false);
+  const [avisoVoz, setAvisoVoz] = useState("");
+  const reconocimientoVozRef = useRef(null);
   const [premioSorteoPendiente, setPremioSorteoPendiente] = useState(null);
   const [cargandoCliente, setCargandoCliente] = useState(Boolean(clienteToken));
   const [favoritos, setFavoritos] = useState(() => new Set());
@@ -2561,13 +2556,21 @@ export default function App() {
     ];
   }, [departamentosCatalogo, language, productosVisibles.length, t.allDepartments]);
 
+  // Índice de búsqueda tolerante (se prepara una vez por catálogo).
+  const indiceBusqueda = useMemo(() => crearIndiceBusqueda(productos), [productos]);
+
   const filteredDepartments = useMemo(() => {
     const cleanSearch = search.trim();
 
+    // Búsqueda tolerante: palabras juntas/separadas, plurales, pequeñas
+    // faltas, abreviaturas (S/A, S/G…), medidas ("2 litros" = 2L) y
+    // sinónimos. Ver src/utils/busquedaTolerante.js.
+    const coincideConBusqueda = cleanSearch
+      ? crearBuscador(cleanSearch, indiceBusqueda)
+      : () => true;
+
     const filterBySearch = (lista) =>
-      cleanSearch
-        ? lista.filter((product) => productMatchesSearch(product, cleanSearch))
-        : lista;
+      cleanSearch ? lista.filter((product) => coincideConBusqueda(product)) : lista;
 
     if (soloFavoritos && clienteIdentificado) {
       const favoritosVisibles = filterBySearch(
@@ -2713,7 +2716,7 @@ export default function App() {
       ...(cleanSearch
         ? productos
             .filter((product) => product.oculto)
-            .filter((product) => productMatchesSearch(product, cleanSearch))
+            .filter((product) => coincideConBusqueda(product))
         : []),
     ].forEach((product) => {
       const id = String(product.id);
@@ -2741,6 +2744,7 @@ export default function App() {
     productosRuleta,
     productosBingo,
     ubicacionPorArticulo,
+    indiceBusqueda,
   ]);
 
   // Con cientos de artículos (y su foto) en el catálogo, montar TODAS
@@ -3950,6 +3954,88 @@ export default function App() {
     return result;
   }
 
+  // Inicia (o detiene) el dictado por voz en el buscador. Lo que dice el
+  // cliente se escribe en el buscador como si lo hubiera tecleado.
+  function alternarBusquedaPorVoz() {
+    const enChino = language === "zh";
+
+    if (escuchandoVoz) {
+      reconocimientoVozRef.current?.stop();
+      return;
+    }
+
+    const Reconocimiento =
+      typeof window !== "undefined" &&
+      (window.SpeechRecognition || window.webkitSpeechRecognition);
+
+    if (!Reconocimiento) {
+      setAvisoVoz(
+        enChino
+          ? "此手机或浏览器不支持语音输入。"
+          : "Este móvil o navegador no permite dictar por voz."
+      );
+      return;
+    }
+
+    try {
+      const reconocimiento = new Reconocimiento();
+      reconocimiento.lang = enChino ? "zh-CN" : "es-ES";
+      reconocimiento.interimResults = true;
+      reconocimiento.continuous = false;
+      reconocimiento.maxAlternatives = 1;
+
+      reconocimiento.onresult = (event) => {
+        let texto = "";
+        for (let i = 0; i < event.results.length; i += 1) {
+          texto += event.results[i][0].transcript;
+        }
+        // El dictado suele añadir un punto final o comas: se quitan para
+        // que no estorben a la búsqueda.
+        texto = texto.replace(/[.,;:¡!¿?。，！？]+/g, " ").replace(/\s+/g, " ").trim();
+        if (!texto) return;
+        setSearchInput(texto);
+        setSearch(texto);
+        setSelectedDepartment("TODOS");
+      };
+
+      reconocimiento.onerror = (event) => {
+        const error = event?.error;
+        if (error === "not-allowed" || error === "service-not-allowed") {
+          setAvisoVoz(
+            enChino
+              ? "请在手机设置中允许使用麦克风。"
+              : "Permite el uso del micrófono en los ajustes del móvil para poder dictar."
+          );
+        } else if (error === "no-speech") {
+          setAvisoVoz(enChino ? "没有听到声音，请再试一次。" : "No te he oído. Pulsa el micrófono y vuelve a probar.");
+        } else if (error !== "aborted") {
+          setAvisoVoz(enChino ? "语音输入失败，请再试一次。" : "No se pudo usar el micrófono. Vuelve a probar.");
+        }
+      };
+
+      reconocimiento.onend = () => {
+        setEscuchandoVoz(false);
+        reconocimientoVozRef.current = null;
+      };
+
+      reconocimientoVozRef.current = reconocimiento;
+      setAvisoVoz("");
+      setEscuchandoVoz(true);
+      reconocimiento.start();
+    } catch (error) {
+      console.warn("No se pudo iniciar el dictado por voz:", error);
+      setEscuchandoVoz(false);
+      setAvisoVoz(enChino ? "语音输入失败，请再试一次。" : "No se pudo usar el micrófono. Vuelve a probar.");
+    }
+  }
+
+  // Si se desmonta la app mientras escucha, se corta el micrófono.
+  useEffect(() => {
+    return () => {
+      reconocimientoVozRef.current?.abort?.();
+    };
+  }, []);
+
   // Registra el pedido como "ya enviado" sin borrar el carrito, para que
   // el cliente pueda reabrirlo y modificarlo mientras el almacén no lo
   // haya exportado a CSV (ver pedidoEstaExportado). Si el cliente está
@@ -4893,9 +4979,29 @@ export default function App() {
                     }, 80);
                   }
                 }}
-                placeholder={t.searchPlaceholder}
+                placeholder={
+                  escuchandoVoz
+                    ? language === "zh"
+                      ? "正在听…"
+                      : "Te escucho…"
+                    : t.searchPlaceholder
+                }
                 style={styles.searchInput}
               />
+              {clienteIdentificado?.es_pruebas && (
+                <button
+                  type="button"
+                  onClick={alternarBusquedaPorVoz}
+                  aria-label={escuchandoVoz ? "Parar dictado" : "Buscar por voz"}
+                  title={escuchandoVoz ? "Parar dictado" : "Buscar por voz"}
+                  style={{
+                    ...styles.botonMicrofono,
+                    ...(escuchandoVoz ? styles.botonMicrofonoActivo : {}),
+                  }}
+                >
+                  <Mic size={16} strokeWidth={2.5} />
+                </button>
+              )}
             </div>
 
             <button
@@ -4906,6 +5012,12 @@ export default function App() {
               {t.review}
             </button>
           </div>
+
+          {clienteIdentificado?.es_pruebas && avisoVoz && (
+            <div style={styles.avisoVoz} onClick={() => setAvisoVoz("")}>
+              {avisoVoz}
+            </div>
+          )}
 
           <div ref={departmentDropdownRef} style={styles.departmentBox}>
             <button
@@ -6269,6 +6381,38 @@ const styles = {
     gap: "7px",
     alignItems: "stretch",
     marginBottom: "6px",
+  },
+
+  botonMicrofono: {
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "28px",
+    height: "28px",
+    marginRight: "-5px",
+    border: "none",
+    borderRadius: "50%",
+    background: "#eef0ff",
+    color: "#4f46e5",
+    cursor: "pointer",
+    padding: 0,
+  },
+
+  botonMicrofonoActivo: {
+    background: "#dc2626",
+    color: "#fff",
+    boxShadow: "0 0 0 4px rgba(220, 38, 38, 0.25)",
+  },
+
+  avisoVoz: {
+    marginTop: "6px",
+    padding: "6px 10px",
+    borderRadius: "8px",
+    background: "#fef3c7",
+    color: "#92400e",
+    fontSize: "12px",
+    fontWeight: "700",
   },
 
   searchInputWrap: {
