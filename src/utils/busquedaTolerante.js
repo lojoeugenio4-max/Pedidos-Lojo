@@ -13,6 +13,11 @@
 //   - Sinónimos: "birra" → cerveza, "cero" → zero, "7up" → seven up…
 //   - El nombre del departamento: "cerveza heineken" encuentra "HEINEKEN
 //     LATA 33CL" porque está en el departamento CERVEZAS.
+//   - Pronunciación con acento (clientes chinos sobre todo): se tratan
+//     como iguales los sonidos que se confunden: R/L/N ("cluzcampo",
+//     "fanta lalanja"), B/P/V, D/T, G/K/C/Q, Z/S/C suave, J/G suave, LL/Y,
+//     la H y la S final ("cocacolas"). Solo se usa si la palabra no se ha
+//     encontrado de otra forma.
 //   - Frases dictadas por voz: "ponme dos cajas de cruzcampo" busca
 //     "cruzcampo" (se ignoran cantidades y palabras de relleno).
 //
@@ -174,6 +179,39 @@ function distancia(a, b, maximo) {
   return filas[a.length][b.length];
 }
 
+
+// Clave fonética: dos palabras que "suenan parecido" para alguien que
+// confunde R/L/N, B/P/V, D/T, G/K, etc. quedan con la misma clave.
+// Ej.: "cruzcampo" y "cluzcampo" → "glusgabo"; "naranja" y "lalanja" →
+// "lalaja"… Solo se aplica a palabras de letras (no a medidas ni códigos).
+export function claveFonetica(palabra) {
+  let w = String(palabra || "").toLowerCase();
+  if (!/^[a-zñ]+$/.test(w)) return "";
+  w = w
+    .replace(/ñ/g, "n")
+    .replace(/ch/g, "x")
+    .replace(/ll/g, "y")
+    .replace(/qu/g, "k")
+    .replace(/gu(?=[ei])/g, "g")
+    .replace(/c(?=[ei])/g, "s")
+    .replace(/g(?=[ei])/g, "j")
+    .replace(/c/g, "k")
+    .replace(/z/g, "s")
+    .replace(/h/g, "")
+    .replace(/w/g, "u")
+    .replace(/y$/g, "i")
+    // Sonidos que se confunden con acento chino
+    .replace(/[rln]/g, "l") // R / L / N
+    .replace(/[pv]/g, "b") // B / P / V
+    .replace(/t/g, "d") // D / T
+    .replace(/k/g, "g") // G / K / C / Q
+    .replace(/(.)\1+/g, "$1") // letras repetidas: rr, ll, cc…
+    .replace(/(.)s$/, "$1") // s final (se suele perder o añadir)
+    .replace(/(?<=[aeiou])l(?=[bdgjfms])/g, "") // "campo" ≈ "capo", "fanta" ≈ "fata"
+    .replace(/(.)\1+/g, "$1");
+  return w;
+}
+
 function faltasPermitidas(palabra) {
   if (!/^[a-zñ]+$/.test(palabra)) return 0; // números y medidas: exactos
   if (palabra.length >= 8) return 2;
@@ -217,9 +255,12 @@ function entradaDeProducto(producto) {
   const listaTexto = partirEnPalabras(texto);
   const iniciosCompactos = listaTexto.map((_, i) => compactar(listaTexto.slice(i).join("")));
 
+  const claves = [...new Set([...palabras].map(claveFonetica).filter((c) => c.length >= 3))];
+
   return {
     textoPropio,
     iniciosCompactos,
+    claves,
     palabrasPropias: new Set(partirEnPalabras(textoPropio)),
     texto,
     palabras: [...palabras],
@@ -269,9 +310,14 @@ export function crearBuscador(textoBuscado, indice) {
   const entradas = [...indice.values()];
 
   let consulta = canonizar(textoBuscado).replace(CANTIDAD_DELANTE, " ");
-  const palabras = partirEnPalabras(consulta).filter(
+  let palabras = partirEnPalabras(consulta).filter(
     (palabra) => !PALABRAS_VACIAS.has(palabra) && (palabra.length > 1 || /\d/.test(palabra))
   );
+  // Palabras de solo 2 letras ("ap" de "seben ap"): con voz suelen ser
+  // trozos mal entendidos. Se ignoran si hay otras palabras más largas
+  // (si es lo único que se busca, como "jb", se busca normal).
+  const palabrasLargas = palabras.filter((palabra) => !/^[a-zñ]{1,2}$/.test(palabra));
+  if (palabrasLargas.length > 0) palabras = palabrasLargas;
 
   // Para cada palabra se decide UNA forma de comprobarla, de la más
   // estricta a la más tolerante, mirando si existe en algún artículo.
@@ -310,7 +356,25 @@ export function crearBuscador(textoBuscado, indice) {
       }
     }
 
-    // 4) No se parece a nada del catálogo: se ignora (no vacía la búsqueda).
+    // 4) Por cómo suena (pronunciación con acento): R/L/N, B/P/V, D/T…
+    const clave = claveFonetica(palabra);
+    if (clave.length >= 3) {
+      const maximoClave = clave.length >= 5 ? 1 : 0;
+      const suenaParecido = (entrada) =>
+        entrada.claves.some(
+          (claveArticulo) =>
+            distancia(clave, claveArticulo, maximoClave) <= maximoClave ||
+            (claveArticulo.length > clave.length &&
+              clave.length >= 4 &&
+              distancia(clave, claveArticulo.slice(0, clave.length), maximoClave) <= maximoClave)
+        );
+      if (entradas.some(suenaParecido)) {
+        comprobaciones.push(suenaParecido);
+        return;
+      }
+    }
+
+    // 5) No se parece a nada del catálogo: se ignora (no vacía la búsqueda).
   });
 
   if (comprobaciones.length === 0) {
