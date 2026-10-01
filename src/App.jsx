@@ -836,11 +836,27 @@ export default function App() {
   // El acceso identificado es opcional. Sin token, la aplicación sigue
   // funcionando exactamente igual para clientes anónimos.
   const [clienteIdentificado, setClienteIdentificado] = useState(null);
-  // Búsqueda por voz (micrófono en el buscador). De momento SOLO para los
-  // clientes marcados como "Cliente de pruebas" en el Admin (es_pruebas).
-  // Usa el reconocimiento de voz del propio móvil/navegador: no tiene
-  // coste ni necesita ningún servicio externo.
+  // Búsqueda por voz (botón "Hablar" junto al buscador), para TODOS los
+  // clientes. Usa el reconocimiento de voz del propio móvil/navegador: no
+  // tiene coste ni necesita ningún servicio externo.
   const [escuchandoVoz, setEscuchandoVoz] = useState(false);
+  // Globo de ayuda "¡Nuevo!" junto al botón Hablar: sale hasta que el
+  // cliente lo usa por primera vez (o lo cierra).
+  const [mostrarAyudaVoz, setMostrarAyudaVoz] = useState(() => {
+    try {
+      return localStorage.getItem("cash-lojo-voz-usada") !== "1";
+    } catch {
+      return true;
+    }
+  });
+  const ocultarAyudaVoz = () => {
+    setMostrarAyudaVoz(false);
+    try {
+      localStorage.setItem("cash-lojo-voz-usada", "1");
+    } catch {
+      // nada
+    }
+  };
   const [avisoVoz, setAvisoVoz] = useState("");
   const reconocimientoVozRef = useRef(null);
   const [premioSorteoPendiente, setPremioSorteoPendiente] = useState(null);
@@ -4098,6 +4114,7 @@ export default function App() {
   // Botón del micrófono: empieza a escuchar o, si ya escucha, lo para y
   // sale del modo voz continuo.
   function alternarBusquedaPorVoz() {
+    if (mostrarAyudaVoz) ocultarAyudaVoz();
     if (escuchandoVoz || modoVozContinuoRef.current) {
       const estabaEscuchando = escuchandoVoz;
       detenerBusquedaPorVoz();
@@ -4115,7 +4132,7 @@ export default function App() {
     const idFicha = fichaProductoId;
     setFichaProductoId(null);
 
-    if (!modoVozContinuoRef.current || !clienteIdentificado?.es_pruebas) return;
+    if (!modoVozContinuoRef.current) return;
 
     const cantidad = quantities[idFicha] || {};
     const tieneCantidad = Number(cantidad.boxes || 0) > 0 || Number(cantidad.units || 0) > 0;
@@ -5088,19 +5105,42 @@ export default function App() {
                 }
                 style={styles.searchInput}
               />
-              {clienteIdentificado?.es_pruebas && (
-                <button
-                  type="button"
-                  onClick={alternarBusquedaPorVoz}
-                  aria-label={escuchandoVoz ? "Parar dictado" : "Buscar por voz"}
-                  title={escuchandoVoz ? "Parar dictado" : "Buscar por voz"}
-                  style={{
-                    ...styles.botonMicrofono,
-                    ...(escuchandoVoz ? styles.botonMicrofonoActivo : {}),
-                  }}
-                >
-                  <Mic size={16} strokeWidth={2.5} />
-                </button>
+            </div>
+
+            <div style={styles.botonHablarWrap}>
+              <button
+                type="button"
+                onClick={alternarBusquedaPorVoz}
+                aria-label={
+                  escuchandoVoz
+                    ? language === "zh" ? "停止" : "Parar de escuchar"
+                    : language === "zh" ? "语音搜索" : "Buscar hablando"
+                }
+                className={escuchandoVoz ? "lojo-mic-escuchando" : undefined}
+                style={{
+                  ...styles.botonHablar,
+                  ...(escuchandoVoz ? styles.botonHablarActivo : {}),
+                }}
+              >
+                <Mic size={18} strokeWidth={2.6} />
+                <span>
+                  {escuchandoVoz
+                    ? language === "zh" ? "停止" : "Parar"
+                    : language === "zh" ? "说话" : "Hablar"}
+                </span>
+              </button>
+
+              {mostrarAyudaVoz && !escuchandoVoz && (
+                <div style={styles.globoAyudaVoz} onClick={ocultarAyudaVoz}>
+                  <span style={styles.globoAyudaVozFlecha} />
+                  <strong style={styles.globoAyudaVozNuevo}>
+                    {language === "zh" ? "新功能！" : "¡NUEVO!"}
+                  </strong>{" "}
+                  {language === "zh"
+                    ? "按这里，说出商品名称"
+                    : "Toca aquí y di el artículo que buscas"}
+                  <span style={styles.globoAyudaVozCerrar}>✕</span>
+                </div>
               )}
             </div>
 
@@ -5113,7 +5153,49 @@ export default function App() {
             </button>
           </div>
 
-          {clienteIdentificado?.es_pruebas && avisoVoz && (
+          <style>{`
+            @keyframes lojoMicPulso {
+              0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.55); }
+              70% { box-shadow: 0 0 0 10px rgba(220, 38, 38, 0); }
+              100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+            }
+            @keyframes lojoMicOnda {
+              0%, 100% { transform: scaleY(0.35); }
+              50% { transform: scaleY(1); }
+            }
+            .lojo-mic-escuchando { animation: lojoMicPulso 1.2s ease-out infinite; }
+            .lojo-mic-onda span {
+              display: inline-block;
+              width: 3px;
+              height: 14px;
+              margin: 0 1.5px;
+              border-radius: 2px;
+              background: currentColor;
+              animation: lojoMicOnda 0.9s ease-in-out infinite;
+            }
+            .lojo-mic-onda span:nth-child(2) { animation-delay: 0.15s; }
+            .lojo-mic-onda span:nth-child(3) { animation-delay: 0.3s; }
+            .lojo-mic-onda span:nth-child(4) { animation-delay: 0.45s; }
+          `}</style>
+
+          {escuchandoVoz && (
+            <div style={styles.bannerEscuchando} onClick={alternarBusquedaPorVoz}>
+              <span className="lojo-mic-onda" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+                <span />
+              </span>
+              <span style={styles.bannerEscuchandoTexto}>
+                <strong>{language === "zh" ? "正在听…" : "Te escucho…"}</strong>{" "}
+                {language === "zh"
+                  ? "请说出商品名称"
+                  : "di el nombre del artículo"}
+              </span>
+            </div>
+          )}
+
+          {avisoVoz && !escuchandoVoz && (
             <div style={styles.avisoVoz} onClick={() => setAvisoVoz("")}>
               {avisoVoz}
             </div>
@@ -6378,7 +6460,7 @@ const styles = {
 
   compactTopRow: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) 62px",
+    gridTemplateColumns: "minmax(0, 1fr) auto 62px",
     gap: "6px",
     alignItems: "center",
     marginBottom: "5px",
@@ -6483,26 +6565,91 @@ const styles = {
     marginBottom: "6px",
   },
 
-  botonMicrofono: {
-    flexShrink: 0,
+  botonHablarWrap: {
+    position: "relative",
+    height: "34px",
+  },
+
+  botonHablar: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    width: "28px",
-    height: "28px",
-    marginRight: "-5px",
+    gap: "5px",
+    height: "34px",
+    minWidth: "86px",
+    padding: "0 12px 0 10px",
     border: "none",
-    borderRadius: "50%",
-    background: "#eef0ff",
-    color: "#4f46e5",
+    borderRadius: "9px",
+    background: "#16a34a",
+    color: "#fff",
+    fontWeight: "900",
+    fontSize: "13px",
+    lineHeight: "1",
     cursor: "pointer",
-    padding: 0,
+    boxShadow: "0 2px 6px rgba(22, 163, 74, 0.35)",
+    whiteSpace: "nowrap",
   },
 
-  botonMicrofonoActivo: {
+  botonHablarActivo: {
     background: "#dc2626",
+    boxShadow: "none",
+  },
+
+  globoAyudaVoz: {
+    position: "absolute",
+    top: "42px",
+    right: "-60px",
+    zIndex: 30,
+    width: "190px",
+    padding: "8px 26px 8px 10px",
+    borderRadius: "10px",
+    background: "#14532d",
     color: "#fff",
-    boxShadow: "0 0 0 4px rgba(220, 38, 38, 0.25)",
+    fontSize: "12.5px",
+    fontWeight: "700",
+    lineHeight: "1.3",
+    boxShadow: "0 6px 16px rgba(15, 23, 42, 0.25)",
+    cursor: "pointer",
+  },
+
+  globoAyudaVozFlecha: {
+    position: "absolute",
+    top: "-6px",
+    right: "92px",
+    width: "12px",
+    height: "12px",
+    background: "#14532d",
+    transform: "rotate(45deg)",
+  },
+
+  globoAyudaVozNuevo: {
+    color: "#bbf7d0",
+  },
+
+  globoAyudaVozCerrar: {
+    position: "absolute",
+    top: "6px",
+    right: "8px",
+    fontSize: "12px",
+    opacity: 0.8,
+  },
+
+  bannerEscuchando: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    marginTop: "6px",
+    marginBottom: "4px",
+    padding: "9px 12px",
+    borderRadius: "10px",
+    background: "#fee2e2",
+    color: "#b91c1c",
+    fontSize: "14px",
+    cursor: "pointer",
+  },
+
+  bannerEscuchandoTexto: {
+    lineHeight: "1.25",
   },
 
   avisoVoz: {
