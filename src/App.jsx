@@ -2646,7 +2646,25 @@ export default function App() {
         );
       }
 
-      selectedProducts = ordenarProductos(filterBySearch(selectedProducts));
+      const esDepartamentoReal = !["NOVEDAD", "OFERTAS", "RULETA", "BINGO"].includes(
+        selectedDepartment
+      );
+
+      // Al elegir un departamento real en el desplegable, sus artículos se
+      // ordenan por UBICACIÓN de almacén (código, orden natural) y, dentro
+      // de cada ubicación, alfabéticamente. Los artículos sin ubicación van
+      // al final, también por orden alfabético. Los grupos promocionales
+      // (NOVEDAD, OFERTAS, RULETA, BINGO) siguen solo por orden alfabético.
+      selectedProducts = esDepartamentoReal
+        ? [...filterBySearch(selectedProducts)].sort((a, b) =>
+            compararPorUbicacion(
+              ubicacionPorArticulo[String(a.id)]?.codigo,
+              a.name || a.nombre,
+              ubicacionPorArticulo[String(b.id)]?.codigo,
+              b.name || b.nombre
+            )
+          )
+        : ordenarProductos(filterBySearch(selectedProducts));
 
       return selectedProducts.length > 0
         ? [
@@ -2669,7 +2687,16 @@ export default function App() {
       .filter((department) => !GRUPOS_PROMOCIONALES.includes(department.name))
       .map((department) => ({
         ...department,
-        products: ordenarProductos(filterBySearch(department.products)),
+        // Dentro de cada departamento: por UBICACIÓN y, dentro de cada
+        // ubicación, alfabéticamente (sin ubicación, al final).
+        products: [...filterBySearch(department.products)].sort((a, b) =>
+          compararPorUbicacion(
+            ubicacionPorArticulo[String(a.id)]?.codigo,
+            a.name || a.nombre,
+            ubicacionPorArticulo[String(b.id)]?.codigo,
+            b.name || b.nombre
+          )
+        ),
       }))
       .filter((department) => department.products.length > 0);
 
@@ -2713,6 +2740,7 @@ export default function App() {
     productosConOferta,
     productosRuleta,
     productosBingo,
+    ubicacionPorArticulo,
   ]);
 
   // Con cientos de artículos (y su foto) en el catálogo, montar TODAS
