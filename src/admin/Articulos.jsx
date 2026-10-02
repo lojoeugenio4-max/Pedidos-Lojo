@@ -611,22 +611,25 @@ export default function Articulos() {
     Object.entries(filtros).filter(([, valor]) => valor !== "todos").length +
     (busqueda.trim() ? 1 : 0);
 
+  // Búsqueda libre: todas las palabras escritas tienen que aparecer
+  // (en cualquier orden) en código, código Lojo, nombre, departamento o ubicación.
+  const palabrasBusqueda = normalizar(busqueda).split(/\s+/).filter(Boolean);
+  function coincideBusqueda(articulo) {
+    if (!palabrasBusqueda.length) return true;
+    const texto = normalizar(
+      `${articulo.codigo} ${articulo.codigo_lojo || ""} ${articulo.nombre} ${
+        articulo.departamentos?.nombre || ""
+      } ${articulo.departamentos?.cod ?? ""} ${articulo.ubicacion?.codigo || ""} ${articulo.ubicacion?.nombre || ""}`
+    );
+    return palabrasBusqueda.every((palabra) => texto.includes(palabra));
+  }
+
   const articulosFiltrados = articulos.filter((articulo) => {
     const tieneOferta = Array.isArray(articulo.ofertas) && articulo.ofertas.length > 0;
     const tienePrecio = articulo.precio !== null && articulo.precio !== undefined;
     const tieneLojo = Boolean(String(articulo.codigo_lojo || "").trim());
 
-    // Búsqueda libre: todas las palabras escritas tienen que aparecer
-    // (en cualquier orden) en código, código Lojo, nombre, departamento o ubicación.
-    const palabras = normalizar(busqueda).split(/\s+/).filter(Boolean);
-    if (palabras.length) {
-      const texto = normalizar(
-        `${articulo.codigo} ${articulo.codigo_lojo || ""} ${articulo.nombre} ${
-          articulo.departamentos?.nombre || ""
-        } ${articulo.departamentos?.cod ?? ""} ${articulo.ubicacion?.codigo || ""} ${articulo.ubicacion?.nombre || ""}`
-      );
-      if (!palabras.every((palabra) => texto.includes(palabra))) return false;
-    }
+    if (!coincideBusqueda(articulo)) return false;
 
     const { departamento, ubicacion, visibilidad, estado, novedad, foto, lojo, oferta, precio } = filtros;
 
@@ -669,6 +672,16 @@ export default function Articulos() {
 
     return true;
   });
+
+  // Artículos que encajan con lo escrito en el buscador pero que no se ven
+  // porque los quita algún filtro (por ejemplo "Solo visibles" o un
+  // departamento elegido). Se avisa para que no parezca que no existen.
+  const coincidenConBusqueda = palabrasBusqueda.length
+    ? articulos.filter(coincideBusqueda).length
+    : 0;
+  const escondidosPorFiltros = palabrasBusqueda.length
+    ? Math.max(0, coincidenConBusqueda - articulosFiltrados.length)
+    : 0;
 
   return (
     <div style={page}>
@@ -838,6 +851,21 @@ export default function Articulos() {
             ✖ Quitar filtros
           </button>
         </div>
+
+        {escondidosPorFiltros > 0 && (
+          <div style={avisoFiltros}>
+            ⚠️ Hay <strong>{escondidosPorFiltros}</strong> artículo{escondidosPorFiltros === 1 ? "" : "s"} más con
+            “{busqueda.trim()}” que no se ve{escondidosPorFiltros === 1 ? "" : "n"} por los filtros aplicados
+            (por ejemplo “Solo visibles” o un departamento elegido).
+            <button
+              type="button"
+              style={botonVerTodos}
+              onClick={() => setFiltros({ ...FILTROS_INICIALES, visibilidad: "todos" })}
+            >
+              Ver todos los que tienen “{busqueda.trim()}”
+            </button>
+          </div>
+        )}
       </section>
 
       <section style={tableShell}>
@@ -1335,6 +1363,30 @@ const botonDesmarcar = {
   borderRadius: "10px",
   background: "#ffffff",
   color: "#334155",
+  cursor: "pointer",
+};
+
+const avisoFiltros = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "10px",
+  marginTop: "12px",
+  padding: "10px 14px",
+  borderRadius: "12px",
+  background: "#fffbeb",
+  border: "1px solid #fcd34d",
+  color: "#92400e",
+  fontSize: "14px",
+};
+
+const botonVerTodos = {
+  padding: "8px 14px",
+  border: "none",
+  borderRadius: "10px",
+  background: "#d97706",
+  color: "#ffffff",
+  fontWeight: 700,
   cursor: "pointer",
 };
 
