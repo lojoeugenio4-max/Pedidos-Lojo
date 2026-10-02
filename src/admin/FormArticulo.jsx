@@ -123,7 +123,9 @@ export default function FormArticulo({
               <option value="">Seleccionar departamento</option>
               {departamentos.map((departamento) => (
                 <option key={departamento.id} value={departamento.id}>
-                  {departamento.nombre}
+                  {departamento.cod !== null && departamento.cod !== undefined && String(departamento.cod).trim() !== ""
+                    ? `${departamento.cod} — ${departamento.nombre}`
+                    : departamento.nombre}
                 </option>
               ))}
             </select>
