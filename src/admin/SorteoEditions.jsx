@@ -73,6 +73,10 @@ export default function SorteoEditions() {
   const [preparandoMensajes, setPreparandoMensajes] = useState(false);
   const [creandoCuadricula, setCreandoCuadricula] = useState(false);
   const [eliminandoId, setEliminandoId] = useState(null);
+  // Número que tocará, fijado desde aquí (null = al azar).
+  const [numeroFijado, setNumeroFijado] = useState(null);
+  const [numeroFijadoInput, setNumeroFijadoInput] = useState("");
+  const [guardandoNumeroFijado, setGuardandoNumeroFijado] = useState(false);
   // { titulo, ayuda, mensajes: [{nombre, detalle, telefono, texto, enviado, ganador}] }
   const [cola, setCola] = useState(null);
 
@@ -194,7 +198,64 @@ export default function SorteoEditions() {
     setCola(null);
     setFechaInput(aInputLocal(edicion.sorteo_programado_at));
     setPremioTextoInput(edicion.premio_texto || "");
-    await recargarCuadricula(edicion.id);
+    setNumeroFijado(null);
+    setNumeroFijadoInput("");
+    await Promise.all([recargarCuadricula(edicion.id), cargarNumeroFijado(edicion.id)]);
+  }
+
+  async function cargarNumeroFijado(edicionId) {
+    const { data, error: rpcError } = await supabase.rpc("admin_ver_numero_sorteo", {
+      p_edition_id: String(edicionId),
+    });
+    if (rpcError) {
+      console.error(rpcError);
+      return;
+    }
+    const valor = data == null ? null : Number(data);
+    setNumeroFijado(valor);
+    setNumeroFijadoInput(valor == null ? "" : dosDigitos(valor));
+  }
+
+  async function guardarNumeroFijado(quitar = false) {
+    if (!edicionAbierta) return;
+    let numero = null;
+    if (!quitar) {
+      const limpio = numeroFijadoInput.trim();
+      if (!/^\d{1,2}$/.test(limpio)) {
+        alert("Escribe un número del 00 al 99.");
+        return;
+      }
+      numero = Number(limpio);
+      const ocupada = (cuadricula?.casillas || []).find((c) => Number(c.numero) === numero);
+      if (!ocupada) {
+        const seguir = window.confirm(
+          `El número ${dosDigitos(numero)} todavía no lo tiene ningún cliente en esta cuadrícula. Si sale así, el sorteo quedará SIN GANADOR. ¿Guardarlo de todas formas?`
+        );
+        if (!seguir) return;
+      }
+    }
+    setGuardandoNumeroFijado(true);
+    try {
+      const { data, error: rpcError } = await supabase.rpc("admin_fijar_numero_sorteo", {
+        p_edition_id: String(edicionAbierta.id),
+        p_numero: numero,
+      });
+      if (rpcError) throw rpcError;
+      if (!data?.ok) {
+        throw new Error(
+          data?.motivo === "ya_sorteado"
+            ? "Este sorteo ya ha arrancado o ya está resuelto: no se puede cambiar el número."
+            : "No se ha podido guardar el número."
+        );
+      }
+      setNumeroFijado(numero);
+      setNumeroFijadoInput(numero == null ? "" : dosDigitos(numero));
+    } catch (err) {
+      console.error(err);
+      alert(err?.message || "No se ha podido guardar el número.");
+    } finally {
+      setGuardandoNumeroFijado(false);
+    }
   }
 
   async function crearCuadriculaNueva() {
@@ -297,7 +358,7 @@ export default function SorteoEditions() {
     if (!edicionAbierta) return;
     if (
       !window.confirm(
-        `Se sorteará "Sorteo ${edicionAbierta.numero}" AHORA MISMO: saldrá en la pantalla grande (tiene que estar abierta) y en el móvil de los participantes que tengan la app abierta. El número se elige al azar y no se puede repetir. ¿Empezar?`
+        `Se sorteará "Sorteo ${edicionAbierta.numero}" AHORA MISMO: saldrá en la pantalla grande (tiene que estar abierta) y en el móvil de los participantes que tengan la app abierta. ${numeroFijado != null ? `Saldrá el número que has fijado: ${dosDigitos(numeroFijado)}.` : "El número se elige al azar."} No se puede repetir. ¿Empezar?`
       )
     ) {
       return;
@@ -562,6 +623,47 @@ export default function SorteoEditions() {
                   onChange={(e) => setPremioTextoInput(e.target.value)}
                 />
               </label>
+              <div style={numeroFijadoBox}>
+                <label style={campo}>
+                  <span>Número que tocará</span>
+                  <input
+                    style={{ ...input, width: 90, textAlign: "center", fontWeight: 800, fontSize: 18 }}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={2}
+                    placeholder="--"
+                    value={numeroFijadoInput}
+                    onChange={(e) => setNumeroFijadoInput(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                  />
+                </label>
+                <button
+                  type="button"
+                  style={boton}
+                  onClick={() => guardarNumeroFijado(false)}
+                  disabled={guardandoNumeroFijado || !numeroFijadoInput}
+                >
+                  {guardandoNumeroFijado ? "Guardando..." : "🎯 Fijar número"}
+                </button>
+                {numeroFijado != null && (
+                  <button
+                    type="button"
+                    style={botonSecundario}
+                    onClick={() => guardarNumeroFijado(true)}
+                    disabled={guardandoNumeroFijado}
+                  >
+                    Quitar (al azar)
+                  </button>
+                )}
+                <p style={{ ...texto, flexBasis: "100%", fontWeight: 700, color: numeroFijado != null ? "#92400e" : "#6b7280" }}>
+                  {numeroFijado != null
+                    ? `🎯 Saldrá el ${dosDigitos(numeroFijado)}${
+                        (cuadricula?.casillas || []).find((c) => Number(c.numero) === numeroFijado)?.cliente_nombre
+                          ? ` (${(cuadricula.casillas || []).find((c) => Number(c.numero) === numeroFijado).cliente_nombre})`
+                          : " · todavía no lo tiene nadie"
+                      }. Solo lo ves tú aquí: ni la pantalla grande ni los clientes lo saben antes del sorteo.`
+                    : "Sin número fijado: saldrá uno al azar entre los repartidos."}
+                </p>
+              </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button type="button" style={boton} onClick={programarSorteo} disabled={programando}>
                   {programando ? "Guardando..." : edicionAbierta.sorteo_programado_at ? "Cambiar fecha" : "📅 Programar sorteo"}
@@ -580,7 +682,7 @@ export default function SorteoEditions() {
                   ? `Sorteo programado: ${formatearFechaSorteo(Date.parse(edicionAbierta.sorteo_programado_at))}. Los clientes con números aquí ven el aviso en su app. `
                   : "Todavía sin fecha: los clientes no ven ningún aviso. "}
                 A esa hora tiene que haber una pantalla grande abierta (o algún participante con la app abierta) para que
-                arranque; si no, arranca en cuanto se abra. El número se elige al azar entre los ya repartidos.
+                arranque; si no, arranca en cuanto se abra. {numeroFijado != null ? `Saldrá el ${dosDigitos(numeroFijado)} (fijado).` : "El número se elige al azar entre los ya repartidos."}
               </p>
               {edicionAbierta.sorteo_programado_at && (
                 <div style={{ flexBasis: "100%" }}>
@@ -691,5 +793,6 @@ const colaBox = { display: "grid", gap: 10, padding: 16, borderRadius: 14, borde
 const filaGanador = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: 10, background: "#fef9c3", border: "1px solid #eab308" };
 const badgeGanador = { marginLeft: 8, padding: "2px 8px", borderRadius: 999, background: "#16a34a", color: "#fff", fontSize: 11, fontWeight: 800 };
 const avisoError = { padding: "9px 12px", borderRadius: 9, background: "#fef2f2", color: "#991b1b", fontSize: 13, fontWeight: 700 };
+const numeroFijadoBox = { display: "flex", alignItems: "flex-end", gap: 10, flexWrap: "wrap", flexBasis: "100%", padding: 12, borderRadius: 10, background: "#fffbeb", border: "1px dashed #f59e0b" };
 const botonSorteo = { border: 0, borderRadius: 10, padding: "11px 18px", background: "#ff1e1e", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer" };
 const filaParticipante = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: 10, background: "#f9fafb", border: "1px solid #e5e7eb" };
