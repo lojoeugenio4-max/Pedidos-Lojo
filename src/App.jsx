@@ -818,9 +818,6 @@ export default function App() {
     () => localStorage.getItem(LANGUAGE_STORAGE_KEY) || "es"
   );
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
-  // Alto de la zona fija de arriba (buscador). Sirve para colocar el botón
-  // flotante "Nueva Búsqueda" justo debajo, sin tapar el buscador.
-  const [alturaZonaSuperior, setAlturaZonaSuperior] = useState(0);
   const bloqueColapsoCabeceraRef = useRef(false);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [mostrarAyudaInstalacion, setMostrarAyudaInstalacion] = useState(false);
@@ -1945,20 +1942,6 @@ export default function App() {
     // se cierra el teclado y el teléfono reajusta el scroll por su cuenta).
     bloqueColapsoCabeceraRef.current = true;
   }, [campoCantidadActivo]);
-
-  useEffect(() => {
-    const zona = document.querySelector("[data-top-area='true']");
-    if (!zona) return undefined;
-    const medir = () => setAlturaZonaSuperior(Math.round(zona.getBoundingClientRect().height));
-    medir();
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", medir);
-      return () => window.removeEventListener("resize", medir);
-    }
-    const observador = new ResizeObserver(medir);
-    observador.observe(zona);
-    return () => observador.disconnect();
-  }, [cargandoCliente, clienteIdentificado]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -5784,7 +5767,7 @@ export default function App() {
         <ArrowUp size={18} strokeWidth={3} />
       </button>
 
-      {/* Botón flotante "Nueva Búsqueda" (bajo la flecha de subir):
+      {/* Botón flotante "Nueva Búsqueda" (junto a la flecha de subir):
           abre el micrófono desde cualquier punto de la lista, sin tener que
           subir al buscador. Sube la pantalla al principio para que el
           cliente vea el aviso "Te escucho…" y los resultados nuevos. Se
@@ -5800,7 +5783,6 @@ export default function App() {
         className={escuchandoVoz ? "lojo-mic-escuchando" : undefined}
         style={{
           ...styles.nuevaBusquedaFlotante,
-          top: `calc(${alturaZonaSuperior + 8}px + env(safe-area-inset-top))`,
           ...(escuchandoVoz ? styles.nuevaBusquedaFlotanteActivo : {}),
         }}
         aria-label={
@@ -8193,12 +8175,13 @@ const styles = {
     opacity: 0.9,
   },
 
-  // Va en la columna de la flecha de subir, justo debajo de la zona fija
-  // del buscador (el "top" se calcula al pintarlo). Solo se muestra cuando
-  // el cliente ha bajado por la lista (cabecera recogida).
+  // A la misma altura que la flecha de subir, a su izquierda (40px de
+  // la flecha + 10px de margen + 6px de separación). Solo se muestra
+  // cuando el cliente ha bajado por la lista (cabecera recogida).
   nuevaBusquedaFlotante: {
     position: "fixed",
-    right: "10px",
+    right: "56px",
+    top: "calc(8px + env(safe-area-inset-top))",
     zIndex: 60,
     height: "40px",
     padding: "0 14px 0 11px",
