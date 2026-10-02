@@ -302,6 +302,78 @@ function formasSingularPlural(palabra) {
   return formas;
 }
 
+// Nombres de marca que el dictado por voz parte en varias palabras
+// normales: "Yatekomo" llega como "ya te como", "Nocilla" como "no cilla"…
+// Por separado esas palabras no sirven ("ya" y "te" se descartan por cortas
+// y "como" acaba encontrando "COCO"). Aquí se prueba a juntar 2, 3 o 4
+// palabras seguidas de lo buscado: si la palabra unida existe en el
+// catálogo (tal cual, con una pequeña falta o porque suena igual), se
+// busca unida. Solo se juntan grupos en los que alguna palabra es corta,
+// ("ya", "te") o no existe en ningún artículo, para no tocar búsquedas que
+// ya funcionaban ("coca cola", "agua con gas", "fanta naranja"…).
+function unirPalabrasPartidas(lista, entradas) {
+  if (lista.length < 2) return lista;
+
+  const existeTalCual = (palabra) =>
+    entradas.some((entrada) => coincideTalCual(palabra, entrada));
+
+  const unidaExiste = (unida) => {
+    if (unida.length < 5 || !/^[a-zñ]+$/.test(unida)) return false;
+    // Tal cual (también como principio de palabras escritas juntas)
+    if (entradas.some((entrada) => coincideTalCual(unida, entrada))) return true;
+    // Con alguna falta: "yatecomo" ≈ "yatekomo"
+    const maximo = faltasPermitidas(unida);
+    if (
+      maximo > 0 &&
+      entradas.some((entrada) =>
+        entrada.palabras.some((palabra) => distancia(unida, palabra, maximo) <= maximo)
+      )
+    ) {
+      return true;
+    }
+    // Por cómo suena: "llatecomo" ≈ "yatekomo"
+    const clave = claveFonetica(unida);
+    if (clave.length >= 5) {
+      const maximoClave = clave.length >= 7 ? 1 : 0;
+      return entradas.some((entrada) =>
+        entrada.claves.some((claveArticulo) => distancia(clave, claveArticulo, maximoClave) <= maximoClave)
+      );
+    }
+    return false;
+  };
+
+  const resultado = [];
+  let i = 0;
+  while (i < lista.length) {
+    let unidaEncontrada = null;
+    for (let n = Math.min(4, lista.length - i); n >= 2; n -= 1) {
+      const grupo = lista.slice(i, i + n);
+      if (!grupo.every((palabra) => /^[a-zñ]+$/.test(palabra))) continue;
+      // Un grupo no empieza ni acaba en "de", "la", "con"…: "estrella del
+      // sur" no debe convertirse en "estrelladelsur".
+      if (PALABRAS_VACIAS.has(grupo[0]) || PALABRAS_VACIAS.has(grupo[grupo.length - 1])) continue;
+      const hayPalabraDudosa = grupo.some(
+        (palabra) =>
+          (palabra.length <= 2 && !PALABRAS_VACIAS.has(palabra)) || !existeTalCual(palabra)
+      );
+      if (!hayPalabraDudosa) continue;
+      const unida = grupo.join("");
+      if (unidaExiste(unida)) {
+        unidaEncontrada = { unida, n };
+        break;
+      }
+    }
+    if (unidaEncontrada) {
+      resultado.push(unidaEncontrada.unida);
+      i += unidaEncontrada.n;
+    } else {
+      resultado.push(lista[i]);
+      i += 1;
+    }
+  }
+  return resultado;
+}
+
 /**
  * Crea la función que dice si un artículo encaja con lo buscado.
  * `indice` es el resultado de crearIndiceBusqueda (con todo el catálogo).
@@ -310,7 +382,7 @@ export function crearBuscador(textoBuscado, indice) {
   const entradas = [...indice.values()];
 
   let consulta = canonizar(textoBuscado).replace(CANTIDAD_DELANTE, " ");
-  let palabras = partirEnPalabras(consulta).filter(
+  let palabras = unirPalabrasPartidas(partirEnPalabras(consulta), entradas).filter(
     (palabra) => !PALABRAS_VACIAS.has(palabra) && (palabra.length > 1 || /\d/.test(palabra))
   );
   // Palabras de solo 2 letras ("ap" de "seben ap"): con voz suelen ser
