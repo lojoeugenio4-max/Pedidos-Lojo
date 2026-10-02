@@ -3974,11 +3974,9 @@ export default function App() {
   // Dictado por voz en el buscador. Lo que dice el cliente se escribe en
   // el buscador como si lo hubiera tecleado.
   //
-  // "Modo voz continuo": cuando el cliente busca por voz, elige un artículo
-  // de los resultados y cierra la ficha con cantidad, se borra la búsqueda
-  // y el micrófono se vuelve a abrir solo para pedir el siguiente artículo.
-  // Se sale del modo tocando el micrófono, escribiendo en el buscador o si
-  // el cliente no dice nada durante un rato.
+  // Al cerrar la ficha de un artículo con "Listo" la búsqueda NO se borra:
+  // el cliente sigue en los resultados de lo que dijo (p. ej. "Cruzcampo").
+  // Para pedir otra cosa por voz vuelve a pulsar el micrófono.
   //
   // Se escucha SIEMPRE en español, aunque la app esté en chino: los
   // nombres de los artículos están en español, y con el reconocimiento en
@@ -4125,24 +4123,12 @@ export default function App() {
     iniciarEscuchaVoz();
   }
 
-  // Cierra la ficha del artículo. Si el cliente venía de una búsqueda por
-  // voz y ha puesto cantidad, se borra la búsqueda y se vuelve a escuchar
-  // para el siguiente artículo (se hace aquí, en el mismo toque del
-  // cliente, porque algunos móviles solo dejan abrir el micrófono así).
+  // Cierra la ficha del artículo. La búsqueda (escrita o por voz) se
+  // mantiene, para que el cliente siga viendo los mismos resultados (p. ej.
+  // todos los de "Cruzcampo") y pueda elegir otro artículo de esa marca.
+  // Para buscar otra cosa, vuelve a pulsar el micrófono o escribe.
   function cerrarFichaProducto() {
-    const idFicha = fichaProductoId;
     setFichaProductoId(null);
-
-    if (!modoVozContinuoRef.current) return;
-
-    const cantidad = quantities[idFicha] || {};
-    const tieneCantidad = Number(cantidad.boxes || 0) > 0 || Number(cantidad.units || 0) > 0;
-    if (!tieneCantidad) return;
-
-    setSearchInput("");
-    setSearch("");
-    reintentosSilencioVozRef.current = 0;
-    iniciarEscuchaVoz();
   }
 
   // Si se desmonta la app mientras escucha, se corta el micrófono.
