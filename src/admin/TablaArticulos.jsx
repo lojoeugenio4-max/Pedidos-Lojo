@@ -7,7 +7,7 @@ export default function TablaArticulos({
   onDesactivar,
   onActivar,
   onEliminar,
-  // Selección múltiple (para asignar ubicación a muchos artículos a la vez)
+  // Selección múltiple (para asignar departamento o ubicación a muchos artículos a la vez)
   seleccionable = false,
   seleccionados = new Set(),
   onCambiarSeleccion = () => {},
@@ -199,9 +199,20 @@ export default function TablaArticulos({
                 </td>
 
                 <td style={td}>
-                  <span style={departmentBadge}>
-                    {articulo.departamentos?.nombre || "-"}
-                  </span>
+                  {articulo.departamentos?.nombre ? (
+                    <span style={departmentBadge}>
+                      {articulo.departamentos.cod !== null &&
+                      articulo.departamentos.cod !== undefined &&
+                      String(articulo.departamentos.cod).trim() !== ""
+                        ? `${articulo.departamentos.cod} · `
+                        : ""}
+                      {articulo.departamentos.nombre}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#b45309" }}>
+                      🗂️ Sin departamento
+                    </span>
+                  )}
                   <div
                     style={{
                       marginTop: 6,
