@@ -2036,7 +2036,8 @@ export default function App() {
 
       const { data: departamentosData } = await supabase
         .from("departamentos")
-        .select("id, nombre")
+        .select("id, cod, nombre")
+        .order("cod", { ascending: true, nullsFirst: false })
         .order("nombre", { ascending: true });
 
       const hoy = getTodayISO();
