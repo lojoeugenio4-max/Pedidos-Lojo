@@ -818,6 +818,9 @@ export default function App() {
     () => localStorage.getItem(LANGUAGE_STORAGE_KEY) || "es"
   );
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  // Alto de la zona fija de arriba (buscador). Sirve para colocar el botón
+  // flotante "Nueva Búsqueda" justo debajo, sin tapar el buscador.
+  const [alturaZonaSuperior, setAlturaZonaSuperior] = useState(0);
   const bloqueColapsoCabeceraRef = useRef(false);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [mostrarAyudaInstalacion, setMostrarAyudaInstalacion] = useState(false);
@@ -1942,6 +1945,20 @@ export default function App() {
     // se cierra el teclado y el teléfono reajusta el scroll por su cuenta).
     bloqueColapsoCabeceraRef.current = true;
   }, [campoCantidadActivo]);
+
+  useEffect(() => {
+    const zona = document.querySelector("[data-top-area='true']");
+    if (!zona) return undefined;
+    const medir = () => setAlturaZonaSuperior(Math.round(zona.getBoundingClientRect().height));
+    medir();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", medir);
+      return () => window.removeEventListener("resize", medir);
+    }
+    const observador = new ResizeObserver(medir);
+    observador.observe(zona);
+    return () => observador.disconnect();
+  }, [cargandoCliente, clienteIdentificado]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -5767,6 +5784,40 @@ export default function App() {
         <ArrowUp size={18} strokeWidth={3} />
       </button>
 
+      {/* Botón flotante "Nueva Búsqueda" (bajo la flecha de subir):
+          abre el micrófono desde cualquier punto de la lista, sin tener que
+          subir al buscador. Sube la pantalla al principio para que el
+          cliente vea el aviso "Te escucho…" y los resultados nuevos. Se
+          abre en el mismo toque porque algunos móviles solo dejan usar el
+          micrófono así. Si ya está escuchando, lo para. */}
+      {headerCollapsed && (
+      <button
+        type="button"
+        onClick={() => {
+          if (!escuchandoVoz) window.scrollTo({ top: 0, behavior: "smooth" });
+          alternarBusquedaPorVoz();
+        }}
+        className={escuchandoVoz ? "lojo-mic-escuchando" : undefined}
+        style={{
+          ...styles.nuevaBusquedaFlotante,
+          top: `calc(${alturaZonaSuperior + 8}px + env(safe-area-inset-top))`,
+          ...(escuchandoVoz ? styles.nuevaBusquedaFlotanteActivo : {}),
+        }}
+        aria-label={
+          escuchandoVoz
+            ? language === "zh" ? "停止" : "Parar de escuchar"
+            : language === "zh" ? "新搜索" : "Nueva búsqueda por voz"
+        }
+      >
+        <Mic size={17} strokeWidth={2.6} />
+        <span>
+          {escuchandoVoz
+            ? language === "zh" ? "停止" : "Parar"
+            : language === "zh" ? "新搜索" : "Nueva Búsqueda"}
+        </span>
+      </button>
+      )}
+
       <div ref={stickyCardRef} style={styles.stickySummary}>
         <div>
           <strong>{t.summary}</strong>
@@ -8140,6 +8191,32 @@ const styles = {
     justifyContent: "center",
     boxShadow: "0 6px 16px rgba(15,23,42,0.35)",
     opacity: 0.9,
+  },
+
+  // Va en la columna de la flecha de subir, justo debajo de la zona fija
+  // del buscador (el "top" se calcula al pintarlo). Solo se muestra cuando
+  // el cliente ha bajado por la lista (cabecera recogida).
+  nuevaBusquedaFlotante: {
+    position: "fixed",
+    right: "10px",
+    zIndex: 60,
+    height: "40px",
+    padding: "0 14px 0 11px",
+    borderRadius: "999px",
+    border: "none",
+    background: "#16a34a",
+    color: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    fontSize: "14px",
+    fontWeight: "900",
+    whiteSpace: "nowrap",
+    cursor: "pointer",
+    boxShadow: "0 6px 16px rgba(22,163,74,0.4)",
+  },
+  nuevaBusquedaFlotanteActivo: {
+    background: "#dc2626",
   },
 
   bingoSummaryOk: {
