@@ -11,8 +11,10 @@ export default function Articulos() {
   const [departamentos, setDepartamentos] = useState([]);
   const [ubicaciones, setUbicaciones] = useState([]);
   const [ubicacionesDisponibles, setUbicacionesDisponibles] = useState(false);
-  // Asignación masiva de ubicación: artículos marcados en el listado.
+  // Asignación masiva de departamento y de ubicación: artículos marcados
+  // en el listado.
   const [seleccionados, setSeleccionados] = useState(() => new Set());
+  const [departamentoMasivo, setDepartamentoMasivo] = useState("");
   const [ubicacionMasiva, setUbicacionMasiva] = useState("");
   const [asignandoMasivo, setAsignandoMasivo] = useState(false);
   const [mensajeMasivo, setMensajeMasivo] = useState("");
@@ -65,14 +67,17 @@ export default function Articulos() {
         oculto,
         foto,
         departamento_id,
-        departamentos ( nombre ),
+        departamentos ( cod, nombre ),
         ofertas ( id, texto, fecha_inicio, fecha_fin )
       `)
       .order("nombre", { ascending: true });
 
+    // Departamentos ordenados por su código (Cod), igual que en la
+    // pantalla Departamentos.
     const { data: departamentosData, error: departamentosError } = await supabase
       .from("departamentos")
-      .select("id, nombre")
+      .select("id, cod, nombre")
+      .order("cod", { ascending: true, nullsFirst: false })
       .order("nombre", { ascending: true });
 
     if (articulosError) {
@@ -454,6 +459,67 @@ export default function Articulos() {
     await cargarDatos();
   }
 
+  // Pone el mismo departamento (o lo quita) a todos los artículos marcados.
+  async function asignarDepartamentoMasivo() {
+    const ids = Array.from(seleccionados);
+    if (!ids.length) return alert("Marca primero los artículos en el listado");
+    if (!departamentoMasivo) return alert("Elige el departamento que quieres asignar");
+
+    const quitar = departamentoMasivo === "__ninguno__";
+    const departamento = quitar
+      ? null
+      : departamentos.find((d) => String(d.id) === String(departamentoMasivo)) || null;
+    if (!quitar && !departamento) return alert("Departamento no encontrado");
+
+    const textoDestino = quitar
+      ? "QUITAR el departamento a"
+      : `asignar el departamento ${etiquetaDepartamento(departamento)} a`;
+    if (!confirm(`¿Seguro que quieres ${textoDestino} ${ids.length} artículo(s)?`)) return;
+
+    setAsignandoMasivo(true);
+    setMensajeMasivo("");
+
+    try {
+      // Por bloques, para no pasar el límite de longitud de la petición.
+      const BLOQUE = 150;
+      for (let i = 0; i < ids.length; i += BLOQUE) {
+        const bloque = ids.slice(i, i + BLOQUE);
+        const { error } = await supabase
+          .from("articulos")
+          .update({ departamento_id: quitar ? null : departamento.id })
+          .in("id", bloque);
+        if (error) throw error;
+      }
+
+      const idsSet = new Set(ids);
+      setArticulos((prev) =>
+        prev.map((articulo) =>
+          idsSet.has(articulo.id)
+            ? {
+                ...articulo,
+                departamento_id: quitar ? null : departamento.id,
+                departamentos: quitar ? null : { cod: departamento.cod, nombre: departamento.nombre },
+              }
+            : articulo
+        )
+      );
+      setSeleccionados(new Set());
+      setMensajeMasivo(
+        quitar
+          ? `✅ Departamento quitado a ${ids.length} artículo(s).`
+          : `✅ ${ids.length} artículo(s) asignados al departamento ${etiquetaDepartamento(departamento)}.`
+      );
+    } catch (error) {
+      console.error(error);
+      alert(
+        "Error asignando el departamento. Puede que solo se haya cambiado una parte; se recarga el listado para que veas cómo ha quedado."
+      );
+      await cargarDatos();
+    } finally {
+      setAsignandoMasivo(false);
+    }
+  }
+
   // Pone la misma ubicación (o la quita) a todos los artículos marcados.
   async function asignarUbicacionMasiva() {
     const ids = Array.from(seleccionados);
@@ -557,7 +623,7 @@ export default function Articulos() {
       const texto = normalizar(
         `${articulo.codigo} ${articulo.codigo_lojo || ""} ${articulo.nombre} ${
           articulo.departamentos?.nombre || ""
-        } ${articulo.ubicacion?.codigo || ""} ${articulo.ubicacion?.nombre || ""}`
+        } ${articulo.departamentos?.cod ?? ""} ${articulo.ubicacion?.codigo || ""} ${articulo.ubicacion?.nombre || ""}`
       );
       if (!palabras.every((palabra) => texto.includes(palabra))) return false;
     }
@@ -692,10 +758,10 @@ export default function Articulos() {
             <option value="todos">Todos</option>
             {departamentos.map((d) => (
               <option key={d.id} value={String(d.id)}>
-                {d.nombre}
+                {etiquetaDepartamento(d)}
               </option>
             ))}
-            <option value="__ninguno__">— Sin departamento —</option>
+            <option value="__ninguno__">🗂️ Sin departamento</option>
           </FiltroSelect>
 
           <FiltroSelect
@@ -788,54 +854,86 @@ export default function Articulos() {
           </button>
         </div>
 
-        {ubicacionesDisponibles && (
-          <div style={barraMasiva}>
-            <strong style={{ whiteSpace: "nowrap" }}>
-              📍 {seleccionados.size} marcado{seleccionados.size === 1 ? "" : "s"}
-            </strong>
-            <select
-              value={ubicacionMasiva}
-              onChange={(e) => setUbicacionMasiva(e.target.value)}
-              style={selectMasivo}
-            >
-              <option value="">Elegir ubicación…</option>
-              {ubicaciones.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.codigo} — {u.nombre}
-                </option>
-              ))}
-              <option value="__ninguna__">✖ Quitar ubicación</option>
-            </select>
-            <button
-              type="button"
-              style={botonMasivo(!seleccionados.size || !ubicacionMasiva || asignandoMasivo)}
-              disabled={!seleccionados.size || !ubicacionMasiva || asignandoMasivo}
-              onClick={asignarUbicacionMasiva}
-            >
-              {asignandoMasivo ? "Asignando…" : "Asignar a los marcados"}
-            </button>
+        <div style={barraMasiva}>
+          <strong style={{ whiteSpace: "nowrap", flexBasis: "100%" }}>
+            ☑️ {seleccionados.size} artículo{seleccionados.size === 1 ? "" : "s"} marcado
+            {seleccionados.size === 1 ? "" : "s"}
             {seleccionados.size > 0 && (
               <button
                 type="button"
-                style={botonDesmarcar}
+                style={{ ...botonDesmarcar, marginLeft: 12, padding: "6px 12px" }}
                 onClick={() => setSeleccionados(new Set())}
               >
                 Desmarcar todo
               </button>
             )}
-            <span style={ayudaMasiva}>
-              Consejo: elige “📍 Sin ubicación” en el filtro Ubicación o busca (p. ej. “cruzcampo”), marca la casilla de
-              la cabecera para marcar toda la lista, o usa Mayúsculas + clic para marcar un rango.
-            </span>
-            {mensajeMasivo && <span style={mensajeOk}>{mensajeMasivo}</span>}
+          </strong>
+
+          <div style={filaMasiva}>
+            <span style={etiquetaMasiva}>🗂️ Departamento</span>
+            <select
+              value={departamentoMasivo}
+              onChange={(e) => setDepartamentoMasivo(e.target.value)}
+              style={selectMasivo}
+            >
+              <option value="">Elegir departamento…</option>
+              {departamentos.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {etiquetaDepartamento(d)}
+                </option>
+              ))}
+              <option value="__ninguno__">✖ Quitar departamento</option>
+            </select>
+            <button
+              type="button"
+              style={botonMasivo(!seleccionados.size || !departamentoMasivo || asignandoMasivo)}
+              disabled={!seleccionados.size || !departamentoMasivo || asignandoMasivo}
+              onClick={asignarDepartamentoMasivo}
+            >
+              {asignandoMasivo ? "Asignando…" : "Asignar departamento a los marcados"}
+            </button>
           </div>
-        )}
+
+          {ubicacionesDisponibles && (
+            <div style={filaMasiva}>
+              <span style={etiquetaMasiva}>📍 Ubicación</span>
+              <select
+                value={ubicacionMasiva}
+                onChange={(e) => setUbicacionMasiva(e.target.value)}
+                style={selectMasivo}
+              >
+                <option value="">Elegir ubicación…</option>
+                {ubicaciones.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.codigo} — {u.nombre}
+                  </option>
+                ))}
+                <option value="__ninguna__">✖ Quitar ubicación</option>
+              </select>
+              <button
+                type="button"
+                style={botonMasivo(!seleccionados.size || !ubicacionMasiva || asignandoMasivo)}
+                disabled={!seleccionados.size || !ubicacionMasiva || asignandoMasivo}
+                onClick={asignarUbicacionMasiva}
+              >
+                {asignandoMasivo ? "Asignando…" : "Asignar ubicación a los marcados"}
+              </button>
+            </div>
+          )}
+
+          <span style={ayudaMasiva}>
+            Consejo: filtra (p. ej. “🗂️ Sin departamento”, un departamento concreto o “📍 Sin ubicación”) o busca
+            (p. ej. “cruzcampo”), marca la casilla de la cabecera para marcar toda la lista, o usa Mayúsculas + clic
+            para marcar un rango.
+          </span>
+          {mensajeMasivo && <span style={mensajeOk}>{mensajeMasivo}</span>}
+        </div>
 
         {cargando ? (
           <div style={loadingBox}>Cargando artículos...</div>
         ) : (
           <TablaArticulos
-            seleccionable={ubicacionesDisponibles}
+            seleccionable
             seleccionados={seleccionados}
             onCambiarSeleccion={(nuevos) => {
               setSeleccionados(nuevos);
@@ -877,6 +975,15 @@ function FiltroSelect({ etiqueta, valor, onChange, deshabilitado = false, childr
       </select>
     </label>
   );
+}
+
+// "3 — CERVEZAS" (o solo el nombre si el departamento no tiene código).
+function etiquetaDepartamento(departamento) {
+  if (!departamento) return "";
+  const cod = departamento.cod;
+  return cod !== null && cod !== undefined && String(cod).trim() !== ""
+    ? `${cod} — ${departamento.nombre}`
+    : departamento.nombre;
 }
 
 function normalizar(texto) {
@@ -1230,6 +1337,16 @@ const botonDesmarcar = {
   color: "#334155",
   cursor: "pointer",
 };
+
+const filaMasiva = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "10px",
+  flexBasis: "100%",
+};
+
+const etiquetaMasiva = { minWidth: "120px", fontWeight: 800 };
 
 const ayudaMasiva = { flexBasis: "100%", fontSize: "12px", color: "#0f766e" };
 
