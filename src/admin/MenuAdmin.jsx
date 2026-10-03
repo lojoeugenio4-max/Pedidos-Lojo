@@ -55,6 +55,12 @@ export default function MenuAdmin({
       descripcion: "Resumen y actividad",
     },
     {
+      id: "cliente-mes",
+      icono: "🏆",
+      titulo: "Cliente del mes",
+      descripcion: "Carrera de puntos",
+    },
+    {
       id: "premios-bingo",
       icono: "🎉",
       titulo: "Premios de Bingo",
