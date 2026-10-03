@@ -736,6 +736,13 @@ export default function PedidosExportar() {
         >
           🎟️ Sorteo
         </button>
+        <button
+          type="button"
+          style={botonPantallaGrande(vistaTV === "clasificacion", "#ca8a04")}
+          onClick={(evento) => manejarAbrirPantallaGrande(evento, "clasificacion")}
+        >
+          🏆 Cliente del mes
+        </button>
         <span style={textoPantallaGrande}>
           Se queda en pantalla entre cliente y cliente. Pasando un QR, cambia sola al juego de ese cliente.
         </span>
