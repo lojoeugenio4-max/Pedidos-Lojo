@@ -18,6 +18,8 @@ import logoLojo from "../assets/logo-lojo.jpg";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
 const SPIN_DURATION_MS = 9200;
+// Tras terminar los juegos de un cliente, segundos hasta volver a Cliente del mes.
+const VUELTA_A_CLIENTE_MES_MS = 20000;
 
 const PRODUCTOS_PUBLIC_URL =
   "https://bohlxagrtpjvqrgkonlo.supabase.co/storage/v1/object/public/productos";
@@ -293,6 +295,9 @@ function DisplayPageContenido() {
   const clienteMesTV = useClasificacionClienteMes({ habilitado: estado === "clasificacion-reposo", refrescoMs: 30000 });
   const [celebracionClienteMes, setCelebracionClienteMes] = useState(null);
   const clienteMesTVRef = useRef(null);
+  // ¿Se está viendo un juego (y no una pantalla de reposo)?
+  const juegoEnPantallaRef = useRef(false);
+  const temporizadorVueltaRef = useRef(null);
   clienteMesTVRef.current = clienteMesTV.recargar;
   useEffect(() => {
     if (!celebracionClienteMes) return undefined;
@@ -462,22 +467,42 @@ function DisplayPageContenido() {
     const payload = event.payload || {};
 
     // CLIENTE DEL MES: un cliente acaba de sumar puntos al pasar su QR.
+    // Se pasa a la carrera al momento (si había en pantalla el juego del
+    // cliente anterior, ya ha terminado) para que se vea la celebración; si
+    // este cliente elige luego Bingo o Sorteo, la TV cambia a ese juego.
     if (event.type === "cliente-mes-sumado") {
+      if (temporizadorVueltaRef.current) {
+        window.clearTimeout(temporizadorVueltaRef.current);
+        temporizadorVueltaRef.current = null;
+      }
+      juegoEnPantallaRef.current = false;
+      setEstado("clasificacion-reposo");
       setCelebracionClienteMes({ ...payload, id: Date.now() });
       clienteMesTVRef.current?.();
       return;
     }
 
-    // Con la TV puesta en "Cliente del mes" la pantalla se queda FIJA en la
-    // carrera: los juegos (Bingo, Sorteo, Ruleta) se juegan en el TPV y aquí
-    // no se cambia de vista. Solo se sale eligiendo otra vista en "Pedidos
-    // recibidos" (evento "vista-reposo").
-    if (leerVistaReposo() === "clasificacion" && event.type !== "vista-reposo") {
-      setEstado("clasificacion-reposo");
+    // Cualquier aviso nuevo cancela la vuelta automática a la carrera que
+    // estuviera pendiente.
+    if (temporizadorVueltaRef.current) {
+      window.clearTimeout(temporizadorVueltaRef.current);
+      temporizadorVueltaRef.current = null;
+    }
+
+    // Fin de los juegos de un cliente ("waiting" del TPV): si en pantalla se
+    // estaba viendo un juego (Bingo, Sorteo, Ruleta), se deja tal cual 20
+    // segundos para que se vea el resultado y después la TV pasa sola a
+    // CLIENTE DEL MES. Con payload.inmediato (botón del TPV) pasa ya.
+    if (event.type === "waiting" && juegoEnPantallaRef.current && !payload.inmediato) {
+      temporizadorVueltaRef.current = window.setTimeout(() => {
+        temporizadorVueltaRef.current = null;
+        aplicarEvento({ type: "vista-reposo", payload: { vista: "clasificacion", automatica: true } });
+      }, VUELTA_A_CLIENTE_MES_MS);
       return;
     }
 
     if (event.type === "waiting" || event.type === "vista-reposo") {
+      juegoEnPantallaRef.current = false;
       // El TPV manda "waiting" cuando vuelve a estar listo para leer el
       // siguiente código (botón "reiniciar", o tras un error). El reposo
       // de la pantalla grande es el Bombo de Bingo, gane lo que gane el
@@ -491,7 +516,9 @@ function DisplayPageContenido() {
       setEstado(
         event.type === "vista-reposo"
           ? estadoDeReposo(payload.vista)
-          : estadoDeReposo()
+          : payload.inmediato
+            ? estadoDeReposo("clasificacion")
+            : estadoDeReposo()
       );
       setEntrada(null);
       setPremioFinal(null);
@@ -505,6 +532,10 @@ function DisplayPageContenido() {
       setMensajeVozFinal(null);
       return;
     }
+
+    // A partir de aquí son avisos de un juego en marcha: la TV muestra el
+    // juego (aunque estuviera en Cliente del mes).
+    juegoEnPantallaRef.current = true;
 
     if (event.type === "ready") {
       setEstado("ready");

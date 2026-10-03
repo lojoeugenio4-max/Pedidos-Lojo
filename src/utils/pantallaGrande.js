@@ -25,9 +25,10 @@ export const VISTAS_REPOSO = ["bingo", "sorteo", "clasificacion"];
 export function leerVistaReposo() {
   try {
     const vista = localStorage.getItem(VISTA_REPOSO_KEY);
-    return VISTAS_REPOSO.includes(vista) ? vista : "bingo";
+    // Por defecto, Cliente del mes.
+    return VISTAS_REPOSO.includes(vista) ? vista : "clasificacion";
   } catch {
-    return "bingo";
+    return "clasificacion";
   }
 }
 
