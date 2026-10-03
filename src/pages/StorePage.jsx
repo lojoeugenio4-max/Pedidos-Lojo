@@ -340,6 +340,8 @@ export default function StorePage() {
   const [premioFinal, setPremioFinal] = useState(null);
   const [premioObjetivo, setPremioObjetivo] = useState(null);
   const [entitlement, setEntitlement] = useState(null);
+  // Cliente del mes: resultado de sumar (o no) los puntos al pasar el QR.
+  const [clienteMesResultado, setClienteMesResultado] = useState(null);
   const [bolaBingo, setBolaBingo] = useState(null);
   const [procesandoBingo, setProcesandoBingo] = useState(false);
   const [procesandoSorteo, setProcesandoSorteo] = useState(false);
@@ -528,6 +530,7 @@ export default function StorePage() {
     setMensaje("");
     setEntrada(null);
     setEntitlement(null);
+    setClienteMesResultado(null);
     setBolaBingo(null);
     setPremios([]);
     setPremioFinal(null);
@@ -618,6 +621,33 @@ export default function StorePage() {
       // esperar al refresco periódico.
       notificarQrLeido({ orderId: unified.order_id, code: unified.code || code });
 
+      // CLIENTE DEL MES: al pasar el QR se suman los puntos (si el pedido
+      // cumple y es el primero del día). Pasa siempre, se elija el juego que
+      // se elija, y un fallo aquí nunca bloquea el resto de juegos.
+      let resultadoClienteMes = null;
+      try {
+        const { data: rawClienteMes, error: errorClienteMes } = await supabase.rpc("cliente_mes_canjear_qr", {
+          p_code: code,
+        });
+        if (errorClienteMes) throw errorClienteMes;
+        resultadoClienteMes = rawClienteMes;
+        const visibleEnTPV =
+          rawClienteMes?.sumado ||
+          (unified.cliente_mes_available &&
+            ["no_cumple", "ya_sumado_hoy", "ya_canjeado"].includes(rawClienteMes?.motivo));
+        setClienteMesResultado(visibleEnTPV ? rawClienteMes : null);
+        if (rawClienteMes?.sumado) {
+          enviarEventoDisplay("cliente-mes-sumado", {
+            nombre: rawClienteMes.nombre,
+            puntos: rawClienteMes.puntos,
+            total: rawClienteMes.total,
+            posicion: rawClienteMes.posicion,
+          });
+        }
+      } catch (err) {
+        console.warn("No se pudieron sumar los puntos de Cliente del mes:", err);
+      }
+
       if (unified.roulette_available && unified.roulette_participation_id) {
         const { data: rouletteEntry, error: rouletteError } = await supabase
           .from("promotion_participations")
@@ -656,6 +686,12 @@ export default function StorePage() {
         unified.bingo_available,
         unified.sorteo_available,
       ].filter(Boolean).length;
+
+      // Pedido que solo traía Cliente del mes: no hay nada más que jugar.
+      if (juegosDisponibles === 0 && (unified.cliente_mes_available || resultadoClienteMes?.sumado)) {
+        setEstado("cliente-mes");
+        return;
+      }
 
       setEstado(
         juegosDisponibles > 1
@@ -1225,6 +1261,7 @@ export default function StorePage() {
     setCodigo("");
     setEntrada(null);
     setEntitlement(null);
+    setClienteMesResultado(null);
     setBolaBingo(null);
     setPremios([]);
     setEstado("idle");
@@ -1405,6 +1442,33 @@ export default function StorePage() {
           ×
         </button>
       </section>
+
+      {clienteMesResultado && estado !== "idle" && estado !== "loading" && estado !== "cliente-mes" && (
+        <section style={clienteMesResultado.sumado ? styles.clienteMesBannerOk : styles.clienteMesBannerNo}>
+          <span style={styles.clienteMesBannerIcono}>🏆</span>
+          <span>
+            <strong>Cliente del mes · </strong>
+            {textoClienteMes(clienteMesResultado)}
+          </span>
+        </section>
+      )}
+
+      {estado === "cliente-mes" && entitlement && (
+        <section style={styles.card}>
+          <h2 style={styles.cardTitle}>QR válido · Pedido identificado</h2>
+          <p style={styles.info}>Cliente: <strong>{entitlement.customer_name || "sin nombre"}</strong></p>
+          <div style={styles.bingoResultBox}>
+            <div style={styles.clienteMesGrande}>
+              {clienteMesResultado?.sumado ? `+${clienteMesResultado.puntos}` : "🏆"}
+            </div>
+            <h2 style={{ margin: 0 }}>
+              {clienteMesResultado?.sumado ? "¡Puntos sumados en Cliente del mes!" : "Cliente del mes"}
+            </h2>
+            <p style={styles.info}>{textoClienteMes(clienteMesResultado)}</p>
+            <button type="button" onClick={finalizarPartida} style={styles.nextButton}>FINALIZAR ›</button>
+          </div>
+        </section>
+      )}
 
       {(estado === "idle" ||
         estado === "loading" ||
@@ -1651,7 +1715,58 @@ export default function StorePage() {
   );
 }
 
+function textoClienteMes(r) {
+  if (!r) return "";
+  if (r.sumado) {
+    return `+${r.puntos} puntos para ${r.nombre || "el cliente"}. Lleva ${r.total} puntos${
+      r.posicion ? ` y va ${r.posicion}º` : ""
+    }.`;
+  }
+  if (r.motivo === "ya_sumado_hoy") return "Hoy ya sumó puntos con otro pedido (máximo 1 pedido al día).";
+  if (r.motivo === "ya_canjeado") return "Los puntos de este pedido ya se sumaron.";
+  if (r.motivo === "no_cumple") return "Este pedido no llega al mínimo de artículos para sumar puntos.";
+  return "Este pedido no suma puntos.";
+}
+
 const styles = {
+  clienteMesBannerOk: {
+    position: "relative",
+    zIndex: 2,
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    margin: "0 auto 14px",
+    maxWidth: 980,
+    padding: "12px 18px",
+    borderRadius: 16,
+    background: "linear-gradient(90deg, #ffe14d, #ff9f1c)",
+    color: "#2a1600",
+    fontSize: 18,
+    fontWeight: 700,
+    boxShadow: "0 8px 24px rgba(255,159,28,.35)",
+  },
+  clienteMesBannerNo: {
+    position: "relative",
+    zIndex: 2,
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    margin: "0 auto 14px",
+    maxWidth: 980,
+    padding: "10px 18px",
+    borderRadius: 16,
+    background: "#f3f4f6",
+    color: "#374151",
+    fontSize: 15,
+    fontWeight: 600,
+  },
+  clienteMesBannerIcono: { fontSize: 28 },
+  clienteMesGrande: {
+    fontSize: 64,
+    fontWeight: 900,
+    color: "#d97706",
+    textShadow: "0 3px 0 rgba(0,0,0,.12)",
+  },
   bingoStageSection: {
     width: "100%",
   },
