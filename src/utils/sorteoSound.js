@@ -16,6 +16,12 @@ function obtenerAudioContext() {
   return sorteoAudioContext;
 }
 
+// Mismo AudioContext para otros sonidos de la TV (p. ej. Cliente del mes),
+// así basta con activar el sonido una vez.
+export function obtenerAudioCompartido() {
+  return obtenerAudioContext();
+}
+
 // Campanilla de dos notas ascendentes, tipo "acierto"/moneda, corta y
 // clara para que se note al instante que se ha rellenado una casilla.
 export function playSorteoDing() {

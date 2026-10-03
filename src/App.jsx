@@ -30,6 +30,7 @@ import SorteoDirecto from "./components/sorteo/SorteoDirecto";
 import AvisoSorteo from "./components/sorteo/AvisoSorteo";
 import MisNumerosSorteo from "./components/sorteo/MisNumerosSorteo";
 import CarreraClienteMes from "./components/clienteMes/CarreraClienteMes";
+import PremioClienteMes from "./components/clienteMes/PremioClienteMes";
 import { puntosPedidoClienteMes, useClasificacionClienteMes } from "./utils/clienteMes";
 import { useSorteoDirecto } from "./utils/sorteoDirecto";
 import { desbloquearAudioSorteo } from "./utils/sorteoSound";
@@ -1086,6 +1087,48 @@ export default function App() {
       cancelado = true;
     };
   }, [clienteIdentificado?.token, revisionPremioSorteo]);
+
+  // CLIENTE DEL MES: premio del podio pendiente de ver (cofre que se abre).
+  // Sale la primera vez que abre la App después del cierre del mes.
+  const [premioClienteMes, setPremioClienteMes] = useState(null);
+  const [revisionPremioClienteMes, setRevisionPremioClienteMes] = useState(0);
+  useEffect(() => {
+    let cancelado = false;
+    async function comprobarPremioClienteMes() {
+      if (!clienteIdentificado?.token) return;
+      try {
+        const { data, error } = await supabase.rpc("cliente_mes_premio_pendiente", {
+          p_token: clienteIdentificado.token,
+        });
+        if (error) throw error;
+        if (!cancelado && data?.mes) setPremioClienteMes(data);
+      } catch (error) {
+        console.error("No se pudo comprobar si hay un premio de Cliente del mes pendiente:", error);
+      }
+    }
+    comprobarPremioClienteMes();
+    return () => {
+      cancelado = true;
+    };
+  }, [clienteIdentificado?.token, revisionPremioClienteMes]);
+
+  async function cerrarPremioClienteMes() {
+    const premio = premioClienteMes;
+    setPremioClienteMes(null);
+    if (!premio?.mes || !clienteIdentificado?.token) return;
+    try {
+      const { error } = await supabase.rpc("cliente_mes_marcar_premio_visto", {
+        p_token: clienteIdentificado.token,
+        p_mes: premio.mes,
+        p_posicion: premio.posicion,
+      });
+      if (error) throw error;
+      // Por si tuviera otro premio de otro mes sin ver.
+      setRevisionPremioClienteMes((n) => n + 1);
+    } catch (error) {
+      console.error("No se pudo marcar el premio de Cliente del mes como visto:", error);
+    }
+  }
 
   async function cerrarCelebracionPremioSorteo() {
     const premio = premioSorteoPendiente;
@@ -4658,6 +4701,9 @@ export default function App() {
 
   return (
     <div style={styles.page}>
+      {!premioSorteoPendiente && premioClienteMes && (
+        <PremioClienteMes premio={premioClienteMes} onCerrar={cerrarPremioClienteMes} />
+      )}
       {premioSorteoPendiente && (
         <CelebracionPremio premio={premioSorteoPendiente} onCerrar={cerrarCelebracionPremioSorteo} />
       )}

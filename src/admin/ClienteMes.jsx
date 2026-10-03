@@ -45,6 +45,7 @@ export default function ClienteMes() {
   const [datos, setDatos] = useState(null);
   const [cargandoDatos, setCargandoDatos] = useState(false);
   const [borrando, setBorrando] = useState(false);
+  const [probandoCierre, setProbandoCierre] = useState(false);
 
   useEffect(() => {
     cargarConfig();
@@ -152,6 +153,42 @@ export default function ClienteMes() {
       setError(err?.message || "No se han podido borrar los puntos de pruebas.");
     } finally {
       setBorrando(false);
+    }
+  }
+
+  async function cierrePrueba() {
+    setProbandoCierre(true);
+    setError("");
+    setAviso("");
+    try {
+      const { data, error: rpcError } = await supabase.rpc("admin_cliente_mes_cierre_prueba");
+      if (rpcError) throw rpcError;
+      if (!data?.ok) throw new Error("Solo se puede probar con «Solo clientes de pruebas» marcado.");
+      setAviso(
+        data.premiados
+          ? `Cierre de prueba hecho: ${data.premiados} premiado(s). Mira la TV y abre la app con un cliente de prueba del podio.`
+          : "Cierre de prueba hecho, pero ningún cliente de prueba tiene puntos este mes."
+      );
+    } catch (err) {
+      console.error(err);
+      setError(err?.message || "No se ha podido hacer el cierre de prueba.");
+    } finally {
+      setProbandoCierre(false);
+    }
+  }
+
+  async function deshacerCierresPrueba() {
+    setProbandoCierre(true);
+    setError("");
+    try {
+      const { error: rpcError } = await supabase.rpc("admin_cliente_mes_deshacer_pruebas");
+      if (rpcError) throw rpcError;
+      setAviso("Cierres de prueba deshechos ✓");
+    } catch (err) {
+      console.error(err);
+      setError(err?.message || "No se han podido deshacer los cierres de prueba.");
+    } finally {
+      setProbandoCierre(false);
     }
   }
 
@@ -264,6 +301,24 @@ export default function ClienteMes() {
                 </button>
               )}
               {aviso && <span style={{ color: "#166534", fontWeight: 800 }}>{aviso}</span>}
+            </div>
+            <div style={{ ...reglaBox, marginTop: 14 }}>
+              <strong>🎁 Cierre del mes y cofres del podio</strong>
+              <p style={texto}>
+                El día 1 se cierra solo el mes anterior: la pantalla grande abre los cofres del 1º, 2º y 3º con su premio,
+                y cada premiado ve su cofre en el móvil la primera vez que abre la app. Para repetir la ceremonia en la TV:
+                «Pedidos recibidos» → 🎁 Cofres del podio.
+              </p>
+              {config.solo_pruebas && (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button type="button" style={botonSecundario} onClick={cierrePrueba} disabled={probandoCierre}>
+                    🧪 Probar cierre del mes con los clientes de prueba
+                  </button>
+                  <button type="button" style={botonSecundario} onClick={deshacerCierresPrueba} disabled={probandoCierre}>
+                    Deshacer cierres de prueba
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}

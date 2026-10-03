@@ -14,7 +14,7 @@ import QrPendientes, {
   limpiarVolverAQrPendientes,
 } from "./QrPendientes";
 import { PremiosBingoVista, usePremiosBingo } from "./PremiosBingo";
-import { abrirPantallaGrande, leerVistaReposo } from "../utils/pantallaGrande";
+import { abrirPantallaGrande, enviarEventoDisplay, leerVistaReposo } from "../utils/pantallaGrande";
 import {
   cargarUbicacionesPorArticulo,
   ordenarLineasPedido,
@@ -742,6 +742,17 @@ export default function PedidosExportar() {
           onClick={(evento) => manejarAbrirPantallaGrande(evento, "clasificacion")}
         >
           🏆 Cliente del mes
+        </button>
+        <button
+          type="button"
+          style={botonPantallaGrande(false, "#b45309")}
+          onClick={(evento) => {
+            manejarAbrirPantallaGrande(evento, "clasificacion");
+            enviarEventoDisplay("cliente-mes-ceremonia");
+          }}
+          title="Vuelve a mostrar en la TV la apertura de cofres del último podio"
+        >
+          🎁 Cofres del podio
         </button>
         <span style={textoPantallaGrande}>
           Se queda en pantalla entre cliente y cliente. Pasando un QR, cambia sola al juego de ese cliente.

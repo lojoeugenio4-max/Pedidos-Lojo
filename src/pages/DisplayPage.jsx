@@ -13,11 +13,13 @@ import {
 } from "../utils/sorteoSound";
 import { leerVistaReposo } from "../utils/pantallaGrande";
 import CarreraClienteMes from "../components/clienteMes/CarreraClienteMes";
+import CeremoniaPodio from "../components/clienteMes/CeremoniaPodio";
 import { useClasificacionClienteMes } from "../utils/clienteMes";
 import logoLojo from "../assets/logo-lojo.jpg";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
 const SPIN_DURATION_MS = 9200;
+const CLAVE_CEREMONIA_VISTA = "lojo-tv-ceremonia-cliente-mes";
 // Tras terminar los juegos de un cliente, segundos hasta volver a Cliente del mes.
 const VUELTA_A_CLIENTE_MES_MS = 20000;
 
@@ -294,6 +296,41 @@ function DisplayPageContenido() {
   const sorteoEnDirecto = useSorteoDirecto({ modo: "tv" });
   const clienteMesTV = useClasificacionClienteMes({ habilitado: estado === "clasificacion-reposo", refrescoMs: 30000 });
   const [celebracionClienteMes, setCelebracionClienteMes] = useState(null);
+  // Ceremonia de los cofres del podio (cierre del mes). Se ve una vez por
+  // cierre en esta TV; desde "Pedidos recibidos" se puede repetir.
+  const [ceremonia, setCeremonia] = useState(null);
+  const pedirCeremoniaRef = useRef(null);
+  pedirCeremoniaRef.current = async (forzar = false) => {
+    try {
+      const { data, error } = await supabase.rpc("cliente_mes_ultimo_cierre");
+      if (error) throw error;
+      if (!data || !Array.isArray(data.podio) || data.podio.length === 0) return;
+      const clave = `${data.mes}|${data.cerrado_at}`;
+      let vista = "";
+      try {
+        vista = localStorage.getItem(CLAVE_CEREMONIA_VISTA) || "";
+      } catch {
+        vista = "";
+      }
+      if (forzar || vista !== clave) setCeremonia({ ...data, clave });
+    } catch (err) {
+      console.warn("No se pudo comprobar la ceremonia de Cliente del mes:", err);
+    }
+  };
+  useEffect(() => {
+    if (estado !== "clasificacion-reposo") return undefined;
+    pedirCeremoniaRef.current?.();
+    const intervalo = window.setInterval(() => pedirCeremoniaRef.current?.(), 60000);
+    return () => window.clearInterval(intervalo);
+  }, [estado]);
+  function terminarCeremonia() {
+    try {
+      if (ceremonia?.clave) localStorage.setItem(CLAVE_CEREMONIA_VISTA, ceremonia.clave);
+    } catch {
+      // sin localStorage: la TV la volvería a enseñar al recargar
+    }
+    setCeremonia(null);
+  }
   const clienteMesTVRef = useRef(null);
   // ¿Se está viendo un juego (y no una pantalla de reposo)?
   const juegoEnPantallaRef = useRef(false);
@@ -467,6 +504,18 @@ function DisplayPageContenido() {
     const payload = event.payload || {};
 
     // CLIENTE DEL MES: un cliente acaba de sumar puntos al pasar su QR.
+    // Repetir la ceremonia del podio (botón de "Pedidos recibidos").
+    if (event.type === "cliente-mes-ceremonia") {
+      if (temporizadorVueltaRef.current) {
+        window.clearTimeout(temporizadorVueltaRef.current);
+        temporizadorVueltaRef.current = null;
+      }
+      juegoEnPantallaRef.current = false;
+      setEstado("clasificacion-reposo");
+      pedirCeremoniaRef.current?.(true);
+      return;
+    }
+
     // Se pasa a la carrera al momento (si había en pantalla el juego del
     // cliente anterior, ya ha terminado) para que se vea la celebración; si
     // este cliente elige luego Bingo o Sorteo, la TV cambia a ese juego.
@@ -702,6 +751,9 @@ function DisplayPageContenido() {
   }
 
   if (estado === "clasificacion-reposo") {
+    if (ceremonia) {
+      return <CeremoniaPodio key={ceremonia.clave} cierre={ceremonia} onFin={terminarCeremonia} />;
+    }
     return (
       <CarreraClienteMes
         datos={clienteMesTV.datos}
