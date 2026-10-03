@@ -116,6 +116,47 @@ function combinarConSorteo(filasPrincipales, filasSorteo) {
   return Array.from(porPedido.values());
 }
 
+// Añade los QR que tienen pendiente sumar puntos de Cliente del mes:
+// - si el pedido ya está en la lista, se marca;
+// - si solo tiene Cliente del mes, se añade como fila nueva.
+function combinarConClienteMes(filas, filasClienteMes) {
+  const porPedido = new Map(filas.map((fila) => [String(fila.order_id), fila]));
+  filasClienteMes.forEach((fila) => {
+    const clave = String(fila.order_id);
+    const existente = porPedido.get(clave);
+    if (existente) {
+      existente.cliente_mes_pendiente = true;
+      if (!existente.codigo_lojo && fila.codigo_lojo) existente.codigo_lojo = fila.codigo_lojo;
+    } else {
+      porPedido.set(clave, {
+        ...fila,
+        bingo_remaining: 0,
+        roulette_remaining: 0,
+        sorteo_remaining: 0,
+        tiene_bingo_o_ruleta: false,
+        cliente_mes_pendiente: true,
+      });
+    }
+  });
+  return Array.from(porPedido.values());
+}
+
+// Pide las tres listas (Bingo/Ruleta, Sorteo y Cliente del mes) y las une.
+async function cargarTodasLasListas() {
+  const [principal, sorteo, clienteMes] = await Promise.all([
+    supabase.rpc("admin_listar_qr_pendientes"),
+    supabase.rpc("admin_listar_qr_pendientes_sorteo"),
+    supabase.rpc("admin_listar_qr_pendientes_cliente_mes"),
+  ]);
+  if (principal.error) throw principal.error;
+  if (clienteMes.error) console.warn("QR pendientes: no se pudo cargar Cliente del mes:", clienteMes.error);
+  const filas = combinarConClienteMes(
+    combinarConSorteo(principal.data || [], sorteo.error ? [] : sorteo.data || []),
+    clienteMes.error ? [] : clienteMes.data || []
+  );
+  return { filas, sorteoError: sorteo.error };
+}
+
 // La llama StorePage al terminar TODOS los juegos de un QR. Comprueba si
 // ese mismo cliente tiene más QR pendientes (de otros pedidos/días):
 // - si los tiene, deja preparado que "Pedidos recibidos" se abra en la
@@ -132,12 +173,7 @@ export async function prepararVueltaTrasJugar({ customerToken, customerName, ord
   if (!token && !nombre) return false;
 
   try {
-    const [principal, sorteo] = await Promise.all([
-      supabase.rpc("admin_listar_qr_pendientes"),
-      supabase.rpc("admin_listar_qr_pendientes_sorteo"),
-    ]);
-    if (principal.error) throw principal.error;
-    const filas = combinarConSorteo(principal.data || [], sorteo.error ? [] : sorteo.data || []);
+    const { filas } = await cargarTodasLasListas();
 
     const delCliente = filas.filter((fila) => {
       const esCliente = token
@@ -211,17 +247,13 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
     try {
       // Se piden a la vez la lista de siempre (Bingo/Ruleta) y la de números
       // de Sorteo pendientes, y se combinan por pedido.
-      const [principal, sorteo] = await Promise.all([
-        supabase.rpc("admin_listar_qr_pendientes"),
-        supabase.rpc("admin_listar_qr_pendientes_sorteo"),
-      ]);
-      if (principal.error) throw principal.error;
+      const { filas: combinadas, sorteoError } = await cargarTodasLasListas();
+      const sorteo = { error: sorteoError };
       if (sorteo.error) {
         // Si aún no está creada la función del Sorteo, la lista de siempre
         // sigue funcionando igual; solo se avisa.
         console.warn("QR pendientes: no se pudo cargar el Sorteo:", sorteo.error);
       }
-      const combinadas = combinarConSorteo(principal.data || [], sorteo.error ? [] : sorteo.data || []);
       if (montado.current) {
         setFilas(combinadas);
         setAvisoSorteo(
@@ -263,6 +295,12 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
         });
         if (rpcSorteoError) throw rpcSorteoError;
       }
+      if (pedido.cliente_mes_pendiente) {
+        const { error: rpcClienteMesError } = await supabase.rpc("admin_anular_cliente_mes_pendiente", {
+          p_order_id: String(pedido.order_id),
+        });
+        if (rpcClienteMesError) throw rpcClienteMesError;
+      }
       setFilas((prev) => prev.filter((fila) => fila.order_id !== pedido.order_id));
     } catch (err) {
       setError(err?.message || "No se pudo eliminar el código.");
@@ -297,6 +335,10 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
         { p_antes: antes }
       );
       if (rpcSorteoError) throw rpcSorteoError;
+      const { error: rpcClienteMesError } = await supabase.rpc("admin_anular_cliente_mes_pendientes_antiguos", {
+        p_antes: antes,
+      });
+      if (rpcClienteMesError) console.warn("No se pudieron anular los Cliente del mes antiguos:", rpcClienteMesError);
       await cargar({ mostrarCargando: false });
       window.alert(
         `Eliminados ${data ?? 0} código(s) de Bingo/Ruleta y ${dataSorteo ?? 0} pendiente(s) de Sorteo.`
@@ -587,6 +629,7 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
               <th style={th}>🎱 Bolas</th>
               <th style={th}>🎡 Ruleta</th>
               <th style={th}>🔢 Sorteo</th>
+              <th style={th}>🏆 Cliente mes</th>
               <th style={th}>QR</th>
               <th style={th}>Código QR</th>
               <th style={th}></th>
@@ -595,7 +638,7 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
           <tbody>
             {gruposFiltrados.length === 0 && !cargando && (
               <tr>
-                <td style={td} colSpan={9}>
+                <td style={td} colSpan={10}>
                   {filas.length === 0
                     ? "No hay ningún QR pendiente de leer ahora mismo."
                     : "Ningún cliente coincide con la búsqueda."}
@@ -627,6 +670,15 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
                     {pedido.sorteo_remaining > 0 ? (
                       <span style={badgeSorteo} title="Números de Sorteo que se le asignarán al pasar el QR">
                         {pedido.sorteo_remaining}
+                      </span>
+                    ) : (
+                      <span style={celdaVacia}>—</span>
+                    )}
+                  </td>
+                  <td style={td}>
+                    {pedido.cliente_mes_pendiente ? (
+                      <span style={badgeClienteMes} title="Suma puntos de Cliente del mes al pasar el QR">
+                        🏆
                       </span>
                     ) : (
                       <span style={celdaVacia}>—</span>
@@ -803,6 +855,15 @@ const filaGrupoImpar = { background: "#eef2ff", borderBottom: "1px solid #f3f4f6
 const imagenQr = { display: "block", borderRadius: "6px", background: "#fff" };
 
 const celdaVacia = { color: "#9ca3af" };
+
+const badgeClienteMes = {
+  display: "inline-block",
+  padding: "3px 10px",
+  borderRadius: "999px",
+  background: "#fef3c7",
+  color: "#92400e",
+  fontWeight: 800,
+};
 
 const badgeSorteo = {
   display: "inline-block",
