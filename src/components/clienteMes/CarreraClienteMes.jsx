@@ -103,7 +103,6 @@ export default function CarreraClienteMes({ datos, variante = "movil", maxFilas 
             <span className="cm-nivel-pts">+{datos.puntos_base}</span>
             <span className="cm-nivel-txt">Por pedir con la App</span>
           </div>
-          <div className="cm-nivel-nota">1 vez al día por cliente (cuenta el mejor pedido) · se suma al pasar el QR</div>
         </div>
 
         {premios.some(Boolean) && (
@@ -120,9 +119,6 @@ export default function CarreraClienteMes({ datos, variante = "movil", maxFilas 
         )}
       </div>
 
-      {datos.solo_pruebas && variante !== "movil" && (
-        <div className="cm-pruebas">MODO PRUEBAS · solo clientes de pruebas</div>
-      )}
 
       <div className="cm-pista">
         {filas.length === 0 && (
