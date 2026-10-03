@@ -52,6 +52,7 @@ function construirBloqueParticipacion({
   participacionBingo,
   participacionSorteo,
   premio,
+  clienteMesPuntos = 0,
 }) {
   const lines = [];
 
@@ -113,7 +114,8 @@ function construirBloqueParticipacion({
   // caja" es lo que llevaba a escanear por error un QR sin nada disponible y
   // ver "ya lo ha jugado". Por eso el bloque con QR solo se pinta si de
   // verdad hay algo que jugar/revelar.
-  const hayAlgoJugable = numeroTiradas > 0 || bingoConseguido || sorteoConseguido;
+  const clienteMesSuma = Number(clienteMesPuntos) > 0;
+  const hayAlgoJugable = numeroTiradas > 0 || bingoConseguido || sorteoConseguido || clienteMesSuma;
 
   if (codigoJuegos && hayAlgoJugable) {
     const urlQr = construirUrlQr(codigoJuegos);
@@ -128,7 +130,11 @@ function construirBloqueParticipacion({
     );
 
     const bannerLineas = [];
-    bannerLineas.push("🎉 *¡TIENES PARTICIPACIÓN EN RULETA/BINGO/SORTEO!* 🎉");
+    bannerLineas.push(
+      numeroTiradas > 0 || bingoConseguido || sorteoConseguido
+        ? "🎉 *¡TIENES PARTICIPACIÓN EN RULETA/BINGO/SORTEO!* 🎉"
+        : "🏆 *¡ESTE PEDIDO SUMA EN CLIENTE DEL MES!* 🏆"
+    );
     if (numeroTiradas > 0) bannerLineas.push(`🎡 Ruleta: *${numeroTiradas} tirada${numeroTiradas === 1 ? "" : "s"}*`);
     if (bingoConseguido) {
       bannerLineas.push(
@@ -141,6 +147,10 @@ function construirBloqueParticipacion({
       bannerLineas.push(
         `🎟️ Al pasar el QR te asignaremos *${sorteoPlaysTotal} ${sorteoPlaysTotal === 1 ? "número" : "números"}* para que participes en el Sorteo`
       );
+    }
+
+    if (clienteMesSuma) {
+      bannerLineas.push(`🏆 Cliente del mes: al pasar el QR sumarás *${clienteMesPuntos} puntos*`);
     }
 
     lines.push(...bannerLineas);
@@ -195,6 +205,7 @@ export function construirTextoPedidoWhatsApp({
   participacionBingo = null,
   participacionJuegos = null,
   participacionSorteo = null,
+  clienteMesPuntos = 0,
 }) {
   const lines = [];
 
@@ -210,6 +221,7 @@ export function construirTextoPedidoWhatsApp({
       participacionBingo,
       participacionSorteo,
       premio,
+      clienteMesPuntos,
     })
   );
 
