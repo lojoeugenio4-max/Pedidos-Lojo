@@ -11,6 +11,7 @@ import Configuracion from "./Configuracion";
 import Promociones from "./Promociones";
 import Clientes from "./Clientes";
 import PedidosExportar from "./PedidosExportar";
+import ClienteMes from "./ClienteMes";
 
 // Opciones de menú válidas como destino directo por URL, p.ej.
 // "?admin&seccion=pedidos" para abrir el Admin ya en Pedidos recibidos.
@@ -169,6 +170,7 @@ export default function AdminPanel() {
             {opcion === "pushes" && <Pushes />}
             {opcion === "estadisticas" && <Estadisticas />}
             {opcion === "premios-bingo" && <PremiosBingo />}
+            {opcion === "cliente-mes" && <ClienteMes />}
             {opcion === "pedidos" && <PedidosExportar />}
             {opcion === "configuracion" && <Configuracion />}
           </div>
