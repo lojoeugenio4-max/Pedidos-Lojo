@@ -17,14 +17,15 @@ const NOMBRE_VENTANA_TV = "lojo-tv-grande";
 
 // Vistas que se pueden dejar en la pantalla grande mientras no hay ningún
 // cliente jugando.
-export const VISTAS_REPOSO = ["bingo", "sorteo"];
+export const VISTAS_REPOSO = ["bingo", "sorteo", "clasificacion"];
 
 // Qué se muestra en la TV entre cliente y cliente. Por defecto el Bombo de
 // Bingo (como siempre); si en "Pedidos recibidos" se elige el Sorteo, se
 // queda en el Sorteo hasta que se vuelva a elegir el Bombo.
 export function leerVistaReposo() {
   try {
-    return localStorage.getItem(VISTA_REPOSO_KEY) === "sorteo" ? "sorteo" : "bingo";
+    const vista = localStorage.getItem(VISTA_REPOSO_KEY);
+    return VISTAS_REPOSO.includes(vista) ? vista : "bingo";
   } catch {
     return "bingo";
   }
