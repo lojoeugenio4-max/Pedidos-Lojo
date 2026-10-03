@@ -1476,6 +1476,13 @@ export default function App() {
       // como activo en el Admin. Las fechas que pueda tener la fila
       // (fecha_inicio / fecha_fin) se ignoran a propósito.
       const vigente = promociones.find((item) => item.activa);
+      // Los clientes de prueba NO juegan al Sorteo: rellenarían casillas de
+      // la cuadrícula real (el servidor tampoco les da números).
+      if (clienteIdentificado?.es_pruebas) {
+        setConfiguracionSorteoCliente(null);
+        setMotivoSorteoNoDisponible("No disponible para clientes de prueba");
+        return;
+      }
       setConfiguracionSorteoCliente(vigente || null);
       // Motivo visible en el botón (solo cuando no está disponible), para
       // no tener que abrir la consola del navegador en el móvil.
@@ -1485,7 +1492,7 @@ export default function App() {
     }
     cargarDisponibilidadSorteo();
     return () => { activo = false; };
-  }, []);
+  }, [clienteIdentificado?.es_pruebas]);
 
   useEffect(() => {
     let activo = true;
