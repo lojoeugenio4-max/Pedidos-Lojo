@@ -29,6 +29,8 @@ import CelebracionPremio from "./components/sorteo/CelebracionPremio";
 import SorteoDirecto from "./components/sorteo/SorteoDirecto";
 import AvisoSorteo from "./components/sorteo/AvisoSorteo";
 import MisNumerosSorteo from "./components/sorteo/MisNumerosSorteo";
+import CarreraClienteMes from "./components/clienteMes/CarreraClienteMes";
+import { useClasificacionClienteMes } from "./utils/clienteMes";
 import { useSorteoDirecto } from "./utils/sorteoDirecto";
 import { desbloquearAudioSorteo } from "./utils/sorteoSound";
 import logoLojo from "./assets/logo-lojo.jpg";
@@ -890,6 +892,35 @@ export default function App() {
   const [revisionPremioSorteo, setRevisionPremioSorteo] = useState(0);
   const sorteoDirectoAbiertoRef = useRef(false);
   const sorteoActivoParaCliente = Boolean(configuracionSorteoCliente);
+  // CLIENTE DEL MES: carrera de puntos (5 por pedido en la App, 1 al día).
+  const [mostrarClienteMes, setMostrarClienteMes] = useState(false);
+  const clienteMes = useClasificacionClienteMes({
+    token: clienteIdentificado?.token || null,
+    habilitado: Boolean(clienteIdentificado?.token),
+    refrescoMs: mostrarClienteMes ? 30000 : 120000,
+  });
+  const clienteMesVisible = Boolean(clienteMes.datos?.visible);
+  // ¿Este pedido sumará puntos en Cliente del mes al pasar el QR? Misma regla
+  // que el servidor (_cliente_mes_cumple_pedido): N artículos distintos con
+  // 1 caja o más, O M artículos distintos con K unidades sueltas o más.
+  // El servidor vuelve a comprobarlo al pasar el QR (y aplica 1 pedido/día).
+  function pedidoSumaClienteMes(items) {
+    const d = clienteMes.datos;
+    if (!d?.visible || !d?.empezado || !Array.isArray(items)) return false;
+    const porArticulo = new Map();
+    items.forEach((item) => {
+      const clave = String(item?.product?.id ?? item?.product?.codigo_lojo ?? item?.product?.name ?? "");
+      if (!clave) return;
+      const actual = porArticulo.get(clave) || { cajas: 0, unidades: 0 };
+      actual.cajas += Number(item.boxes || 0);
+      actual.unidades += Number(item.units || 0);
+      porArticulo.set(clave, actual);
+    });
+    const lista = [...porArticulo.values()];
+    const conCajas = lista.filter((a) => a.cajas >= 1).length;
+    const conUnidades = lista.filter((a) => a.unidades >= Number(d.min_uds_por_articulo || 5)).length;
+    return conCajas >= Number(d.min_art_cajas || 10) || conUnidades >= Number(d.min_art_unidades || 10);
+  }
   const sorteoEnDirecto = useSorteoDirecto({
     modo: "cliente",
     token: clienteIdentificado?.token || "",
@@ -3849,12 +3880,14 @@ export default function App() {
     tiradasRuleta = 0,
     participacionBingo = null,
     participacionSorteo = null,
+    clienteMesSuma = false,
   }) {
     const bingoConseguido = pedidoCumpleBingo(participacionBingo);
     const ruletaConseguida = Boolean(participacionRuleta);
     const sorteoConseguido = sorteoCumpleVariedad(participacionSorteo);
 
-    if (!ruletaConseguida && !bingoConseguido && !sorteoConseguido) return null;
+    // Cliente del mes también necesita el QR: los puntos se suman al pasarlo.
+    if (!ruletaConseguida && !bingoConseguido && !sorteoConseguido && !clienteMesSuma) return null;
 
     const participacionRuletaId =
       participacionRuleta?.id || participacionRuleta?.participation_id || null;
@@ -3883,6 +3916,8 @@ export default function App() {
         p_expires_at: null,
         p_sorteo_eligible: sorteoConseguido,
         p_sorteo_plays_total: sorteoConseguido ? bloquesCumplidosSorteo(participacionSorteo) : 0,
+        // Cliente del mes: los puntos se suman al pasar este mismo QR.
+        p_cliente_mes_eligible: Boolean(clienteMesSuma),
       }
     );
 
@@ -4267,6 +4302,10 @@ export default function App() {
       participacionBingo,
       participacionJuegos,
       participacionSorteo,
+      clienteMesPuntos:
+        clienteToken && participacionJuegos && pedidoSumaClienteMes(itemsPedido)
+          ? Number(clienteMes.datos?.puntos_por_pedido || 5)
+          : 0,
     });
 
     if (esModificacion) {
@@ -4521,10 +4560,12 @@ export default function App() {
     // El QR común debe crearse para cualquier pedido que consiga Ruleta o Bingo.
     // No puede depender de que el cliente esté identificado: los pedidos anónimos
     // también necesitan su fila en game_entitlements para que el lector los valide.
+    const clienteMesSuma = Boolean(clienteToken) && pedidoSumaClienteMes(itemsPedido);
     if (
       participacionRuleta ||
       pedidoCumpleBingo(participacionBingo) ||
-      sorteoCumpleVariedad(participacionSorteo)
+      sorteoCumpleVariedad(participacionSorteo) ||
+      clienteMesSuma
     ) {
       try {
         participacionJuegos = await conLimiteDeTiempo(
@@ -4535,6 +4576,7 @@ export default function App() {
             tiradasRuleta: resumenRuletaPedidoEnvio?.tiradasConseguidas || 0,
             participacionBingo,
             participacionSorteo,
+            clienteMesSuma,
           })
         );
       } catch (error) {
@@ -4811,6 +4853,23 @@ export default function App() {
                     )}
                   </button>
                 )}
+                {clienteMesVisible && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMostrarJuegos(false);
+                      setMostrarClienteMes(true);
+                      clienteMes.recargar();
+                    }}
+                    style={{ ...styles.juegoTarjeta, ...styles.juegoTarjetaClienteMes }}
+                  >
+                    <span style={styles.juegoTarjetaIcono}>🏆</span>
+                    <span style={styles.juegoTarjetaTitulo}>Cliente del mes</span>
+                    <span style={styles.juegoTarjetaSubtitulo}>
+                      {clienteMes.datos?.yo?.puntos ? `Llevas ${clienteMes.datos.yo.puntos} puntos` : "¡Empieza la carrera!"}
+                    </span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -4832,6 +4891,47 @@ export default function App() {
                   )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mostrarClienteMes && clienteIdentificado && (
+        <div style={styles.bingoOverlay} onClick={() => setMostrarClienteMes(false)} role="presentation">
+          <div
+            style={{ ...styles.bingoModal, maxWidth: 560 }}
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Cliente del mes"
+          >
+            <button type="button" onClick={() => setMostrarClienteMes(false)} style={styles.bingoCloseButton} aria-label="Cerrar Cliente del mes">
+              <X size={24} />
+            </button>
+            <div style={styles.bingoModalBody}>
+              {clienteMes.datos?.visible && clienteMes.datos?.yo && (
+                <div style={styles.clienteMesMarcador}>
+                  <div style={styles.clienteMesMarcadorDato}>
+                    <span style={styles.clienteMesMarcadorNum}>{clienteMes.datos.yo.puntos}</span>
+                    <span style={styles.clienteMesMarcadorTxt}>PUNTOS</span>
+                  </div>
+                  <div style={styles.clienteMesMarcadorDato}>
+                    <span style={styles.clienteMesMarcadorNum}>
+                      {clienteMes.datos.yo.posicion ? `${clienteMes.datos.yo.posicion}º` : "–"}
+                    </span>
+                    <span style={styles.clienteMesMarcadorTxt}>POSICIÓN</span>
+                  </div>
+                  <div style={styles.clienteMesMarcadorHoy}>
+                    {!clienteMes.datos.empezado
+                      ? "🏁 La carrera todavía no ha empezado. ¡Muy pronto!"
+                      : clienteMes.datos.yo.hoy_cuenta
+                        ? "✅ Hoy ya has sumado tus puntos. ¡Mañana más!"
+                        : `🛒 Tu pedido por la App suma ${clienteMes.datos.puntos_por_pedido} puntos al pasar el QR en caja si lleva ${clienteMes.datos.min_art_cajas} artículos distintos en cajas, o ${clienteMes.datos.min_art_unidades} artículos con ${clienteMes.datos.min_uds_por_articulo} unidades o más.`}
+                  </div>
+                </div>
+              )}
+              {clienteMes.error && !clienteMes.datos && <div style={styles.bingoErrorBox}>{clienteMes.error}</div>}
+              <CarreraClienteMes datos={clienteMes.datos} variante="movil" maxFilas={10} cargando={clienteMes.cargando} />
             </div>
           </div>
         </div>
@@ -5016,7 +5116,7 @@ export default function App() {
                   {/* Pestaña "Juegos" (Bingo + Sorteo en pantalla de selección),
                       ya disponible para todos los clientes identificados;
                       sustituye al antiguo botón "Mi Bingo" independiente. */}
-                  {(configuracionBingoCliente || configuracionSorteoCliente) && (
+                  {(configuracionBingoCliente || configuracionSorteoCliente || clienteMesVisible) && (
                     <button type="button" onClick={() => setMostrarJuegos(true)} style={styles.bingoButton}>
                       <Grid3X3 size={17} />
                       Juegos
@@ -5946,6 +6046,15 @@ export default function App() {
                     Ya tienes {resumenRuletaPedido.tiradasConseguidas} {resumenRuletaPedido.tiradasConseguidas === 1 ? "tirada" : "tiradas"}. Te faltan {resumenRuletaPedido.variedadRestanteSiguienteTirada} artículos diferentes más para la siguiente.
                   </div>
                 )}
+              </div>
+            )}
+
+            {clienteMesVisible && clienteMes.datos?.empezado && orderedItems.length > 0 && pedidoSumaClienteMes(orderedItems) && (
+              <div style={styles.bingoSummaryOk}>
+                <div style={styles.ruletaSummaryTitle}>🏆 Cliente del mes</div>
+                <div style={styles.bingoSummaryMessage}>
+                  Este pedido suma {clienteMes.datos.puntos_por_pedido} puntos al pasar el QR en caja (máximo 1 pedido al día).
+                </div>
               </div>
             )}
 
@@ -8345,6 +8454,32 @@ const styles = {
     cursor: "pointer",
     boxShadow: "0 10px 26px rgba(124,58,237,.35)",
   },
+  juegoTarjetaClienteMes: {
+    background: "linear-gradient(135deg, #7c3aed, #160b38)",
+    boxShadow: "0 10px 26px rgba(124,58,237,.4)",
+  },
+  clienteMesMarcador: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 10,
+    padding: "14px 72px 12px 14px",
+    marginBottom: 8,
+    borderRadius: 20,
+    background: "linear-gradient(135deg, #ffe14d, #ff9f1c)",
+    color: "#2a1600",
+  },
+  clienteMesMarcadorDato: {
+    display: "grid",
+    justifyItems: "center",
+    minWidth: 78,
+    padding: "6px 10px",
+    borderRadius: 14,
+    background: "rgba(255,255,255,.55)",
+  },
+  clienteMesMarcadorNum: { fontSize: 26, fontWeight: 900, lineHeight: 1.1 },
+  clienteMesMarcadorTxt: { fontSize: 10, fontWeight: 800, letterSpacing: 1 },
+  clienteMesMarcadorHoy: { flex: "1 1 180px", fontSize: 13, fontWeight: 700, lineHeight: 1.35 },
   juegoTarjetaSorteo: {
     background: "linear-gradient(135deg, #059669, #064e3b)",
     boxShadow: "0 10px 26px rgba(5,150,105,.35)",
