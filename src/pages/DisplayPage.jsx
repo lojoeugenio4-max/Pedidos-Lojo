@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import StoreWheel from "../components/StoreWheel";
 import BingoDrumStage from "../components/BingoDrumStage";
@@ -12,6 +12,8 @@ import {
   playSorteoDing,
 } from "../utils/sorteoSound";
 import { leerVistaReposo } from "../utils/pantallaGrande";
+import CarreraClienteMes from "../components/clienteMes/CarreraClienteMes";
+import { useClasificacionClienteMes } from "../utils/clienteMes";
 import logoLojo from "../assets/logo-lojo.jpg";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
@@ -53,7 +55,9 @@ function getPrizeImageUrl(premio) {
 // Bombo de Bingo (por defecto) o el Sorteo, según lo que se haya elegido en
 // "Pedidos recibidos" (ver utils/pantallaGrande.js).
 function estadoDeReposo(vista = leerVistaReposo()) {
-  return vista === "sorteo" ? "sorteo-reposo" : "bingo-waiting";
+  if (vista === "sorteo") return "sorteo-reposo";
+  if (vista === "clasificacion") return "clasificacion-reposo";
+  return "bingo-waiting";
 }
 
 const REFRESCO_SORTEO_REPOSO_MS = 15000;
@@ -286,6 +290,15 @@ function DisplayPageContenido() {
   // pantalla entera (por encima de Ruleta, Bingo o el reposo) con la
   // rotación de números, hasta que termina y se ha visto el ganador.
   const sorteoEnDirecto = useSorteoDirecto({ modo: "tv" });
+  const clienteMesTV = useClasificacionClienteMes({ habilitado: estado === "clasificacion-reposo", refrescoMs: 30000 });
+  const [celebracionClienteMes, setCelebracionClienteMes] = useState(null);
+  const clienteMesTVRef = useRef(null);
+  clienteMesTVRef.current = clienteMesTV.recargar;
+  useEffect(() => {
+    if (!celebracionClienteMes) return undefined;
+    const t = window.setTimeout(() => setCelebracionClienteMes(null), 9000);
+    return () => window.clearTimeout(t);
+  }, [celebracionClienteMes]);
 
   useEffect(() => {
     cargarPremios();
@@ -448,6 +461,22 @@ function DisplayPageContenido() {
 
     const payload = event.payload || {};
 
+    // CLIENTE DEL MES: un cliente acaba de sumar puntos al pasar su QR.
+    if (event.type === "cliente-mes-sumado") {
+      setCelebracionClienteMes({ ...payload, id: Date.now() });
+      clienteMesTVRef.current?.();
+      return;
+    }
+
+    // Con la TV puesta en "Cliente del mes" la pantalla se queda FIJA en la
+    // carrera: los juegos (Bingo, Sorteo, Ruleta) se juegan en el TPV y aquí
+    // no se cambia de vista. Solo se sale eligiendo otra vista en "Pedidos
+    // recibidos" (evento "vista-reposo").
+    if (leerVistaReposo() === "clasificacion" && event.type !== "vista-reposo") {
+      setEstado("clasificacion-reposo");
+      return;
+    }
+
     if (event.type === "waiting" || event.type === "vista-reposo") {
       // El TPV manda "waiting" cuando vuelve a estar listo para leer el
       // siguiente código (botón "reiniciar", o tras un error). El reposo
@@ -461,7 +490,7 @@ function DisplayPageContenido() {
       // haber escaneado ningún QR.
       setEstado(
         event.type === "vista-reposo"
-          ? estadoDeReposo(payload.vista === "sorteo" ? "sorteo" : "bingo")
+          ? estadoDeReposo(payload.vista)
           : estadoDeReposo()
       );
       setEntrada(null);
@@ -637,6 +666,18 @@ function DisplayPageContenido() {
         premioGanado={premioBingoGanado}
         mensajeVozFinal={mensajeVozFinal}
         fastMode={bingoModoRapido}
+      />
+    );
+  }
+
+  if (estado === "clasificacion-reposo") {
+    return (
+      <CarreraClienteMes
+        datos={clienteMesTV.datos}
+        variante="tv"
+        maxFilas={10}
+        cargando={clienteMesTV.cargando}
+        celebracion={celebracionClienteMes}
       />
     );
   }
