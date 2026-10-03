@@ -150,7 +150,7 @@ function construirBloqueParticipacion({
     }
 
     if (clienteMesSuma) {
-      bannerLineas.push(`🏆 Cliente del mes: al pasar el QR sumarás *${clienteMesPuntos} puntos*`);
+      bannerLineas.push(`🏆 Cliente del mes: al pasar el QR sumarás *${clienteMesPuntos} ${Number(clienteMesPuntos) === 1 ? "punto" : "puntos"}*`);
     }
 
     lines.push(...bannerLineas);

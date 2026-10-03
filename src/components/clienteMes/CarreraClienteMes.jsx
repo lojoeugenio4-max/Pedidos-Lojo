@@ -53,6 +53,8 @@ export default function CarreraClienteMes({ datos, variante = "movil", maxFilas 
   const empezado = datos.empezado !== false;
   const quedan = mismoMes && empezado ? diasRestantesMes(datos.hoy) : null;
   const inicioTexto = fechaLarga(datos.fecha_inicio);
+  const premios = Array.isArray(datos.premios) ? datos.premios.slice(0, 3) : [];
+  const podioAnterior = Array.isArray(datos.podio_anterior) ? datos.podio_anterior : [];
   const mes = nombreMes(datos.mes);
 
   return (
@@ -83,22 +85,40 @@ export default function CarreraClienteMes({ datos, variante = "movil", maxFilas 
         )}
       </header>
 
-      <div className="cm-reglas">
-        <span className="cm-chip cm-chip-oro">+{datos.puntos_por_pedido} PTS por pedido en la App</span>
-        <span className="cm-chip">1 pedido al día · suma al pasar el QR</span>
-        <span className="cm-chip">
-          {datos.min_art_cajas} artículos distintos en cajas o {datos.min_art_unidades} artículos con {datos.min_uds_por_articulo}+ uds
-        </span>
-      </div>
-
-      {datos.premio_texto && (
-        <div className="cm-premio">
-          <span className="cm-premio-icono">🎁</span>
-          <span>
-            <span className="cm-premio-label">PREMIO</span> {datos.premio_texto}
-          </span>
+      <div className="cm-info">
+        <div className="cm-niveles">
+          <div className="cm-nivel cm-nivel-alto">
+            <span className="cm-nivel-pts">+{datos.puntos_alto}</span>
+            <span className="cm-nivel-txt">
+              {datos.min_art_cajas} artículos en cajas <em>o</em> {datos.min_art_unidades} artículos × {datos.min_uds_por_articulo} uds
+            </span>
+          </div>
+          <div className="cm-nivel cm-nivel-medio">
+            <span className="cm-nivel-pts">+{datos.puntos_medio}</span>
+            <span className="cm-nivel-txt">
+              {datos.medio_art_cajas} artículos en cajas <em>o</em> {datos.medio_art_unidades} artículos × {datos.medio_uds_por_articulo} uds
+            </span>
+          </div>
+          <div className="cm-nivel cm-nivel-base">
+            <span className="cm-nivel-pts">+{datos.puntos_base}</span>
+            <span className="cm-nivel-txt">Por pedir con la App</span>
+          </div>
+          <div className="cm-nivel-nota">1 vez al día por cliente (cuenta el mejor pedido) · se suma al pasar el QR</div>
         </div>
-      )}
+
+        {premios.some(Boolean) && (
+          <div className="cm-podio-premios">
+            {premios.map((premio, i) =>
+              premio ? (
+                <div key={i} className={`cm-premio-puesto cm-premio-puesto-${i + 1}`}>
+                  <span className="cm-premio-medalla">{MEDALLAS[i]}</span>
+                  <span className="cm-premio-puesto-txt">{premio}</span>
+                </div>
+              ) : null
+            )}
+          </div>
+        )}
+      </div>
 
       {datos.solo_pruebas && variante !== "movil" && (
         <div className="cm-pruebas">MODO PRUEBAS · solo clientes de pruebas</div>
@@ -188,11 +208,16 @@ export default function CarreraClienteMes({ datos, variante = "movil", maxFilas 
       )}
 
       <footer className="cm-pie">
-        Meta: {meta} puntos · Gana quien más puntos tenga el último día del mes · Si hay empate, gana quien llegó antes
-        {datos.ganador_anterior?.nombre && (
+        Meta: {meta} puntos · Premio para el podio (1º, 2º y 3º) el último día del mes · Si hay empate, va delante quien llegó antes
+        {podioAnterior.length > 0 && (
           <div className="cm-anterior">
-            👑 Ganador de {nombreMes(datos.ganador_anterior.mes)}: <strong>{datos.ganador_anterior.nombre}</strong> (
-            {datos.ganador_anterior.puntos} pts)
+            🏆 Podio de {nombreMes(datos.mes_anterior)}:{" "}
+            {podioAnterior.map((f, i) => (
+              <span key={i}>
+                {i > 0 && " · "}
+                {MEDALLAS[f.posicion - 1]} <strong>{f.nombre}</strong> ({f.puntos} pts)
+              </span>
+            ))}
           </div>
         )}
       </footer>
@@ -312,6 +337,28 @@ function EstilosCarrera() {
 .cm-reglas{ position:relative; display:flex; flex-wrap:wrap; gap:6px; margin:12px 0 8px; }
 .cm-chip{ font-size:11px; font-weight:800; padding:5px 9px; border-radius:999px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); }
 .cm-chip-oro{ background:linear-gradient(90deg,#ffe14d,#ffb300); color:#3b1d00; border:0; }
+.cm-info{ position:relative; display:grid; gap:10px; margin:12px 0 8px; }
+.cm-tv .cm-info{ grid-template-columns:1.25fr 1fr; gap:1.4vw; margin:1.2vh 0 .4vh; align-items:stretch; }
+.cm-niveles{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+.cm-nivel{ display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:12px; background:rgba(255,255,255,.08); border:2px solid rgba(255,255,255,.15); }
+.cm-nivel-pts{ font-family:'Press Start 2P',monospace; font-size:14px; flex:none; }
+.cm-nivel-txt{ font-size:11px; font-weight:800; line-height:1.25; }
+.cm-nivel-txt em{ font-style:normal; color:#7cf9ff; }
+.cm-nivel-alto{ border-color:#ffe14d; } .cm-nivel-alto .cm-nivel-pts{ color:#ffe14d; }
+.cm-nivel-medio{ border-color:#7cf9ff; } .cm-nivel-medio .cm-nivel-pts{ color:#7cf9ff; }
+.cm-nivel-base .cm-nivel-pts{ color:#c4b5fd; }
+.cm-nivel-nota{ grid-column:1/-1; font-size:10.5px; opacity:.8; text-align:center; }
+.cm-podio-premios{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+.cm-premio-puesto{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:8px 6px; border-radius:12px; text-align:center;
+  background:linear-gradient(180deg,rgba(255,225,77,.2),rgba(255,45,117,.12)); border:2px dashed rgba(255,225,77,.6); }
+.cm-premio-puesto-1{ border-style:solid; border-color:#ffe14d; box-shadow:0 0 14px rgba(255,225,77,.35); }
+.cm-premio-medalla{ font-size:24px; animation:cmSaltito 1.6s ease-in-out infinite; }
+.cm-premio-puesto-2 .cm-premio-medalla{ animation-delay:.2s; } .cm-premio-puesto-3 .cm-premio-medalla{ animation-delay:.4s; }
+.cm-premio-puesto-txt{ font-size:11.5px; font-weight:800; line-height:1.2; }
+.cm-tv .cm-nivel{ padding:.8vh .7vw; } .cm-tv .cm-nivel-pts{ font-size:clamp(14px,1.4vw,26px); }
+.cm-tv .cm-nivel-txt{ font-size:clamp(11px,.9vw,17px); } .cm-tv .cm-nivel-nota{ font-size:clamp(10px,.8vw,15px); }
+.cm-tv .cm-premio-medalla{ font-size:clamp(22px,2.2vw,40px); } .cm-tv .cm-premio-puesto-txt{ font-size:clamp(12px,1vw,19px); }
+@media (max-width:420px){ .cm-movil .cm-niveles{ grid-template-columns:1fr; } }
 .cm-premio{ position:relative; display:flex; align-items:center; gap:10px; margin:6px 0 10px; padding:9px 12px; border-radius:12px;
   background:linear-gradient(90deg,rgba(255,225,77,.22),rgba(255,45,117,.18)); border:2px dashed #ffe14d; font-weight:800; font-size:14px; }
 .cm-premio-icono{ font-size:22px; animation:cmSaltito 1.2s ease-in-out infinite; }

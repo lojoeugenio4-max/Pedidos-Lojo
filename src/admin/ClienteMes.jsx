@@ -21,6 +21,13 @@ const CONFIG_VACIA = {
   solo_pruebas: true,
   fecha_inicio: "",
   puntos_por_pedido: 5,
+  puntos_medio: 3,
+  medio_art_cajas: 5,
+  medio_art_unidades: 5,
+  medio_uds_por_articulo: 5,
+  puntos_base: 1,
+  premio_2_texto: "",
+  premio_3_texto: "",
   min_art_cajas: 10,
   min_art_unidades: 10,
   min_uds_por_articulo: 5,
@@ -56,7 +63,14 @@ export default function ClienteMes() {
       console.error(configError);
       setError("No se ha podido cargar la configuración. ¿Has ejecutado migracion_cliente_del_mes.sql en Supabase?");
     } else if (data) {
-      setConfig({ ...CONFIG_VACIA, ...data, premio_texto: data.premio_texto || "", fecha_inicio: data.fecha_inicio || "" });
+      setConfig({
+        ...CONFIG_VACIA,
+        ...data,
+        premio_texto: data.premio_texto || "",
+        premio_2_texto: data.premio_2_texto || "",
+        premio_3_texto: data.premio_3_texto || "",
+        fecha_inicio: data.fecha_inicio || "",
+      });
     }
     setCargandoConfig(false);
   }
@@ -83,20 +97,34 @@ export default function ClienteMes() {
       setError("Pon la fecha de comienzo: hasta esa fecha no se suma ningún punto.");
       return;
     }
+    const n = (v, porDefecto) => (v === "" || v == null || Number.isNaN(Number(v)) ? porDefecto : Number(v));
+    if (n(config.puntos_medio, 3) >= n(config.puntos_por_pedido, 5) || n(config.puntos_base, 1) >= n(config.puntos_medio, 3)) {
+      setError("Los puntos tienen que ir de más a menos: nivel alto > nivel medio > base.");
+      return;
+    }
     setGuardando(true);
     setError("");
     setAviso("");
     try {
       const { data, error: rpcError } = await supabase.rpc("admin_guardar_cliente_mes_config", {
-        p_activo: Boolean(config.activo),
-        p_solo_pruebas: Boolean(config.solo_pruebas),
-        p_fecha_inicio: config.fecha_inicio || null,
-        p_puntos_por_pedido: Number(config.puntos_por_pedido) || 5,
-        p_min_art_cajas: Number(config.min_art_cajas) || 10,
-        p_min_art_unidades: Number(config.min_art_unidades) || 10,
-        p_min_uds_por_articulo: Number(config.min_uds_por_articulo) || 5,
-        p_meta_puntos: Number(config.meta_puntos) || 100,
-        p_premio_texto: config.premio_texto || "",
+        p_config: {
+          activo: Boolean(config.activo),
+          solo_pruebas: Boolean(config.solo_pruebas),
+          fecha_inicio: config.fecha_inicio || "",
+          puntos_alto: n(config.puntos_por_pedido, 5),
+          min_art_cajas: n(config.min_art_cajas, 10),
+          min_art_unidades: n(config.min_art_unidades, 10),
+          min_uds_por_articulo: n(config.min_uds_por_articulo, 5),
+          puntos_medio: n(config.puntos_medio, 3),
+          medio_art_cajas: n(config.medio_art_cajas, 5),
+          medio_art_unidades: n(config.medio_art_unidades, 5),
+          medio_uds_por_articulo: n(config.medio_uds_por_articulo, 5),
+          puntos_base: n(config.puntos_base, 1),
+          meta_puntos: n(config.meta_puntos, 100),
+          premio_1: config.premio_texto || "",
+          premio_2: config.premio_2_texto || "",
+          premio_3: config.premio_3_texto || "",
+        },
       });
       if (rpcError) throw rpcError;
       if (!data?.ok) throw new Error("No se ha podido guardar.");
@@ -137,9 +165,10 @@ export default function ClienteMes() {
         <h2 style={titulo}>🏆 Cliente del mes</h2>
         <p style={texto}>
           Carrera de puntos: cada pedido hecho por la App suma puntos <strong>al pasar su QR en caja</strong>, igual que el
-          resto de juegos (solo 1 pedido por día y cliente). Cuenta si lleva un mínimo de artículos distintos en cajas{" "}
-          <strong>o</strong> un mínimo de artículos distintos con unas unidades sueltas mínimas de cada uno. Gana quien más
-          puntos tenga el último día del mes; si hay empate, gana quien llegó antes. Cada día 1 empieza una carrera nueva.
+          resto de juegos. Según el pedido vale los puntos del nivel alto, del nivel medio o, si no llega a ninguno, los de
+          base por haber usado la App. Se puntúa <strong>una vez por cliente y día</strong>: si ese día pasa otro pedido que
+          vale más, se queda el mejor. Premio para el podio (1º, 2º y 3º) el último día del mes; si hay empate, va delante
+          quien llegó antes. Cada día 1 empieza una carrera nueva.
         </p>
       </div>
 
@@ -180,38 +209,49 @@ export default function ClienteMes() {
                   onChange={(e) => cambiar("fecha_inicio", e.target.value)}
                 />
               </label>
-              <Campo etiqueta="Puntos por pedido" valor={config.puntos_por_pedido} onChange={(v) => cambiar("puntos_por_pedido", v)} />
               <Campo etiqueta="Meta (puntos del cofre)" valor={config.meta_puntos} onChange={(v) => cambiar("meta_puntos", v)} />
             </div>
+
+            <Nivel
+              titulo="🟡 Nivel alto"
+              puntos={config.puntos_por_pedido}
+              onPuntos={(v) => cambiar("puntos_por_pedido", v)}
+              cajas={config.min_art_cajas}
+              onCajas={(v) => cambiar("min_art_cajas", v)}
+              articulos={config.min_art_unidades}
+              onArticulos={(v) => cambiar("min_art_unidades", v)}
+              uds={config.min_uds_por_articulo}
+              onUds={(v) => cambiar("min_uds_por_articulo", v)}
+            />
+            <Nivel
+              titulo="🔵 Nivel medio"
+              puntos={config.puntos_medio}
+              onPuntos={(v) => cambiar("puntos_medio", v)}
+              cajas={config.medio_art_cajas}
+              onCajas={(v) => cambiar("medio_art_cajas", v)}
+              articulos={config.medio_art_unidades}
+              onArticulos={(v) => cambiar("medio_art_unidades", v)}
+              uds={config.medio_uds_por_articulo}
+              onUds={(v) => cambiar("medio_uds_por_articulo", v)}
+            />
             <div style={reglaBox}>
-              <strong>1) Por cajas</strong>
+              <strong>⚪ Base — por usar la App</strong>
               <div style={rejilla}>
-                <Campo etiqueta="Artículos distintos (mín. 1 caja de cada uno)" valor={config.min_art_cajas} onChange={(v) => cambiar("min_art_cajas", v)} />
+                <Campo etiqueta="Puntos (si no llega a ningún nivel)" valor={config.puntos_base} onChange={(v) => cambiar("puntos_base", v)} />
               </div>
-              <strong style={{ marginTop: 10 }}>2) O por unidades sueltas</strong>
-              <div style={rejilla}>
-                <Campo etiqueta="Artículos distintos" valor={config.min_art_unidades} onChange={(v) => cambiar("min_art_unidades", v)} />
-                <Campo etiqueta="Unidades mínimas de cada uno" valor={config.min_uds_por_articulo} onChange={(v) => cambiar("min_uds_por_articulo", v)} />
-              </div>
-              <p style={texto}>
-                Con estos valores el pedido cuenta si lleva {config.min_art_cajas || 10} artículos distintos con al menos 1 caja
-                cada uno, <strong>o</strong> {config.min_art_unidades || 10} artículos distintos con al menos{" "}
-                {config.min_uds_por_articulo || 5} unidades de cada uno.
-              </p>
             </div>
-            <label style={{ ...campo, marginTop: 12 }}>
-              <span>Premio para el ganador (se ve en la carrera)</span>
-              <input
-                style={{ ...input, width: "100%" }}
-                type="text"
-                placeholder="Ej: Cheque de 100 € para gastar en Cash Lojo"
-                value={config.premio_texto}
-                onChange={(e) => cambiar("premio_texto", e.target.value)}
-              />
-            </label>
+
+            <div style={reglaBox}>
+              <strong>🏆 Premios del podio (se ven en la carrera)</strong>
+              <div style={rejilla}>
+                <CampoTexto etiqueta="🥇 1º puesto" valor={config.premio_texto} onChange={(v) => cambiar("premio_texto", v)} />
+                <CampoTexto etiqueta="🥈 2º puesto" valor={config.premio_2_texto} onChange={(v) => cambiar("premio_2_texto", v)} />
+                <CampoTexto etiqueta="🥉 3º puesto" valor={config.premio_3_texto} onChange={(v) => cambiar("premio_3_texto", v)} />
+              </div>
+            </div>
             <p style={{ ...texto, marginTop: 8 }}>
               La meta es el final de la barra, donde está el cofre. Como referencia: con {config.puntos_por_pedido || 5} puntos
-              por pedido, {config.meta_puntos || 100} puntos son {Math.ceil((Number(config.meta_puntos) || 100) / (Number(config.puntos_por_pedido) || 5))} días con pedido.
+              al día, {config.meta_puntos || 100} puntos son {Math.ceil((Number(config.meta_puntos) || 100) / (Number(config.puntos_por_pedido) || 5))} días con pedido del nivel alto.
               Los cambios de mínimos y de puntos se aplican a los QR que se pasen a partir de ahora.
             </p>
             <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 12 }}>
@@ -243,8 +283,13 @@ export default function ClienteMes() {
         </div>
         {esMesPasado && filas[0] && (
           <div style={ganadorBox}>
-            🏆 Ganador de {nombreMes(mes)}: <strong>{filas[0].nombre}</strong> con {filas[0].puntos} puntos ({filas[0].pedidos}{" "}
-            {filas[0].pedidos === 1 ? "día" : "días"} con pedido)
+            <strong>🏆 Podio de {nombreMes(mes)}</strong>
+            {filas.slice(0, 3).map((f, i) => (
+              <div key={i}>
+                {["🥇", "🥈", "🥉"][i]} <strong>{f.nombre}</strong> — {f.puntos} puntos
+                {(datos?.premios || [])[i] ? ` · Premio: ${datos.premios[i]}` : ""}
+              </div>
+            ))}
           </div>
         )}
         <p style={texto}>
@@ -276,6 +321,33 @@ export default function ClienteMes() {
         )}
       </section>
     </div>
+  );
+}
+
+function Nivel({ titulo, puntos, onPuntos, cajas, onCajas, articulos, onArticulos, uds, onUds }) {
+  return (
+    <div style={reglaBox}>
+      <strong>{titulo}</strong>
+      <div style={rejilla}>
+        <Campo etiqueta="Puntos de este nivel" valor={puntos} onChange={onPuntos} />
+        <Campo etiqueta="Por cajas: artículos distintos (1 caja o más)" valor={cajas} onChange={onCajas} />
+        <Campo etiqueta="O por unidades: artículos distintos" valor={articulos} onChange={onArticulos} />
+        <Campo etiqueta="…con estas unidades o más de cada uno" valor={uds} onChange={onUds} />
+      </div>
+      <p style={texto}>
+        Vale {puntos || "?"} puntos si lleva {cajas || "?"} artículos distintos con al menos 1 caja, <strong>o</strong>{" "}
+        {articulos || "?"} artículos distintos con al menos {uds || "?"} unidades de cada uno.
+      </p>
+    </div>
+  );
+}
+
+function CampoTexto({ etiqueta, valor, onChange }) {
+  return (
+    <label style={campo}>
+      <span>{etiqueta}</span>
+      <input style={input} type="text" placeholder="Ej: Cheque de 100 €" value={valor || ""} onChange={(e) => onChange(e.target.value)} />
+    </label>
   );
 }
 

@@ -30,7 +30,7 @@ import SorteoDirecto from "./components/sorteo/SorteoDirecto";
 import AvisoSorteo from "./components/sorteo/AvisoSorteo";
 import MisNumerosSorteo from "./components/sorteo/MisNumerosSorteo";
 import CarreraClienteMes from "./components/clienteMes/CarreraClienteMes";
-import { useClasificacionClienteMes } from "./utils/clienteMes";
+import { puntosPedidoClienteMes, useClasificacionClienteMes } from "./utils/clienteMes";
 import { useSorteoDirecto } from "./utils/sorteoDirecto";
 import { desbloquearAudioSorteo } from "./utils/sorteoSound";
 import logoLojo from "./assets/logo-lojo.jpg";
@@ -900,26 +900,14 @@ export default function App() {
     refrescoMs: mostrarClienteMes ? 30000 : 120000,
   });
   const clienteMesVisible = Boolean(clienteMes.datos?.visible);
-  // ¿Este pedido sumará puntos en Cliente del mes al pasar el QR? Misma regla
-  // que el servidor (_cliente_mes_cumple_pedido): N artículos distintos con
-  // 1 caja o más, O M artículos distintos con K unidades sueltas o más.
-  // El servidor vuelve a comprobarlo al pasar el QR (y aplica 1 pedido/día).
+  // Puntos de Cliente del mes que vale este pedido (5 / 3 / 1). Se suman
+  // al pasar el QR en caja; el servidor lo vuelve a calcular y aplica la
+  // regla de 1 puntuación por cliente y día (se queda la mejor).
+  function puntosClienteMesPedido(items) {
+    return puntosPedidoClienteMes(items, clienteMes.datos);
+  }
   function pedidoSumaClienteMes(items) {
-    const d = clienteMes.datos;
-    if (!d?.visible || !d?.empezado || !Array.isArray(items)) return false;
-    const porArticulo = new Map();
-    items.forEach((item) => {
-      const clave = String(item?.product?.id ?? item?.product?.codigo_lojo ?? item?.product?.name ?? "");
-      if (!clave) return;
-      const actual = porArticulo.get(clave) || { cajas: 0, unidades: 0 };
-      actual.cajas += Number(item.boxes || 0);
-      actual.unidades += Number(item.units || 0);
-      porArticulo.set(clave, actual);
-    });
-    const lista = [...porArticulo.values()];
-    const conCajas = lista.filter((a) => a.cajas >= 1).length;
-    const conUnidades = lista.filter((a) => a.unidades >= Number(d.min_uds_por_articulo || 5)).length;
-    return conCajas >= Number(d.min_art_cajas || 10) || conUnidades >= Number(d.min_art_unidades || 10);
+    return puntosClienteMesPedido(items) > 0;
   }
   const sorteoEnDirecto = useSorteoDirecto({
     modo: "cliente",
@@ -4303,9 +4291,7 @@ export default function App() {
       participacionJuegos,
       participacionSorteo,
       clienteMesPuntos:
-        clienteToken && participacionJuegos && pedidoSumaClienteMes(itemsPedido)
-          ? Number(clienteMes.datos?.puntos_por_pedido || 5)
-          : 0,
+        clienteToken && participacionJuegos ? puntosClienteMesPedido(itemsPedido) : 0,
     });
 
     if (esModificacion) {
@@ -4925,8 +4911,8 @@ export default function App() {
                     {!clienteMes.datos.empezado
                       ? "🏁 La carrera todavía no ha empezado. ¡Muy pronto!"
                       : clienteMes.datos.yo.hoy_cuenta
-                        ? "✅ Hoy ya has sumado tus puntos. ¡Mañana más!"
-                        : `🛒 Tu pedido por la App suma ${clienteMes.datos.puntos_por_pedido} puntos al pasar el QR en caja si lleva ${clienteMes.datos.min_art_cajas} artículos distintos en cajas, o ${clienteMes.datos.min_art_unidades} artículos con ${clienteMes.datos.min_uds_por_articulo} unidades o más.`}
+                        ? `✅ Hoy ya tienes ${clienteMes.datos.yo.puntos_hoy} ${clienteMes.datos.yo.puntos_hoy === 1 ? "punto" : "puntos"}. Se puntúa una vez al día (cuenta tu mejor pedido).`
+                        : `🛒 Cada día que pidas por la App sumas puntos al pasar el QR en caja: ${clienteMes.datos.puntos_alto}, ${clienteMes.datos.puntos_medio} o ${clienteMes.datos.puntos_base} según tu pedido.`}
                   </div>
                 </div>
               )}
@@ -6053,8 +6039,12 @@ export default function App() {
               <div style={styles.bingoSummaryOk}>
                 <div style={styles.ruletaSummaryTitle}>🏆 Cliente del mes</div>
                 <div style={styles.bingoSummaryMessage}>
-                  Este pedido suma {clienteMes.datos.puntos_por_pedido} puntos al pasar el QR en caja (máximo 1 pedido al día).
+                  {(() => {
+                    const p = puntosClienteMesPedido(orderedItems);
+                    return `Este pedido suma ${p} ${p === 1 ? "punto" : "puntos"} al pasar el QR en caja.`;
+                  })()}
                 </div>
+                <div style={styles.bingoSummaryNote}>Se puntúa una vez al día: si haces varios pedidos, cuenta el mejor.</div>
               </div>
             )}
 

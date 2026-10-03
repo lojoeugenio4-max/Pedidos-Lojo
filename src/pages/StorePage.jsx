@@ -634,7 +634,7 @@ export default function StorePage() {
         const visibleEnTPV =
           rawClienteMes?.sumado ||
           (unified.cliente_mes_available &&
-            ["no_cumple", "ya_sumado_hoy", "ya_canjeado"].includes(rawClienteMes?.motivo));
+            ["ya_sumado_hoy", "ya_canjeado"].includes(rawClienteMes?.motivo));
         setClienteMesResultado(visibleEnTPV ? rawClienteMes : null);
         if (rawClienteMes?.sumado) {
           enviarEventoDisplay("cliente-mes-sumado", {
@@ -1717,14 +1717,18 @@ export default function StorePage() {
 
 function textoClienteMes(r) {
   if (!r) return "";
+  const pts = (n) => `${n} ${Number(n) === 1 ? "punto" : "puntos"}`;
   if (r.sumado) {
-    return `+${r.puntos} puntos para ${r.nombre || "el cliente"}. Lleva ${r.total} puntos${
-      r.posicion ? ` y va ${r.posicion}º` : ""
-    }.`;
+    const base =
+      r.motivo === "mejorado"
+        ? `+${pts(r.puntos)} para ${r.nombre || "el cliente"}: este pedido vale ${r.valor_pedido} y mejora al que ya tenía hoy.`
+        : `+${pts(r.puntos)} para ${r.nombre || "el cliente"}.`;
+    return `${base} Lleva ${pts(r.total)}${r.posicion ? ` y va ${r.posicion}º` : ""}.`;
   }
-  if (r.motivo === "ya_sumado_hoy") return "Hoy ya sumó puntos con otro pedido (máximo 1 pedido al día).";
+  if (r.motivo === "ya_sumado_hoy") {
+    return `Hoy ya tiene ${pts(r.puntos_hoy)} con otro pedido igual o mejor (se puntúa una vez al día).`;
+  }
   if (r.motivo === "ya_canjeado") return "Los puntos de este pedido ya se sumaron.";
-  if (r.motivo === "no_cumple") return "Este pedido no llega al mínimo de artículos para sumar puntos.";
   return "Este pedido no suma puntos.";
 }
 

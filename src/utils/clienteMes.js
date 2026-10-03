@@ -72,3 +72,32 @@ export function useClasificacionClienteMes({ token = null, habilitado = true, re
 
   return { datos, cargando, error, recargar };
 }
+
+// Puntos que vale un pedido (misma regla que _cliente_mes_puntos_pedido en
+// el servidor, que es quien decide de verdad al pasar el QR):
+//  - nivel alto (5): N artículos distintos con 1+ caja, o M artículos con K+ uds
+//  - nivel medio (3): lo mismo con los números del nivel medio
+//  - base (1): cualquier otro pedido hecho por la App
+export function puntosPedidoClienteMes(items, d) {
+  if (!d?.visible || !d?.empezado || !Array.isArray(items)) return 0;
+  const porArticulo = new Map();
+  items.forEach((item) => {
+    const clave = String(item?.product?.id ?? item?.product?.codigo_lojo ?? item?.product?.name ?? "");
+    if (!clave) return;
+    const actual = porArticulo.get(clave) || { cajas: 0, unidades: 0 };
+    actual.cajas += Number(item.boxes || 0);
+    actual.unidades += Number(item.units || 0);
+    porArticulo.set(clave, actual);
+  });
+  const lista = [...porArticulo.values()].filter((a) => a.cajas > 0 || a.unidades > 0);
+  if (!lista.length) return 0;
+  const conCajas = lista.filter((a) => a.cajas >= 1).length;
+  const conUds = (minimo) => lista.filter((a) => a.unidades >= Number(minimo || 1)).length;
+  if (conCajas >= Number(d.min_art_cajas) || conUds(d.min_uds_por_articulo) >= Number(d.min_art_unidades)) {
+    return Number(d.puntos_alto || 5);
+  }
+  if (conCajas >= Number(d.medio_art_cajas) || conUds(d.medio_uds_por_articulo) >= Number(d.medio_art_unidades)) {
+    return Number(d.puntos_medio || 3);
+  }
+  return Number(d.puntos_base ?? 1);
+}
