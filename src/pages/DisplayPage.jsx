@@ -6,7 +6,6 @@ import SorteoGrid from "../components/sorteo/SorteoGrid";
 import SorteoDirecto from "../components/sorteo/SorteoDirecto";
 import { formatearFechaSorteo, useSorteoDirecto } from "../utils/sorteoDirecto";
 import {
-  audioSorteoActivo,
   cantarNumeroSorteo,
   desbloquearAudioSorteo,
   playSorteoDing,
@@ -219,47 +218,57 @@ function DisplayWheel({ premios = [], girando, premioFinal }) {
 // TV se ha recargado (p. ej. al desplegar una versión nueva) y nadie la ha
 // tocado, ni el Bingo, ni la Ruleta ni el Sorteo pueden sonar: este botón
 // pequeño avisa y basta un toque (en cualquier parte) para activarlo.
-function AvisoSonidoTV() {
-  const [bloqueado, setBloqueado] = useState(false);
+// ¿Está la TV en pantalla completa? (Chrome no deja quitar la barra con la
+// dirección de una ventana abierta desde otra: solo desaparece en pantalla
+// completa.)
+function enPantallaCompleta() {
+  return Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+}
 
+function pedirPantallaCompleta() {
+  if (enPantallaCompleta()) return;
+  const el = document.documentElement;
+  try {
+    const promesa = (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el, { navigationUI: "hide" });
+    promesa?.catch?.(() => {});
+  } catch {
+    // el navegador no lo permite: se queda como estaba
+  }
+}
+
+// Sin botones ni avisos: el sonido y la pantalla completa los da el
+// ordenador de la tienda (configuración de Chrome + acceso directo
+// "Pantalla grande", ver carpeta configuracion-tienda). Por si acaso, con
+// cualquier clic o tecla en la TV se activan igualmente, sin enseñar nada.
+//
+// Además la TV avisa cada 2 s de que está abierta (localStorage), para que
+// "Pedidos recibidos" y el TPV no abran otra ventana de TV encima.
+export const CLAVE_TV_VIVA = "lojo-tv-viva";
+
+function AvisoSonidoTV() {
   useEffect(() => {
-    const revisar = () => setBloqueado(!audioSorteoActivo());
-    revisar();
-    const intervalo = window.setInterval(revisar, 1000);
+    const latido = () => {
+      try {
+        localStorage.setItem(CLAVE_TV_VIVA, String(Date.now()));
+      } catch {
+        // sin localStorage: el TPV abrirá su propia ventana como antes
+      }
+    };
+    latido();
+    const intervaloLatido = window.setInterval(latido, 2000);
     const desbloquear = () => {
-      desbloquearAudioSorteo().then(revisar);
+      pedirPantallaCompleta();
+      desbloquearAudioSorteo();
     };
     const eventos = ["pointerdown", "keydown", "touchstart"];
     eventos.forEach((evento) => window.addEventListener(evento, desbloquear, true));
     return () => {
-      window.clearInterval(intervalo);
+      window.clearInterval(intervaloLatido);
       eventos.forEach((evento) => window.removeEventListener(evento, desbloquear, true));
     };
   }, []);
 
-  if (!bloqueado) return null;
-  return (
-    <button
-      type="button"
-      style={{
-        position: "fixed",
-        right: 14,
-        bottom: 14,
-        zIndex: 6000,
-        border: 0,
-        borderRadius: 999,
-        padding: "10px 18px",
-        background: "#facc15",
-        color: "#422006",
-        fontWeight: 900,
-        fontSize: 15,
-        cursor: "pointer",
-        boxShadow: "0 8px 22px rgba(0,0,0,.45)",
-      }}
-    >
-      🔊 Toca aquí para activar el sonido
-    </button>
-  );
+  return null;
 }
 
 export default function DisplayPage() {

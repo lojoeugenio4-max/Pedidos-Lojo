@@ -106,6 +106,17 @@ const AVISO_MONITOR = {
 // Si la ventana YA estaba abierta NO se recarga: solo cambia de vista por el
 // aviso de arriba, y se recoloca en el monitor de la TV (por si estaba en el
 // del TPV).
+// La TV escribe la hora cada 2 s en localStorage (ver DisplayPage.jsx).
+const CLAVE_TV_VIVA = "lojo-tv-viva";
+function tvYaAbierta() {
+  try {
+    const ultima = Number(localStorage.getItem(CLAVE_TV_VIVA) || 0);
+    return Date.now() - ultima < 5000;
+  } catch {
+    return false;
+  }
+}
+
 export function abrirPantallaGrande({ vista, onAviso } = {}) {
   if (typeof window === "undefined") return false;
 
@@ -117,6 +128,11 @@ export function abrirPantallaGrande({ vista, onAviso } = {}) {
     // último aviso guardado; si ya estaba abierta, cambia al instante.
     enviarEventoDisplay("vista-reposo", { vista });
   }
+
+  // Si la pantalla grande ya está abierta (por ejemplo, con el acceso
+  // directo "Pantalla grande" en pantalla completa), no se abre otra: basta
+  // con el aviso de arriba para cambiarle la vista.
+  if (tvYaAbierta()) return true;
 
   const url = new URL(window.location.href);
   url.search = "?display=1";
