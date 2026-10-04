@@ -126,6 +126,8 @@ function combinarConClienteMes(filas, filasClienteMes) {
     const existente = porPedido.get(clave);
     if (existente) {
       existente.cliente_mes_pendiente = true;
+      existente.puntos_a_sumar = fila.puntos_a_sumar;
+      existente.puntos_pedido = fila.puntos_pedido;
       if (!existente.codigo_lojo && fila.codigo_lojo) existente.codigo_lojo = fila.codigo_lojo;
     } else {
       porPedido.set(clave, {
@@ -677,8 +679,15 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
                   </td>
                   <td style={td}>
                     {pedido.cliente_mes_pendiente ? (
-                      <span style={badgeClienteMes} title="Suma puntos de Cliente del mes al pasar el QR">
-                        🏆
+                      <span
+                        style={badgeClienteMes}
+                        title={
+                          pedido.puntos_a_sumar != null && Number(pedido.puntos_a_sumar) < Number(pedido.puntos_pedido)
+                            ? `El pedido vale ${pedido.puntos_pedido}, pero ese día el cliente ya tiene puntos: sumará ${pedido.puntos_a_sumar}`
+                            : "Puntos de Cliente del mes que sumará al pasar el QR"
+                        }
+                      >
+                        🏆 {pedido.puntos_a_sumar != null ? `+${pedido.puntos_a_sumar}` : ""}
                       </span>
                     ) : (
                       <span style={celdaVacia}>—</span>
