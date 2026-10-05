@@ -1726,7 +1726,7 @@ function textoClienteMes(r) {
     return `${base} Lleva ${pts(r.total)}${r.posicion ? ` y va ${r.posicion}º` : ""}.`;
   }
   if (r.motivo === "ya_sumado_hoy") {
-    return `Hoy ya tiene ${pts(r.puntos_hoy)} con otro pedido igual o mejor (se puntúa una vez al día).`;
+    return `Hoy ya sumó ${pts(r.puntos_hoy)} con otro pedido: solo suma un pedido al día.`;
   }
   if (r.motivo === "ya_canjeado") return "Los puntos de este pedido ya se sumaron.";
   return "Este pedido no suma puntos.";

@@ -910,6 +910,10 @@ export default function App() {
   function pedidoSumaClienteMes(items) {
     return puntosClienteMesPedido(items) > 0;
   }
+  // Solo el PRIMER pedido del día suma (igual que el Bingo). Si hoy ya hay
+  // otro pedido con Cliente del mes y este no es una modificación de aquel,
+  // este no suma.
+  const clienteMesYaPidioHoy = Boolean(clienteMes.datos?.yo?.pedido_hoy) && !pedidoEnviadoActivo;
   const sorteoEnDirecto = useSorteoDirecto({
     modo: "cliente",
     token: clienteIdentificado?.token || "",
@@ -4340,8 +4344,18 @@ export default function App() {
       participacionBingo,
       participacionJuegos,
       participacionSorteo,
+      // El servidor decide si este pedido lleva Cliente del mes (solo el
+      // primero del día): se mira lo que de verdad quedó guardado en el QR.
       clienteMesPuntos:
-        clienteToken && participacionJuegos ? puntosClienteMesPedido(itemsPedido) : 0,
+        clienteToken && normalizarRespuestaRpc(participacionJuegos)?.cliente_mes_eligible
+          ? puntosClienteMesPedido(itemsPedido)
+          : 0,
+      clienteMesYaHoy:
+        Boolean(clienteToken) &&
+        clienteMesVisible &&
+        Boolean(clienteMes.datos?.empezado) &&
+        pedidoSumaClienteMes(itemsPedido) &&
+        !normalizarRespuestaRpc(participacionJuegos)?.cliente_mes_eligible,
     });
 
     if (esModificacion) {
@@ -4596,7 +4610,8 @@ export default function App() {
     // El QR común debe crearse para cualquier pedido que consiga Ruleta o Bingo.
     // No puede depender de que el cliente esté identificado: los pedidos anónimos
     // también necesitan su fila en game_entitlements para que el lector los valide.
-    const clienteMesSuma = Boolean(clienteToken) && pedidoSumaClienteMes(itemsPedido);
+    const clienteMesSuma =
+      Boolean(clienteToken) && !clienteMesYaPidioHoy && pedidoSumaClienteMes(itemsPedido);
     if (
       participacionRuleta ||
       pedidoCumpleBingo(participacionBingo) ||
@@ -4963,8 +4978,10 @@ export default function App() {
                   <div style={styles.clienteMesMarcadorHoy}>
                     {!clienteMes.datos.empezado
                       ? "🏁 La carrera todavía no ha empezado. ¡Muy pronto!"
-                      : clienteMes.datos.yo.hoy_cuenta
-                        ? `✅ Hoy ya tienes ${clienteMes.datos.yo.puntos_hoy} ${clienteMes.datos.yo.puntos_hoy === 1 ? "punto" : "puntos"}. Se puntúa una vez al día (cuenta tu mejor pedido).`
+                      : clienteMes.datos.yo.pedido_hoy && !clienteMes.datos.yo.hoy_cuenta
+                        ? "🛒 Hoy ya tienes un pedido que suma en Cliente del mes: los puntos se suman al pasar su QR en caja."
+                        : clienteMes.datos.yo.hoy_cuenta
+                        ? `✅ Hoy ya tienes ${clienteMes.datos.yo.puntos_hoy} ${clienteMes.datos.yo.puntos_hoy === 1 ? "punto" : "puntos"}. Solo suma un pedido al día.`
                         : `🛒 Cada día que pidas por la App sumas puntos al pasar el QR en caja: ${clienteMes.datos.puntos_alto}, ${clienteMes.datos.puntos_medio} o ${clienteMes.datos.puntos_base} según tu pedido.`}
                   </div>
                 </div>
@@ -6089,15 +6106,17 @@ export default function App() {
             )}
 
             {clienteMesVisible && clienteMes.datos?.empezado && orderedItems.length > 0 && pedidoSumaClienteMes(orderedItems) && (
-              <div style={styles.bingoSummaryOk}>
+              <div style={clienteMesYaPidioHoy ? styles.bingoSummaryPending : styles.bingoSummaryOk}>
                 <div style={styles.ruletaSummaryTitle}>🏆 Cliente del mes</div>
                 <div style={styles.bingoSummaryMessage}>
-                  {(() => {
-                    const p = puntosClienteMesPedido(orderedItems);
-                    return `Este pedido suma ${p} ${p === 1 ? "punto" : "puntos"} al pasar el QR en caja.`;
-                  })()}
+                  {clienteMesYaPidioHoy
+                    ? "Hoy ya tienes otro pedido que suma en Cliente del mes: este no suma puntos."
+                    : (() => {
+                        const p = puntosClienteMesPedido(orderedItems);
+                        return `Este pedido suma ${p} ${p === 1 ? "punto" : "puntos"} al pasar el QR en caja.`;
+                      })()}
                 </div>
-                <div style={styles.bingoSummaryNote}>Se puntúa una vez al día: si haces varios pedidos, cuenta el mejor.</div>
+                <div style={styles.bingoSummaryNote}>Solo suma un pedido al día: el primero.</div>
               </div>
             )}
 

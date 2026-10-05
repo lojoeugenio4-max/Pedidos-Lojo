@@ -53,6 +53,7 @@ function construirBloqueParticipacion({
   participacionSorteo,
   premio,
   clienteMesPuntos = 0,
+  clienteMesYaHoy = false,
 }) {
   const lines = [];
 
@@ -151,6 +152,8 @@ function construirBloqueParticipacion({
 
     if (clienteMesSuma) {
       bannerLineas.push(`🏆 Cliente del mes: al pasar el QR sumarás *${clienteMesPuntos} ${Number(clienteMesPuntos) === 1 ? "punto" : "puntos"}*`);
+    } else if (clienteMesYaHoy) {
+      bannerLineas.push("🏆 Cliente del mes ya conseguido hoy con otro pedido.");
     }
 
     lines.push(...bannerLineas);
@@ -167,6 +170,11 @@ function construirBloqueParticipacion({
     lines.push("No se pudo generar el código. Contacta con Cash Lojo antes de presentar el pedido en caja.");
     lines.push("");
     return lines;
+  }
+
+  if (clienteMesYaHoy) {
+    lines.push("🏆 Cliente del mes ya conseguido hoy con otro pedido: este pedido no suma puntos.");
+    lines.push("");
   }
 
   // Bingo bloqueado por el límite de "1 pedido al día" y sin Ruleta ni
@@ -206,6 +214,7 @@ export function construirTextoPedidoWhatsApp({
   participacionJuegos = null,
   participacionSorteo = null,
   clienteMesPuntos = 0,
+  clienteMesYaHoy = false,
 }) {
   const lines = [];
 
@@ -222,6 +231,7 @@ export function construirTextoPedidoWhatsApp({
       participacionSorteo,
       premio,
       clienteMesPuntos,
+      clienteMesYaHoy,
     })
   );
 
