@@ -4346,6 +4346,7 @@ export default function App() {
       participacionSorteo,
       // El servidor decide si este pedido lleva Cliente del mes (solo el
       // primero del día): se mira lo que de verdad quedó guardado en el QR.
+      clienteMesActivo: Boolean(clienteToken && normalizarRespuestaRpc(participacionJuegos)?.cliente_mes_eligible),
       clienteMesPuntos:
         clienteToken && normalizarRespuestaRpc(participacionJuegos)?.cliente_mes_eligible
           ? puntosClienteMesPedido(itemsPedido)
@@ -4610,14 +4611,17 @@ export default function App() {
     // El QR común debe crearse para cualquier pedido que consiga Ruleta o Bingo.
     // No puede depender de que el cliente esté identificado: los pedidos anónimos
     // también necesitan su fila en game_entitlements para que el lector los valide.
-    const clienteMesSuma =
-      Boolean(clienteToken) && !clienteMesYaPidioHoy && pedidoSumaClienteMes(itemsPedido);
-    if (
-      participacionRuleta ||
+    // Cliente del mes: para cualquier cliente identificado se pide al
+    // servidor, que es quien decide si este pedido lo lleva (activado, ya
+    // empezado, el cliente participa y es su primer pedido del día). Antes lo
+    // decidía la App y, si aún no había cargado el Cliente del mes, el pedido
+    // salía sin él y el cliente no sumaba ni 1 punto.
+    const clienteMesSuma = Boolean(clienteToken) && !clienteMesYaPidioHoy;
+    const otrosJuegos =
+      Boolean(participacionRuleta) ||
       pedidoCumpleBingo(participacionBingo) ||
-      sorteoCumpleVariedad(participacionSorteo) ||
-      clienteMesSuma
-    ) {
+      sorteoCumpleVariedad(participacionSorteo);
+    if (otrosJuegos || clienteMesSuma) {
       try {
         participacionJuegos = await conLimiteDeTiempo(
           crearParticipacionJuegos({
@@ -4641,9 +4645,11 @@ export default function App() {
           .filter(Boolean)
           .join("\n");
 
-        if (esModificacion) {
+        if (esModificacion || !otrosJuegos) {
+          // Si el QR solo era para Cliente del mes, un fallo nunca impide
+          // enviar el pedido.
           console.error(
-            "No se pudo actualizar el QR común al modificar el pedido (se envía igualmente):",
+            "No se pudo crear/actualizar el QR común (se envía igualmente):",
             detalleErrorComun || error
           );
         } else {

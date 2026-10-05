@@ -53,6 +53,7 @@ function construirBloqueParticipacion({
   participacionSorteo,
   premio,
   clienteMesPuntos = 0,
+  clienteMesActivo = false,
   clienteMesYaHoy = false,
 }) {
   const lines = [];
@@ -115,7 +116,7 @@ function construirBloqueParticipacion({
   // caja" es lo que llevaba a escanear por error un QR sin nada disponible y
   // ver "ya lo ha jugado". Por eso el bloque con QR solo se pinta si de
   // verdad hay algo que jugar/revelar.
-  const clienteMesSuma = Number(clienteMesPuntos) > 0;
+  const clienteMesSuma = Boolean(clienteMesActivo) || Number(clienteMesPuntos) > 0;
   const hayAlgoJugable = numeroTiradas > 0 || bingoConseguido || sorteoConseguido || clienteMesSuma;
 
   if (codigoJuegos && hayAlgoJugable) {
@@ -151,7 +152,11 @@ function construirBloqueParticipacion({
     }
 
     if (clienteMesSuma) {
-      bannerLineas.push(`🏆 Cliente del mes: al pasar el QR sumarás *${clienteMesPuntos} ${Number(clienteMesPuntos) === 1 ? "punto" : "puntos"}*`);
+      bannerLineas.push(
+        Number(clienteMesPuntos) > 0
+          ? `🏆 Cliente del mes: al pasar el QR sumarás *${clienteMesPuntos} ${Number(clienteMesPuntos) === 1 ? "punto" : "puntos"}*`
+          : "🏆 Cliente del mes: al pasar el QR sumarás tus puntos"
+      );
     } else if (clienteMesYaHoy) {
       bannerLineas.push("🏆 Cliente del mes ya conseguido hoy con otro pedido.");
     }
@@ -214,6 +219,7 @@ export function construirTextoPedidoWhatsApp({
   participacionJuegos = null,
   participacionSorteo = null,
   clienteMesPuntos = 0,
+  clienteMesActivo = false,
   clienteMesYaHoy = false,
 }) {
   const lines = [];
@@ -231,6 +237,7 @@ export function construirTextoPedidoWhatsApp({
       participacionSorteo,
       premio,
       clienteMesPuntos,
+      clienteMesActivo,
       clienteMesYaHoy,
     })
   );
