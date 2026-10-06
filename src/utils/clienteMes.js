@@ -1,9 +1,9 @@
 // CLIENTE DEL MES · carrera de puntos.
 //
 // Los puntos se calculan en el servidor (cliente_mes_clasificacion) a partir
-// de los pedidos enviados por la App: X puntos por pedido, solo 1 pedido por
-// día y solo si lleva el mínimo de cajas O de unidades sueltas. Gana quien
-// más puntos tenga al terminar el mes.
+// de los pedidos enviados por la App: 5 / 3 / 1 puntos por pedido según lo
+// que lleve, y solo suma 1 pedido cada 12 horas. Gana quien más puntos
+// tenga al terminar el mes.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 
@@ -25,6 +25,19 @@ export function diasRestantesMes(hoyIso) {
   const [y, m, d] = String(hoyIso).split("-").map(Number);
   const ultimo = new Date(y, m, 0).getDate();
   return ultimo - d + 1;
+}
+
+// "Podrás volver a sumar a partir de las 12:27." (o "mañana a las 0:27.")
+export function textoProximoClienteMes(proximoIso) {
+  if (!proximoIso) return "Solo suma un pedido cada 12 horas.";
+  const fecha = new Date(proximoIso);
+  if (Number.isNaN(fecha.getTime()) || fecha.getTime() <= Date.now()) return "";
+  const zona = { timeZone: "Europe/Madrid" };
+  const hora = fecha.toLocaleTimeString("es-ES", { ...zona, hour: "2-digit", minute: "2-digit" });
+  const dia = (d) => d.toLocaleDateString("en-CA", zona);
+  const manana = new Date(Date.now() + 24 * 3600 * 1000);
+  const cuando = dia(fecha) === dia(new Date()) ? "hoy" : dia(fecha) === dia(manana) ? "mañana" : "";
+  return `Podrás volver a sumar ${cuando ? cuando + " " : ""}a partir de las ${hora}.`;
 }
 
 export async function cargarClasificacionClienteMes({ token = null, mes = null } = {}) {

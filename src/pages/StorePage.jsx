@@ -622,7 +622,7 @@ export default function StorePage() {
       notificarQrLeido({ orderId: unified.order_id, code: unified.code || code });
 
       // CLIENTE DEL MES: al pasar el QR se suman los puntos (si el pedido
-      // cumple y es el primero del día). Pasa siempre, se elija el juego que
+      // cumple y no sumó otro en las últimas 12 horas). Pasa siempre, se elija el juego que
       // se elija, y un fallo aquí nunca bloquea el resto de juegos.
       let resultadoClienteMes = null;
       try {
@@ -1726,7 +1726,7 @@ function textoClienteMes(r) {
     return `${base} Lleva ${pts(r.total)}${r.posicion ? ` y va ${r.posicion}º` : ""}.`;
   }
   if (r.motivo === "ya_sumado_hoy") {
-    return `Hoy ya sumó ${pts(r.puntos_hoy)} con otro pedido: solo suma un pedido al día.`;
+    return `Ya sumó ${pts(r.puntos_hoy)} con otro pedido hace menos de 12 horas: solo suma un pedido cada 12 horas.`;
   }
   if (r.motivo === "ya_canjeado") return "Los puntos de este pedido ya se sumaron.";
   return "Este pedido no suma puntos.";

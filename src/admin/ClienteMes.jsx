@@ -203,8 +203,8 @@ export default function ClienteMes() {
         <p style={texto}>
           Carrera de puntos: cada pedido hecho por la App suma puntos <strong>al pasar su QR en caja</strong>, igual que el
           resto de juegos. Según el pedido vale los puntos del nivel alto, del nivel medio o, si no llega a ninguno, los de
-          base por haber usado la App. Se puntúa <strong>una vez por cliente y día</strong>: si ese día pasa otro pedido que
-          vale más, se queda el mejor. Premio para el podio (1º, 2º y 3º) el último día del mes; si hay empate, va delante
+          base por haber usado la App. Se puntúa <strong>un pedido por cliente cada 12 horas</strong>
+          (contando desde la hora en que se envió el pedido que sumó). Premio para el podio (1º, 2º y 3º) el último día del mes; si hay empate, va delante
           quien llegó antes. Cada día 1 empieza una carrera nueva.
         </p>
       </div>
@@ -288,7 +288,7 @@ export default function ClienteMes() {
             </div>
             <p style={{ ...texto, marginTop: 8 }}>
               La meta es el final de la barra, donde está el cofre. Como referencia: con {config.puntos_por_pedido || 5} puntos
-              al día, {config.meta_puntos || 100} puntos son {Math.ceil((Number(config.meta_puntos) || 100) / (Number(config.puntos_por_pedido) || 5))} días con pedido del nivel alto.
+              al día (un pedido diario), {config.meta_puntos || 100} puntos son {Math.ceil((Number(config.meta_puntos) || 100) / (Number(config.puntos_por_pedido) || 5))} días con pedido del nivel alto.
               Los cambios de mínimos y de puntos se aplican a los QR que se pasen a partir de ahora.
             </p>
             <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 12 }}>

@@ -683,7 +683,7 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
                         style={badgeClienteMes}
                         title={
                           pedido.puntos_a_sumar != null && Number(pedido.puntos_a_sumar) < Number(pedido.puntos_pedido)
-                            ? `El pedido vale ${pedido.puntos_pedido}, pero ese día el cliente ya tiene puntos: sumará ${pedido.puntos_a_sumar}`
+                            ? `El pedido vale ${pedido.puntos_pedido}, pero el cliente ya sumó con otro pedido hace menos de 12 horas: sumará ${pedido.puntos_a_sumar}`
                             : "Puntos de Cliente del mes que sumará al pasar el QR"
                         }
                       >

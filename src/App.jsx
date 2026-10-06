@@ -31,7 +31,7 @@ import AvisoSorteo from "./components/sorteo/AvisoSorteo";
 import MisNumerosSorteo from "./components/sorteo/MisNumerosSorteo";
 import CarreraClienteMes from "./components/clienteMes/CarreraClienteMes";
 import PremioClienteMes from "./components/clienteMes/PremioClienteMes";
-import { puntosPedidoClienteMes, useClasificacionClienteMes } from "./utils/clienteMes";
+import { puntosPedidoClienteMes, textoProximoClienteMes, useClasificacionClienteMes } from "./utils/clienteMes";
 import { useSorteoDirecto } from "./utils/sorteoDirecto";
 import { desbloquearAudioSorteo } from "./utils/sorteoSound";
 import logoLojo from "./assets/logo-lojo.jpg";
@@ -893,7 +893,7 @@ export default function App() {
   const [revisionPremioSorteo, setRevisionPremioSorteo] = useState(0);
   const sorteoDirectoAbiertoRef = useRef(false);
   const sorteoActivoParaCliente = Boolean(configuracionSorteoCliente);
-  // CLIENTE DEL MES: carrera de puntos (5 por pedido en la App, 1 al día).
+  // CLIENTE DEL MES: carrera de puntos (5 / 3 / 1 por pedido en la App, 1 cada 12 horas).
   const [mostrarClienteMes, setMostrarClienteMes] = useState(false);
   const clienteMes = useClasificacionClienteMes({
     token: clienteIdentificado?.token || null,
@@ -903,16 +903,16 @@ export default function App() {
   const clienteMesVisible = Boolean(clienteMes.datos?.visible);
   // Puntos de Cliente del mes que vale este pedido (5 / 3 / 1). Se suman
   // al pasar el QR en caja; el servidor lo vuelve a calcular y aplica la
-  // regla de 1 puntuación por cliente y día (se queda la mejor).
+  // regla de 1 puntuación por cliente cada 12 horas.
   function puntosClienteMesPedido(items) {
     return puntosPedidoClienteMes(items, clienteMes.datos);
   }
   function pedidoSumaClienteMes(items) {
     return puntosClienteMesPedido(items) > 0;
   }
-  // Solo el PRIMER pedido del día suma (igual que el Bingo). Si hoy ya hay
+  // Solo suma un pedido cada 12 horas. Si en las últimas 12 horas ya hay
   // otro pedido con Cliente del mes y este no es una modificación de aquel,
-  // este no suma.
+  // este no suma (el servidor manda "pedido_hoy" = últimas 12 horas).
   const clienteMesYaPidioHoy = Boolean(clienteMes.datos?.yo?.pedido_hoy) && !pedidoEnviadoActivo;
   const sorteoEnDirecto = useSorteoDirecto({
     modo: "cliente",
@@ -4345,7 +4345,7 @@ export default function App() {
       participacionJuegos,
       participacionSorteo,
       // El servidor decide si este pedido lleva Cliente del mes (solo el
-      // primero del día): se mira lo que de verdad quedó guardado en el QR.
+      // primero en 12 horas): se mira lo que de verdad quedó guardado en el QR.
       clienteMesActivo: Boolean(clienteToken && normalizarRespuestaRpc(participacionJuegos)?.cliente_mes_eligible),
       clienteMesPuntos:
         clienteToken && normalizarRespuestaRpc(participacionJuegos)?.cliente_mes_eligible
@@ -4985,10 +4985,10 @@ export default function App() {
                     {!clienteMes.datos.empezado
                       ? "🏁 La carrera todavía no ha empezado. ¡Muy pronto!"
                       : clienteMes.datos.yo.pedido_hoy && !clienteMes.datos.yo.hoy_cuenta
-                        ? "🛒 Hoy ya tienes un pedido que suma en Cliente del mes: los puntos se suman al pasar su QR en caja."
+                        ? `🛒 Ya tienes un pedido que suma en Cliente del mes: los puntos se suman al pasar su QR en caja. ${textoProximoClienteMes(clienteMes.datos.yo.proximo_at)}`
                         : clienteMes.datos.yo.hoy_cuenta
-                        ? `✅ Hoy ya tienes ${clienteMes.datos.yo.puntos_hoy} ${clienteMes.datos.yo.puntos_hoy === 1 ? "punto" : "puntos"}. Solo suma un pedido al día.`
-                        : `🛒 Cada día que pidas por la App sumas puntos al pasar el QR en caja: ${clienteMes.datos.puntos_alto}, ${clienteMes.datos.puntos_medio} o ${clienteMes.datos.puntos_base} según tu pedido.`}
+                        ? `✅ Ya tienes ${clienteMes.datos.yo.puntos_hoy} ${clienteMes.datos.yo.puntos_hoy === 1 ? "punto" : "puntos"} por tu último pedido. ${textoProximoClienteMes(clienteMes.datos.yo.proximo_at)}`
+                        : `🛒 Cada vez que pidas por la App (con 12 horas entre pedidos) sumas puntos al pasar el QR en caja: ${clienteMes.datos.puntos_alto}, ${clienteMes.datos.puntos_medio} o ${clienteMes.datos.puntos_base} según tu pedido.`}
                   </div>
                 </div>
               )}
