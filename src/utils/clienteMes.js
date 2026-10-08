@@ -114,3 +114,27 @@ export function puntosPedidoClienteMes(items, d) {
   }
   return Number(d.puntos_base ?? 1);
 }
+
+// ---------------------------------------------------------------------
+// Celebración en la TV al pasar el QR (CelebracionPuntosTV). El TPV usa la
+// misma duración para esperar a que termine antes de seguir con los juegos.
+// ---------------------------------------------------------------------
+export const CELEBRACION_CM = { intro: 4200, paso: 1600, final: 7500 };
+
+// Pasos que da el carrito: uno por punto (como mucho 10; si fueran más,
+// cada paso vale varios puntos). Devuelve lo que suma cada paso.
+export function pasosCelebracionClienteMes(puntos) {
+  const total = Math.max(1, Math.round(Number(puntos) || 1));
+  const n = Math.min(10, total);
+  const base = Math.floor(total / n);
+  const resto = total - base * n;
+  return Array.from({ length: n }, (_, i) => base + (i < resto ? 1 : 0));
+}
+
+export function duracionCelebracionClienteMes(puntos) {
+  return (
+    CELEBRACION_CM.intro +
+    pasosCelebracionClienteMes(puntos).length * CELEBRACION_CM.paso +
+    CELEBRACION_CM.final
+  );
+}

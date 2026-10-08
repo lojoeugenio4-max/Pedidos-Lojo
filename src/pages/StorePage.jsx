@@ -9,6 +9,7 @@ import { notificarPremioBingo } from "../utils/premiosBingoEvento";
 import { abrirPantallaGrande } from "../utils/pantallaGrande";
 import PedidosExportar from "../admin/PedidosExportar";
 import { prepararVueltaTrasJugar } from "../admin/QrPendientes";
+import { duracionCelebracionClienteMes } from "../utils/clienteMes";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
 const BINGO_CONTROL_CHANNEL = "lojo-bingo-control";
@@ -342,6 +343,12 @@ export default function StorePage() {
   const [entitlement, setEntitlement] = useState(null);
   // Cliente del mes: resultado de sumar (o no) los puntos al pasar el QR.
   const [clienteMesResultado, setClienteMesResultado] = useState(null);
+  // Mientras la TV hace la celebración de puntos, el TPV espera (estado
+  // "cliente-mes-celebrando") y luego pasa solo a lo que toque (juegos o
+  // FINALIZAR). Así el Bingo/Sorteo no corta la animación de la TV.
+  const celebracionTimerRef = useRef(null);
+  const trasCelebracionRef = useRef(null);
+  const [celebracionFinAt, setCelebracionFinAt] = useState(0);
   const [bolaBingo, setBolaBingo] = useState(null);
   const [procesandoBingo, setProcesandoBingo] = useState(false);
   const [procesandoSorteo, setProcesandoSorteo] = useState(false);
@@ -531,6 +538,7 @@ export default function StorePage() {
     setEntrada(null);
     setEntitlement(null);
     setClienteMesResultado(null);
+    cancelarEsperaCelebracion(false);
     setBolaBingo(null);
     setPremios([]);
     setPremioFinal(null);
@@ -689,18 +697,19 @@ export default function StorePage() {
 
       // Pedido que solo traía Cliente del mes: no hay nada más que jugar.
       if (juegosDisponibles === 0 && (unified.cliente_mes_available || resultadoClienteMes?.sumado)) {
-        setEstado("cliente-mes");
+        seguirTrasCelebracion("cliente-mes", resultadoClienteMes);
         return;
       }
 
-      setEstado(
+      seguirTrasCelebracion(
         juegosDisponibles > 1
           ? "game-choice"
           : unified.bingo_available
             ? "bingo-ready"
             : unified.sorteo_available
               ? "sorteo-ready"
-              : "ready"
+              : "ready",
+        resultadoClienteMes
       );
       return;
     }
@@ -1256,7 +1265,47 @@ export default function StorePage() {
     }
   }
 
+  // Pasa a "siguiente" ya, o tras la celebración de la TV si el cliente
+  // acaba de sumar puntos en Cliente del mes.
+  function seguirTrasCelebracion(siguiente, resultadoClienteMes) {
+    if (!resultadoClienteMes?.sumado) {
+      setEstado(siguiente);
+      return;
+    }
+    const ms = duracionCelebracionClienteMes(resultadoClienteMes.puntos) + 300;
+    trasCelebracionRef.current = siguiente;
+    setCelebracionFinAt(Date.now() + ms);
+    setEstado("cliente-mes-celebrando");
+    if (celebracionTimerRef.current) window.clearTimeout(celebracionTimerRef.current);
+    celebracionTimerRef.current = window.setTimeout(() => {
+      celebracionTimerRef.current = null;
+      setEstado(trasCelebracionRef.current || "cliente-mes");
+    }, ms);
+  }
+
+  // "Saltar animación" (o cerrar): corta la espera y, si avisarTV, también
+  // la celebración de la pantalla grande. Devuelve si había una en curso.
+  function cancelarEsperaCelebracion(avisarTV = true) {
+    const habia = Boolean(celebracionTimerRef.current);
+    if (celebracionTimerRef.current) {
+      window.clearTimeout(celebracionTimerRef.current);
+      celebracionTimerRef.current = null;
+    }
+    if (habia && avisarTV) enviarEventoDisplay("cliente-mes-saltar");
+    return habia;
+  }
+
+  function saltarCelebracion() {
+    cancelarEsperaCelebracion(true);
+    setEstado(trasCelebracionRef.current || "cliente-mes");
+  }
+
+  useEffect(() => () => {
+    if (celebracionTimerRef.current) window.clearTimeout(celebracionTimerRef.current);
+  }, []);
+
   function reset() {
+    cancelarEsperaCelebracion(true);
     stopSpinSound();
     setCodigo("");
     setEntrada(null);
@@ -1443,13 +1492,34 @@ export default function StorePage() {
         </button>
       </section>
 
-      {clienteMesResultado && estado !== "idle" && estado !== "loading" && estado !== "cliente-mes" && (
+      {clienteMesResultado && estado !== "idle" && estado !== "loading" && estado !== "cliente-mes" && estado !== "cliente-mes-celebrando" && (
         <section style={clienteMesResultado.sumado ? styles.clienteMesBannerOk : styles.clienteMesBannerNo}>
           <span style={styles.clienteMesBannerIcono}>🏆</span>
           <span>
             <strong>Cliente del mes · </strong>
             {textoClienteMes(clienteMesResultado)}
           </span>
+        </section>
+      )}
+
+      {estado === "cliente-mes-celebrando" && (
+        <section style={styles.card}>
+          <div style={styles.celebraTPV}>
+            <div style={styles.celebraTPVIcono}>🏆🛒📯</div>
+            <div style={styles.clienteMesGrande}>+{clienteMesResultado?.puntos}</div>
+            <h2 style={{ margin: "4px 0 6px" }}>
+              ¡Puntos para {clienteMesResultado?.nombre || entitlement?.customer_name || "el cliente"}!
+            </h2>
+            <p style={styles.info}>
+              🖥️ Mirad la TV grande: el carrito avanza con un bocinazo por cada punto.
+              {clienteMesResultado?.total ? ` Lleva ${clienteMesResultado.total} puntos` : ""}
+              {clienteMesResultado?.posicion ? ` y va ${clienteMesResultado.posicion}º.` : clienteMesResultado?.total ? "." : ""}
+            </p>
+            <BarraEsperaCelebracion finAt={celebracionFinAt} />
+            <button type="button" onClick={saltarCelebracion} style={styles.saltarCelebraButton}>
+              Saltar animación ›
+            </button>
+          </div>
         </section>
       )}
 
@@ -1715,6 +1785,36 @@ export default function StorePage() {
   );
 }
 
+// Barra que se vacía mientras la TV hace la celebración.
+function BarraEsperaCelebracion({ finAt }) {
+  const [ahora, setAhora] = useState(() => Date.now());
+  const inicioRef = useRef(Date.now());
+  useEffect(() => {
+    inicioRef.current = Date.now();
+    const id = window.setInterval(() => setAhora(Date.now()), 200);
+    return () => window.clearInterval(id);
+  }, [finAt]);
+  const totalMs = Math.max(1, finAt - inicioRef.current);
+  const quedaMs = Math.max(0, finAt - ahora);
+  return (
+    <div style={{ width: "100%", maxWidth: 420, margin: "10px auto 4px" }}>
+      <div style={{ height: 12, borderRadius: 999, background: "#ede9fe", overflow: "hidden" }}>
+        <div
+          style={{
+            height: "100%",
+            width: `${(quedaMs / totalMs) * 100}%`,
+            background: "linear-gradient(90deg,#7c3aed,#ff2d75)",
+            transition: "width .2s linear",
+          }}
+        />
+      </div>
+      <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6, fontWeight: 700 }}>
+        Seguimos en {Math.ceil(quedaMs / 1000)} s
+      </div>
+    </div>
+  );
+}
+
 function textoClienteMes(r) {
   if (!r) return "";
   const pts = (n) => `${n} ${Number(n) === 1 ? "punto" : "puntos"}`;
@@ -1765,6 +1865,19 @@ const styles = {
     fontWeight: 600,
   },
   clienteMesBannerIcono: { fontSize: 28 },
+  celebraTPV: { textAlign: "center", display: "grid", justifyItems: "center", gap: 4, padding: "8px 4px" },
+  celebraTPVIcono: { fontSize: 40, lineHeight: 1 },
+  saltarCelebraButton: {
+    marginTop: 8,
+    padding: "10px 18px",
+    borderRadius: 12,
+    border: "2px solid #c4b5fd",
+    background: "#fff",
+    color: "#5b21b6",
+    fontWeight: 800,
+    fontSize: 15,
+    cursor: "pointer",
+  },
   clienteMesGrande: {
     fontSize: 64,
     fontWeight: 900,

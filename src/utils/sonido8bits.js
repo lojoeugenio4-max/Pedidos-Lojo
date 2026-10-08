@@ -110,3 +110,82 @@ export function despertarAudio() {
     // sin audio
   }
 }
+
+// ---------------------------------------------------------------------
+// CELEBRACIÓN DE PUNTOS en la TV grande (al pasar el QR en caja)
+// ---------------------------------------------------------------------
+
+// Bocina de coche: dos notas desafinadas (como el claxon real) con filtro,
+// fuerte y corta. Una por cada punto que avanza el carrito.
+export const sonidoBocina = seguro((variante = 0) => {
+  const a = obtenerAudioCompartido();
+  if (!a) return;
+  const t = a.currentTime;
+  const dur = 0.55;
+  const master = a.createGain();
+  const filtro = a.createBiquadFilter();
+  filtro.type = "lowpass";
+  filtro.frequency.value = 2400;
+  filtro.Q.value = 2;
+  master.gain.setValueAtTime(0.0001, t);
+  master.gain.exponentialRampToValueAtTime(0.22, t + 0.02);
+  master.gain.setValueAtTime(0.22, t + dur - 0.1);
+  master.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  // Cada bocinazo un pelín distinto para que no suene a disco rayado.
+  const sube = [0, 1.5, -1, 2.5][variante % 4];
+  [392, 494].forEach((f, i) => {
+    const o = a.createOscillator();
+    o.type = "sawtooth";
+    o.frequency.setValueAtTime(f * Math.pow(2, sube / 12), t);
+    o.frequency.linearRampToValueAtTime(f * Math.pow(2, sube / 12) * 0.985, t + dur);
+    o.detune.value = i ? 6 : -6;
+    o.connect(filtro);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  });
+  filtro.connect(master).connect(a.destination);
+});
+
+// Semáforo de salida: pitidos graves y el último agudo y largo (¡YA!)
+export const sonidoSemaforo = seguro((verde = false) => {
+  if (verde) {
+    tono(81, 0, 0.7, { vol: 0.12 });
+    tono(69, 0, 0.7, { tipo: "triangle", vol: 0.18 });
+  } else {
+    tono(69, 0, 0.32, { vol: 0.11 });
+    tono(57, 0, 0.32, { tipo: "triangle", vol: 0.16 });
+  }
+});
+
+// Acelerón del carrito
+export const sonidoAcelerar = seguro(() => {
+  tono(36, 0, 0.6, { tipo: "sawtooth", vol: 0.09, deslizar: 19 });
+  tono(43, 0.05, 0.55, { tipo: "square", vol: 0.04, deslizar: 17 });
+  ruido(0, 0.35, 0.04);
+});
+
+// Moneda al caer el punto en el marcador
+export const sonidoMoneda = seguro(() => {
+  tono(83, 0, 0.08, { vol: 0.09 });
+  tono(88, 0.08, 0.38, { vol: 0.09 });
+});
+
+// Entrada: sirena de recreativa + arpegio
+export const sonidoEntradaPuntos = seguro(() => {
+  for (let i = 0; i < 4; i += 1) {
+    tono(72, i * 0.24, 0.12, { deslizar: 7, vol: 0.07 });
+    tono(79, i * 0.24 + 0.12, 0.12, { deslizar: -7, vol: 0.07 });
+  }
+  [60, 64, 67, 72, 76, 79, 84].forEach((n, i) => tono(n, 1.0 + i * 0.05, 0.08, { vol: 0.07 }));
+  tono(48, 1.0, 0.5, { tipo: "triangle", vol: 0.18 });
+});
+
+// Fuegos artificiales: silbido que sube y estallido
+export const sonidoFuegos = seguro((veces = 5) => {
+  for (let i = 0; i < veces; i += 1) {
+    const t = i * 0.55 + Math.random() * 0.2;
+    tono(84 + Math.floor(Math.random() * 6), t, 0.35, { tipo: "sine", vol: 0.035, deslizar: 12 });
+    ruido(t + 0.38, 0.5, 0.09);
+    tono(36, t + 0.38, 0.25, { tipo: "triangle", vol: 0.2, deslizar: -12 });
+  }
+});

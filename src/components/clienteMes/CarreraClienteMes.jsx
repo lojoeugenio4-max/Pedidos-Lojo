@@ -180,29 +180,6 @@ export default function CarreraClienteMes({ datos, variante = "movil", maxFilas 
         })}
       </div>
 
-      {celebracion?.nombre && (
-        <div className="cm-celebracion" key={celebracion.id}>
-          <div className="cm-celebracion-caja">
-            <div className="cm-celebracion-puntos">+{celebracion.puntos}</div>
-            <div className="cm-celebracion-nombre">{celebracion.nombre}</div>
-            <div className="cm-celebracion-sub">
-              {celebracion.total} puntos{celebracion.posicion ? ` · ${celebracion.posicion}º puesto` : ""}
-            </div>
-          </div>
-          {Array.from({ length: 28 }, (_, i) => (
-            <span
-              key={i}
-              className="cm-confeti"
-              style={{
-                left: `${(i * 37) % 100}%`,
-                background: ["#ffe14d", "#ff3d7f", "#00e5ff", "#76ff03", "#d500f9"][i % 5],
-                animationDelay: `${(i % 7) * 0.12}s`,
-              }}
-            />
-          ))}
-        </div>
-      )}
-
       <footer className="cm-pie">
         Meta: {meta} puntos · Premio para el podio (1º, 2º y 3º) el último día del mes · Si hay empate, va delante quien llegó antes
         {podioAnterior.length > 0 && (
@@ -229,7 +206,7 @@ function fechaLarga(iso) {
   return `${d} ${MESES_CORTOS[m - 1] || ""}`;
 }
 
-function Carrito({ color }) {
+export function Carrito({ color }) {
   return (
     <svg className="cm-carrito" viewBox="0 0 64 50" aria-hidden="true">
       {/* cajas dentro */}
@@ -255,7 +232,7 @@ function Carrito({ color }) {
   );
 }
 
-function Cofre({ abierto }) {
+export function Cofre({ abierto }) {
   return (
     <svg className={`cm-cofre${abierto ? " cm-cofre-abierto" : ""}`} viewBox="0 0 64 60" aria-hidden="true">
       <defs>
@@ -414,7 +391,7 @@ function EstilosCarrera() {
 .cm-contador-inicio{ border-color:#ffe14d; box-shadow:0 0 14px rgba(255,225,77,.5); }
 .cm-contador-inicio-fecha{ font-family:'Press Start 2P',monospace; font-size:14px; color:#ffe14d; margin-top:6px; white-space:nowrap; }
 .cm-tv .cm-contador-inicio-fecha{ font-size:clamp(14px,1.8vw,34px); }
-.cm-fila-celebra .cm-asfalto{ border-color:#fff; animation:cmDestello .6s ease-in-out 6 alternate; }
+.cm-fila-celebra .cm-asfalto{ border-color:#fff; animation:cmDestello .6s ease-in-out 12 alternate; }
 @keyframes cmDestello{ from{box-shadow:0 0 0 0 rgba(255,255,255,.0)} to{box-shadow:0 0 28px 6px var(--c1)} }
 .cm-celebracion{ position:absolute; inset:0; z-index:20; pointer-events:none; display:grid; place-items:center; overflow:hidden;
   animation:cmFuera 9s ease forwards; }

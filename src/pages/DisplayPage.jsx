@@ -13,6 +13,7 @@ import {
 import { leerVistaReposo } from "../utils/pantallaGrande";
 import CarreraClienteMes from "../components/clienteMes/CarreraClienteMes";
 import CeremoniaPodio from "../components/clienteMes/CeremoniaPodio";
+import CelebracionPuntosTV from "../components/clienteMes/CelebracionPuntosTV";
 import { useClasificacionClienteMes } from "../utils/clienteMes";
 import logoLojo from "../assets/logo-lojo.jpg";
 
@@ -304,7 +305,14 @@ function DisplayPageContenido() {
   // rotación de números, hasta que termina y se ha visto el ganador.
   const sorteoEnDirecto = useSorteoDirecto({ modo: "tv" });
   const clienteMesTV = useClasificacionClienteMes({ habilitado: estado === "clasificacion-reposo", refrescoMs: 30000 });
+  // Celebración a pantalla completa al sumar puntos (CelebracionPuntosTV).
   const [celebracionClienteMes, setCelebracionClienteMes] = useState(null);
+  // Al terminar la celebración, la fila del cliente parpadea un rato en la
+  // clasificación.
+  const [resaltadoClienteMes, setResaltadoClienteMes] = useState(null);
+  // Cada evento llega dos veces (localStorage + BroadcastChannel): así no se
+  // repite la celebración ni se solapan los bocinazos.
+  const ultimaCelebracionRef = useRef(0);
   // Ceremonia de los cofres del podio (cierre del mes). Se ve una vez por
   // cierre en esta TV; desde "Pedidos recibidos" se puede repetir.
   const [ceremonia, setCeremonia] = useState(null);
@@ -345,11 +353,17 @@ function DisplayPageContenido() {
   const juegoEnPantallaRef = useRef(false);
   const temporizadorVueltaRef = useRef(null);
   clienteMesTVRef.current = clienteMesTV.recargar;
+  function terminarCelebracionClienteMes() {
+    setCelebracionClienteMes((actual) => {
+      if (actual) setResaltadoClienteMes({ nombre: actual.nombre, id: actual.id });
+      return null;
+    });
+  }
   useEffect(() => {
-    if (!celebracionClienteMes) return undefined;
-    const t = window.setTimeout(() => setCelebracionClienteMes(null), 9000);
+    if (!resaltadoClienteMes) return undefined;
+    const t = window.setTimeout(() => setResaltadoClienteMes(null), 8000);
     return () => window.clearTimeout(t);
-  }, [celebracionClienteMes]);
+  }, [resaltadoClienteMes]);
 
   useEffect(() => {
     cargarPremios();
@@ -528,7 +542,18 @@ function DisplayPageContenido() {
     // Se pasa a la carrera al momento (si había en pantalla el juego del
     // cliente anterior, ya ha terminado) para que se vea la celebración; si
     // este cliente elige luego Bingo o Sorteo, la TV cambia a ese juego.
+    // El TPV puede saltarse la celebración ("Saltar animación").
+    if (event.type === "cliente-mes-saltar") {
+      terminarCelebracionClienteMes();
+      return;
+    }
+
     if (event.type === "cliente-mes-sumado") {
+      const creado = Number(event.createdAt) || 0;
+      // Repetido (llega por dos vías) o antiguo (al recargar la TV se relee
+      // el último evento guardado): no se vuelve a celebrar.
+      if (creado && (creado === ultimaCelebracionRef.current || Date.now() - creado > 60000)) return;
+      ultimaCelebracionRef.current = creado;
       if (temporizadorVueltaRef.current) {
         window.clearTimeout(temporizadorVueltaRef.current);
         temporizadorVueltaRef.current = null;
@@ -740,6 +765,20 @@ function DisplayPageContenido() {
     );
   }
 
+  // CLIENTE DEL MES: celebración de puntos a pantalla completa, por encima
+  // de cualquier otra vista (el TPV espera a que termine antes de seguir
+  // con Bingo o Sorteo).
+  if (celebracionClienteMes) {
+    return (
+      <CelebracionPuntosTV
+        key={celebracionClienteMes.id}
+        celebracion={celebracionClienteMes}
+        meta={clienteMesTV.datos?.meta_puntos}
+        onFin={terminarCelebracionClienteMes}
+      />
+    );
+  }
+
   if (estado.startsWith("bingo")) {
     // El bombo trae su propia cabecera y su propio fondo (igual que esta
     // pantalla trae la suya para la Ruleta), así que aquí no se envuelve
@@ -769,7 +808,7 @@ function DisplayPageContenido() {
         variante="tv"
         maxFilas={10}
         cargando={clienteMesTV.cargando}
-        celebracion={celebracionClienteMes}
+        celebracion={resaltadoClienteMes}
       />
     );
   }
