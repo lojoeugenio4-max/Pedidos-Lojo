@@ -138,3 +138,9 @@ export function duracionCelebracionClienteMes(puntos) {
     CELEBRACION_CM.final
   );
 }
+
+// Broma al líder (BromaLiderTV): con «¡ES BROMA!» al final dura más.
+export const BROMA_CM = { fin: 13400, revelacion: 18500, conRevelar: 27000, sinRevelar: 19500 };
+export function duracionBromaLider(revelar) {
+  return revelar ? BROMA_CM.conRevelar : BROMA_CM.sinRevelar;
+}

@@ -5,7 +5,7 @@ import { obtenerAudioCompartido } from "./sorteoSound";
 
 const NOTA = (n) => 440 * Math.pow(2, (n - 69) / 12); // número MIDI -> Hz
 
-function tono(midi, inicio, dur, { tipo = "square", vol = 0.09, deslizar = 0 } = {}) {
+function tono(midi, inicio, dur, { tipo = "square", vol = 0.09, deslizar = 0, vibrato = 0 } = {}) {
   const a = obtenerAudioCompartido();
   if (!a) return;
   const t = a.currentTime + inicio;
@@ -14,6 +14,15 @@ function tono(midi, inicio, dur, { tipo = "square", vol = 0.09, deslizar = 0 } =
   o.type = tipo;
   o.frequency.setValueAtTime(NOTA(midi), t);
   if (deslizar) o.frequency.exponentialRampToValueAtTime(NOTA(midi + deslizar), t + dur);
+  if (vibrato) {
+    const lfo = a.createOscillator();
+    const lg = a.createGain();
+    lfo.frequency.value = 6;
+    lg.gain.value = vibrato;
+    lfo.connect(lg).connect(o.frequency);
+    lfo.start(t);
+    lfo.stop(t + dur + 0.05);
+  }
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
   g.gain.setValueAtTime(vol, t + dur * 0.7);
@@ -23,7 +32,7 @@ function tono(midi, inicio, dur, { tipo = "square", vol = 0.09, deslizar = 0 } =
   o.stop(t + dur + 0.02);
 }
 
-function ruido(inicio, dur, vol = 0.05) {
+function ruido(inicio, dur, vol = 0.05, { tipo = "highpass", frecuencia = 1800 } = {}) {
   const a = obtenerAudioCompartido();
   if (!a) return;
   const t = a.currentTime + inicio;
@@ -33,8 +42,8 @@ function ruido(inicio, dur, vol = 0.05) {
   const s = a.createBufferSource();
   const g = a.createGain();
   const f = a.createBiquadFilter();
-  f.type = "highpass";
-  f.frequency.value = 1800;
+  f.type = tipo;
+  f.frequency.value = frecuencia;
   s.buffer = buf;
   g.gain.setValueAtTime(vol, t);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
@@ -188,4 +197,59 @@ export const sonidoFuegos = seguro((veces = 5) => {
     ruido(t + 0.38, 0.5, 0.09);
     tono(36, t + 0.38, 0.25, { tipo: "triangle", vol: 0.2, deslizar: -12 });
   }
+});
+
+// Pitido de marcha atrás de camión (broma al líder en la TV)
+export const sonidoMarchaAtras = seguro((veces = 6) => {
+  for (let i = 0; i < veces; i += 1) {
+    tono(83, i * 0.7, 0.38, { tipo: "square", vol: 0.08 });
+  }
+});
+
+// ---------------------------------------------------------------------
+// BROMA AL LÍDER (BromaLiderTV)
+// ---------------------------------------------------------------------
+
+// Rascada de caja de cambios al meter la marcha atrás: ¡CRRRRK!
+export const sonidoRascada = seguro(() => {
+  ruido(0, 0.7, 0.14, { tipo: "bandpass", frecuencia: 900 });
+  for (let i = 0; i < 9; i += 1) tono(30 + (i % 3), i * 0.07, 0.06, { tipo: "sawtooth", vol: 0.12 });
+  tono(40, 0.65, 0.35, { tipo: "triangle", vol: 0.2, deslizar: -10 });
+});
+
+// Un pitido de camión marcha atrás (se repite mientras retrocede)
+export const sonidoPitidoAtras = seguro(() => {
+  tono(83, 0, 0.32, { tipo: "square", vol: 0.09 });
+});
+
+// Tono que cae cada 5 puntos perdidos
+export const sonidoBajada = seguro((midi = 60) => {
+  tono(midi, 0, 0.1, { vol: 0.06 });
+});
+
+// Alarma al cruzar el 0
+export const sonidoAlarma = seguro(() => {
+  for (let i = 0; i < 3; i += 1) tono(76, i * 0.4, 0.4, { tipo: "sawtooth", vol: 0.06, deslizar: -12 });
+  ruido(0, 0.3, 0.08);
+});
+
+// Golpe seco al pararse en -50
+export const sonidoGolpe = seguro(() => {
+  ruido(0, 0.4, 0.18, { tipo: "lowpass", frecuencia: 400 });
+  tono(31, 0, 0.5, { tipo: "triangle", vol: 0.3, deslizar: -12 });
+});
+
+// Trombón triste: wah-wah-wah-waaah
+export const sonidoTrombonTriste = seguro(() => {
+  let t = 0;
+  [[55, 0.45], [54, 0.45], [53, 0.45], [52, 1.5]].forEach(([n, d]) => {
+    tono(n, t, d, { tipo: "sawtooth", vol: 0.07, vibrato: d > 1 ? 7 : 0 });
+    tono(n - 12, t, d, { tipo: "triangle", vol: 0.12 });
+    t += d;
+  });
+});
+
+// Risita de "¡es broma!"
+export const sonidoRisa = seguro(() => {
+  [0, 0.14, 0.28, 0.42, 0.56].forEach((t, i) => tono(84 - i, t, 0.1, { vol: 0.06, deslizar: -3 }));
 });

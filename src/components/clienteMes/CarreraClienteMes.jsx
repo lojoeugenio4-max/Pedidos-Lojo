@@ -6,6 +6,7 @@
 // abre. Se usa en la TV grande, en el móvil del cliente y en el Admin.
 import { useEffect, useState } from "react";
 import { diasRestantesMes, nombreMes } from "../../utils/clienteMes";
+import { sonidoMarchaAtras } from "../../utils/sonido8bits";
 
 const CARRILES = [
   ["#ff3d7f", "#ff8a3d"],
@@ -22,8 +23,17 @@ const CARRILES = [
 
 const MEDALLAS = ["🥇", "🥈", "🥉"];
 
-export default function CarreraClienteMes({ datos, variante = "movil", maxFilas = null, cargando = false, celebracion = null }) {
+export default function CarreraClienteMes({ datos, variante = "movil", maxFilas = null, cargando = false, celebracion = null, broma = false }) {
   const [arrancado, setArrancado] = useState(false);
+  // BROMA AL LÍDER (solo TV grande, se activa en Admin → Cliente del mes):
+  // el que va 1º aparece en el puesto 10 con -50 puntos y su carrito va
+  // marcha atrás. Solo cambia lo que se ve: sus puntos reales no se tocan.
+  const bromaActiva = Boolean(broma) && variante === "tv";
+  useEffect(() => {
+    if (!bromaActiva) return undefined;
+    const t = window.setTimeout(() => sonidoMarchaAtras(), 600);
+    return () => window.clearTimeout(t);
+  }, [bromaActiva]);
 
   // Primero se pinta todo en la salida y al instante siguiente arrancan los
   // carritos: así se ve la animación de la barra creciendo.
@@ -42,7 +52,8 @@ export default function CarreraClienteMes({ datos, variante = "movil", maxFilas 
   }
 
   const meta = Math.max(1, Number(datos.meta_puntos) || 100);
-  const todas = Array.isArray(datos.filas) ? datos.filas : [];
+  let todas = Array.isArray(datos.filas) ? datos.filas : [];
+  if (bromaActiva) todas = aplicarBromaLider(todas);
   let filas = maxFilas ? todas.slice(0, maxFilas) : todas;
   // En el móvil, si el cliente está más abajo del corte, se añade su fila.
   const miFila = todas.find((f) => f.es_yo);
@@ -130,6 +141,33 @@ export default function CarreraClienteMes({ datos, variante = "movil", maxFilas 
         )}
 
         {filas.map((fila, indice) => {
+          if (fila.broma) {
+            return (
+              <div key={`broma-${fila.nombre}`}>
+                <div className="cm-fila cm-fila-broma" style={{ animationDelay: `${indice * 70}ms` }}>
+                  <div className="cm-pos">
+                    <span className="cm-pos-num">{fila.posicion}</span>
+                  </div>
+                  <div className="cm-carril">
+                    <div className="cm-asfalto">
+                      <div className="cm-relleno-atras" />
+                      <div className="cm-nombre cm-nombre-broma">
+                        <span className="cm-nombre-txt">{fila.nombre}</span>
+                        <span className="cm-atras-txt">🔙 MARCHA ATRÁS</span>
+                      </div>
+                      <div className="cm-carro cm-carro-atras">
+                        <span className="cm-puntos cm-puntos-broma">-50</span>
+                        <Carrito color="#ff1744" />
+                      </div>
+                    </div>
+                    <div className="cm-meta">
+                      <Cofre abierto={false} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
           const puntos = Number(fila.puntos) || 0;
           const pct = arrancado ? Math.min(1, puntos / meta) : 0;
           const [c1, c2] = CARRILES[(fila.posicion - 1) % CARRILES.length];
@@ -196,6 +234,17 @@ export default function CarreraClienteMes({ datos, variante = "movil", maxFilas 
       </footer>
     </div>
   );
+}
+
+// Quita al líder de arriba, sube a los demás un puesto y lo mete en el
+// puesto 10 (o el último, si hay menos) con -50 puntos.
+function aplicarBromaLider(filas) {
+  const lider = filas.find((f) => f.posicion === 1 && Number(f.puntos) > 0);
+  if (!lider) return filas;
+  const resto = filas.filter((f) => f !== lider);
+  const hueco = Math.min(9, resto.length);
+  resto.splice(hueco, 0, { ...lider, puntos: -50, broma: true, es_yo: false });
+  return resto.map((f, i) => ({ ...f, posicion: i + 1 }));
 }
 
 const MESES_CORTOS = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
@@ -404,6 +453,26 @@ function EstilosCarrera() {
 .cm-celebracion-sub{ font-family:'Press Start 2P',monospace; font-size:clamp(10px,1.2vw,22px); color:#7cf9ff; margin-top:1.4vh; }
 .cm-confeti{ position:absolute; top:-20px; width:12px; height:18px; border-radius:3px; animation:cmCae 3.2s linear infinite; }
 @keyframes cmCae{ from{transform:translateY(-20px) rotate(0)} to{transform:translateY(110vh) rotate(720deg)} }
+/* Broma al líder: barra roja hacia la izquierda y carrito marcha atrás */
+.cm-fila-broma .cm-asfalto{ border-color:#ff1744; animation:cmAlarma 1s ease-in-out infinite alternate; }
+@keyframes cmAlarma{ from{box-shadow:inset 0 3px 8px rgba(0,0,0,.5)} to{box-shadow:0 0 22px 2px rgba(255,23,68,.75),inset 0 3px 8px rgba(0,0,0,.5)} }
+.cm-relleno-atras{ position:absolute; top:0; bottom:0; right:calc(100% - var(--zona)); width:var(--zona); border-radius:10px 0 0 10px;
+  background:repeating-linear-gradient(65deg,rgba(0,0,0,.25) 0 10px,transparent 10px 22px),linear-gradient(270deg,#ff1744,#7f0000);
+  background-size:44px 100%,100% 100%; box-shadow:0 0 16px #ff1744;
+  animation:cmAtrasCrece 3s cubic-bezier(.3,.9,.3,1) both, cmRayasAtras 1s linear infinite; }
+@keyframes cmAtrasCrece{ from{width:0} to{width:var(--zona)} }
+@keyframes cmRayasAtras{ from{background-position:0 0,0 0} to{background-position:-44px 0,0 0} }
+.cm-relleno-atras::before{ content:""; position:absolute; right:-3px; top:-4px; bottom:-4px; width:4px; background:#fff; border-radius:2px; }
+.cm-nombre-broma{ left:calc(var(--zona) + 12px); width:auto; right:calc(var(--meta) * .2); gap:10px; }
+.cm-atras-txt{ flex:none; font-family:'Press Start 2P',monospace; font-size:.55em; color:#ff8a80; animation:cmParpadeoAtras .6s steps(2) infinite; }
+@keyframes cmParpadeoAtras{ 50%{opacity:.2} }
+.cm-carro-atras{ left:0; animation:cmCarroAtras 3s cubic-bezier(.3,.9,.3,1) both; transition:none; }
+@keyframes cmCarroAtras{ from{left:calc(var(--zona) - var(--carro))} to{left:0} }
+.cm-carro-atras .cm-carrito{ animation:cmTambaleo .35s ease-in-out infinite alternate; }
+@keyframes cmTambaleo{ from{transform:rotate(-4deg) translateX(2px)} to{transform:rotate(3deg) translateX(-2px)} }
+.cm-carro-atras .cm-rueda{ animation-direction:reverse; }
+.cm-puntos-broma{ font-size:1.35em !important; top:-1.1em !important; background:#ff1744; color:#fff; box-shadow:0 2px 0 #7f0000; animation:cmParpadeoAtras 1s steps(2) infinite; }
+
 .cm-separador{ text-align:center; color:#c4b5fd; letter-spacing:6px; font-weight:900; margin:-2px 0 4px; }
 .cm-vacio{ position:relative; padding:22px 14px; text-align:center; font-weight:800; font-size:15px; border-radius:14px; background:rgba(255,255,255,.06); border:2px dashed rgba(255,255,255,.2); }
 .cm-tv .cm-vacio{ font-size:clamp(18px,2vw,34px); padding:6vh 3vw; }

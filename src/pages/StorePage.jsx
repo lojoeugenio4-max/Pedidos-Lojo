@@ -9,7 +9,7 @@ import { notificarPremioBingo } from "../utils/premiosBingoEvento";
 import { abrirPantallaGrande } from "../utils/pantallaGrande";
 import PedidosExportar from "../admin/PedidosExportar";
 import { prepararVueltaTrasJugar } from "../admin/QrPendientes";
-import { duracionCelebracionClienteMes } from "../utils/clienteMes";
+import { duracionBromaLider, duracionCelebracionClienteMes } from "../utils/clienteMes";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
 const BINGO_CONTROL_CHANNEL = "lojo-bingo-control";
@@ -349,6 +349,9 @@ export default function StorePage() {
   const celebracionTimerRef = useRef(null);
   const trasCelebracionRef = useRef(null);
   const [celebracionFinAt, setCelebracionFinAt] = useState(0);
+  const celebracionFinAtRef = useRef(0);
+  // En la TV está saliendo la broma al líder: el TPV no da pistas.
+  const [bromaEnTV, setBromaEnTV] = useState(false);
   const [bolaBingo, setBolaBingo] = useState(null);
   const [procesandoBingo, setProcesandoBingo] = useState(false);
   const [procesandoSorteo, setProcesandoSorteo] = useState(false);
@@ -1272,15 +1275,43 @@ export default function StorePage() {
       setEstado(siguiente);
       return;
     }
-    const ms = duracionCelebracionClienteMes(resultadoClienteMes.puntos) + 300;
+    let ms = duracionCelebracionClienteMes(resultadoClienteMes.puntos) + 300;
+    setBromaEnTV(false);
     trasCelebracionRef.current = siguiente;
-    setCelebracionFinAt(Date.now() + ms);
+    celebracionFinAtRef.current = Date.now() + ms;
+    setCelebracionFinAt(celebracionFinAtRef.current);
     setEstado("cliente-mes-celebrando");
     if (celebracionTimerRef.current) window.clearTimeout(celebracionTimerRef.current);
     celebracionTimerRef.current = window.setTimeout(() => {
       celebracionTimerRef.current = null;
       setEstado(trasCelebracionRef.current || "cliente-mes");
     }, ms);
+
+    // Broma al líder activada y este cliente va 1º: en la TV sale la broma,
+    // que dura más; se alarga la espera del TPV para no cortarla.
+    if (Number(resultadoClienteMes.posicion) === 1) {
+      supabase
+        .from("cliente_mes_config")
+        .select("broma_lider, broma_revelar")
+        .eq("id", 1)
+        .maybeSingle()
+        .then(({ data, error }) => {
+          if (error || !data?.broma_lider || !celebracionTimerRef.current) return;
+          const msBroma = duracionBromaLider(data.broma_revelar !== false) + 300;
+          if (msBroma <= ms) return;
+          setBromaEnTV(true);
+          const extra = msBroma - ms;
+          ms = msBroma;
+          window.clearTimeout(celebracionTimerRef.current);
+          const quedan = Math.max(0, celebracionFinAtRef.current - Date.now()) + extra;
+          celebracionFinAtRef.current = Date.now() + quedan;
+          setCelebracionFinAt(celebracionFinAtRef.current);
+          celebracionTimerRef.current = window.setTimeout(() => {
+            celebracionTimerRef.current = null;
+            setEstado(trasCelebracionRef.current || "cliente-mes");
+          }, quedan);
+        });
+    }
   }
 
   // "Saltar animación" (o cerrar): corta la espera y, si avisarTV, también
@@ -1506,6 +1537,10 @@ export default function StorePage() {
         <section style={styles.card}>
           <div style={styles.celebraTPV}>
             <div style={styles.celebraTPVIcono}>🏆🛒📯</div>
+            {bromaEnTV ? (
+              <h2 style={{ margin: "4px 0 6px" }}>🖥️ ¡Mirad la TV grande! 😏</h2>
+            ) : (
+              <>
             <div style={styles.clienteMesGrande}>+{clienteMesResultado?.puntos}</div>
             <h2 style={{ margin: "4px 0 6px" }}>
               ¡Puntos para {clienteMesResultado?.nombre || entitlement?.customer_name || "el cliente"}!
@@ -1515,6 +1550,8 @@ export default function StorePage() {
               {clienteMesResultado?.total ? ` Lleva ${clienteMesResultado.total} puntos` : ""}
               {clienteMesResultado?.posicion ? ` y va ${clienteMesResultado.posicion}º.` : clienteMesResultado?.total ? "." : ""}
             </p>
+              </>
+            )}
             <BarraEsperaCelebracion finAt={celebracionFinAt} />
             <button type="button" onClick={saltarCelebracion} style={styles.saltarCelebraButton}>
               Saltar animación ›

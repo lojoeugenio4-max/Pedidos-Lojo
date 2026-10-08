@@ -14,12 +14,15 @@ import { leerVistaReposo } from "../utils/pantallaGrande";
 import CarreraClienteMes from "../components/clienteMes/CarreraClienteMes";
 import CeremoniaPodio from "../components/clienteMes/CeremoniaPodio";
 import CelebracionPuntosTV from "../components/clienteMes/CelebracionPuntosTV";
+import BromaLiderTV from "../components/clienteMes/BromaLiderTV";
 import { useClasificacionClienteMes } from "../utils/clienteMes";
 import logoLojo from "../assets/logo-lojo.jpg";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
 const SPIN_DURATION_MS = 9200;
 const CLAVE_CEREMONIA_VISTA = "lojo-tv-ceremonia-cliente-mes";
+// La broma al líder ya se hizo en esta TV (y se queda en −50 hasta quitarla).
+const CLAVE_BROMA_HECHA = "lojo-tv-broma-lider-hecha";
 // Tras terminar los juegos de un cliente, segundos hasta volver a Cliente del mes.
 const VUELTA_A_CLIENTE_MES_MS = 20000;
 
@@ -307,12 +310,65 @@ function DisplayPageContenido() {
   const clienteMesTV = useClasificacionClienteMes({ habilitado: estado === "clasificacion-reposo", refrescoMs: 30000 });
   // Celebración a pantalla completa al sumar puntos (CelebracionPuntosTV).
   const [celebracionClienteMes, setCelebracionClienteMes] = useState(null);
+  const celebracionActualRef = useRef(null);
+  celebracionActualRef.current = celebracionClienteMes;
   // Al terminar la celebración, la fila del cliente parpadea un rato en la
   // clasificación.
   const [resaltadoClienteMes, setResaltadoClienteMes] = useState(null);
   // Cada evento llega dos veces (localStorage + BroadcastChannel): así no se
   // repite la celebración ni se solapan los bocinazos.
   const ultimaCelebracionRef = useRef(0);
+  // BROMA AL LÍDER (Admin → Cliente del mes), solo en la TV. Con la broma
+  // activada la TV se ve normal; cuando el que va 1º pasa su QR sale
+  // BromaLiderTV (marcha atrás hasta −50). Si se revela al final, la broma
+  // se desactiva sola; si no, la clasificación lo deja en el puesto 10 con
+  // −50 hasta que se quite en el Admin.
+  const [bromaLider, setBromaLider] = useState({ activa: false, revelar: true });
+  const bromaLiderRef = useRef(bromaLider);
+  bromaLiderRef.current = bromaLider;
+  const [bromaHecha, setBromaHecha] = useState(() => {
+    try {
+      return localStorage.getItem(CLAVE_BROMA_HECHA) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const bromaHechaRef = useRef(bromaHecha);
+  bromaHechaRef.current = bromaHecha;
+  function marcarBromaHecha(valor) {
+    setBromaHecha(valor);
+    try {
+      if (valor) localStorage.setItem(CLAVE_BROMA_HECHA, "1");
+      else localStorage.removeItem(CLAVE_BROMA_HECHA);
+    } catch {
+      // sin localStorage: se pierde al recargar la TV
+    }
+  }
+  useEffect(() => {
+    let vivo = true;
+    const leer = async () => {
+      const { data, error } = await supabase
+        .from("cliente_mes_config")
+        .select("broma_lider, broma_revelar")
+        .eq("id", 1)
+        .maybeSingle();
+      if (!vivo || error) return;
+      setBromaLider({ activa: Boolean(data?.broma_lider), revelar: data?.broma_revelar !== false });
+    };
+    leer();
+    const id = window.setInterval(leer, 15000);
+    return () => {
+      vivo = false;
+      window.clearInterval(id);
+    };
+  }, []);
+  // Al quitar la broma, la próxima vez vuelve a empezar desde cero.
+  useEffect(() => {
+    if (!bromaLider.activa && bromaHecha) marcarBromaHecha(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bromaLider.activa]);
+  const datosClienteMesRef = useRef(null);
+  datosClienteMesRef.current = clienteMesTV.datos;
   // Ceremonia de los cofres del podio (cierre del mes). Se ve una vez por
   // cierre en esta TV; desde "Pedidos recibidos" se puede repetir.
   const [ceremonia, setCeremonia] = useState(null);
@@ -354,10 +410,20 @@ function DisplayPageContenido() {
   const temporizadorVueltaRef = useRef(null);
   clienteMesTVRef.current = clienteMesTV.recargar;
   function terminarCelebracionClienteMes() {
-    setCelebracionClienteMes((actual) => {
-      if (actual) setResaltadoClienteMes({ nombre: actual.nombre, id: actual.id });
-      return null;
-    });
+    const actual = celebracionActualRef.current;
+    if (actual?.broma) {
+      if (actual.revelar) {
+        // Revelada: la broma se apaga sola y todo vuelve a ser normal.
+        setBromaLider((b) => ({ ...b, activa: false }));
+        supabase.rpc("admin_cliente_mes_broma", { p_activa: false }).then(({ error }) => {
+          if (error) console.warn("No se pudo desactivar la broma al terminar:", error);
+        });
+      } else {
+        marcarBromaHecha(true);
+      }
+    }
+    if (actual) setResaltadoClienteMes({ nombre: actual.nombre, id: actual.id });
+    setCelebracionClienteMes(null);
   }
   useEffect(() => {
     if (!resaltadoClienteMes) return undefined;
@@ -542,6 +608,12 @@ function DisplayPageContenido() {
     // Se pasa a la carrera al momento (si había en pantalla el juego del
     // cliente anterior, ya ha terminado) para que se vea la celebración; si
     // este cliente elige luego Bingo o Sorteo, la TV cambia a ese juego.
+    // Broma al líder activada/desactivada desde el Admin (mismo ordenador).
+    if (event.type === "cliente-mes-broma") {
+      setBromaLider({ activa: Boolean(payload.activa), revelar: payload.revelar !== false });
+      return;
+    }
+
     // El TPV puede saltarse la celebración ("Saltar animación").
     if (event.type === "cliente-mes-saltar") {
       terminarCelebracionClienteMes();
@@ -560,7 +632,13 @@ function DisplayPageContenido() {
       }
       juegoEnPantallaRef.current = false;
       setEstado("clasificacion-reposo");
-      setCelebracionClienteMes({ ...payload, id: Date.now() });
+      // ¿Es el que iba 1º y la broma está preparada? Se mira la clasificación
+      // que había en pantalla ANTES de sumar este pedido.
+      const broma = bromaLiderRef.current;
+      const liderAntes = datosClienteMesRef.current?.filas?.[0]?.nombre || null;
+      const esLider = liderAntes ? liderAntes === payload.nombre : Number(payload.posicion) === 1;
+      const esBroma = broma.activa && !bromaHechaRef.current && esLider;
+      setCelebracionClienteMes({ ...payload, id: Date.now(), broma: esBroma, revelar: broma.revelar });
       clienteMesTVRef.current?.();
       return;
     }
@@ -768,6 +846,16 @@ function DisplayPageContenido() {
   // CLIENTE DEL MES: celebración de puntos a pantalla completa, por encima
   // de cualquier otra vista (el TPV espera a que termine antes de seguir
   // con Bingo o Sorteo).
+  if (celebracionClienteMes?.broma) {
+    return (
+      <BromaLiderTV
+        key={celebracionClienteMes.id}
+        celebracion={celebracionClienteMes}
+        revelar={celebracionClienteMes.revelar}
+        onFin={terminarCelebracionClienteMes}
+      />
+    );
+  }
   if (celebracionClienteMes) {
     return (
       <CelebracionPuntosTV
@@ -809,6 +897,7 @@ function DisplayPageContenido() {
         maxFilas={10}
         cargando={clienteMesTV.cargando}
         celebracion={resaltadoClienteMes}
+        broma={bromaLider.activa && bromaHecha && !bromaLider.revelar}
       />
     );
   }

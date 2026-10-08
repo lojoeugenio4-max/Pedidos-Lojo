@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import CarreraClienteMes from "../components/clienteMes/CarreraClienteMes";
 import { cargarClasificacionClienteMes, nombreMes } from "../utils/clienteMes";
+import { enviarEventoDisplay } from "../utils/pantallaGrande";
 
 function primerDiaMes(desplazamiento = 0) {
   const hoy = new Date();
@@ -46,6 +47,7 @@ export default function ClienteMes() {
   const [cargandoDatos, setCargandoDatos] = useState(false);
   const [borrando, setBorrando] = useState(false);
   const [probandoCierre, setProbandoCierre] = useState(false);
+  const [cambiandoBroma, setCambiandoBroma] = useState(false);
 
   useEffect(() => {
     cargarConfig();
@@ -85,6 +87,29 @@ export default function ClienteMes() {
       if (!silencioso) setError("No se ha podido cargar la clasificación.");
     } finally {
       if (!silencioso) setCargandoDatos(false);
+    }
+  }
+
+  // Broma al líder: cuando el 1º pase su QR, la TV le hace marcha atrás
+  // hasta −50. «revelar»: al final sale «¡ES BROMA!» y se apaga sola.
+  async function cambiarBroma(activa, revelar = config.broma_revelar !== false) {
+    setCambiandoBroma(true);
+    setError("");
+    try {
+      const { error: rpcError } = await supabase.rpc("admin_cliente_mes_broma", { p_activa: activa, p_revelar: revelar });
+      if (rpcError) throw rpcError;
+      setConfig((actual) => ({ ...actual, broma_lider: activa, broma_revelar: revelar }));
+      enviarEventoDisplay("cliente-mes-broma", { activa, revelar });
+      setAviso(
+        activa
+          ? "😜 Broma preparada: saltará en la TV cuando el 1º pase su QR"
+          : "Broma quitada: la TV vuelve a los puntos reales ✓"
+      );
+    } catch (err) {
+      console.error(err);
+      setError("No se ha podido cambiar la broma. ¿Has ejecutado cliente_mes_broma.sql en Supabase?");
+    } finally {
+      setCambiandoBroma(false);
     }
   }
 
@@ -319,6 +344,40 @@ export default function ClienteMes() {
                   </button>
                 </div>
               )}
+            </div>
+            <div style={{ ...reglaBox, marginTop: 14, ...(config.broma_lider ? { border: "2px solid #ef4444" } : {}) }}>
+              <strong>😜 Broma al líder (solo en la TV grande)</strong>
+              <p style={texto}>
+                Con la broma preparada, la TV se ve normal. Cuando <strong>el que va 1º pase su QR</strong>, en lugar de la
+                celebración normal su carrito mete la marcha atrás («¿DÓNDE VAS, MELÓN?») hasta <strong>−50 puntos</strong> y
+                «VA 10º». Sus puntos reales no se tocan: el pedido suma de verdad y en los móviles y aquí se ve todo normal.
+              </p>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 700, color: "#374151" }}>
+                <input
+                  type="checkbox"
+                  checked={config.broma_revelar !== false}
+                  disabled={cambiandoBroma}
+                  onChange={(e) => cambiarBroma(Boolean(config.broma_lider), e.target.checked)}
+                />
+                Al final, revelar «¡ES BROMA!» y enseñar sus puntos reales (la broma se quita sola).
+              </label>
+              {config.broma_revelar === false && (
+                <p style={texto}>
+                  Sin revelar: después de la broma la TV lo deja en el puesto 10 con −50 hasta que pulses «Quitar la broma».
+                </p>
+              )}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+                {config.broma_lider ? (
+                  <button type="button" style={{ ...boton, background: "#dc2626" }} onClick={() => cambiarBroma(false)} disabled={cambiandoBroma}>
+                    {cambiandoBroma ? "Quitando..." : "✋ Quitar la broma y restaurar"}
+                  </button>
+                ) : (
+                  <button type="button" style={botonSecundario} onClick={() => cambiarBroma(true)} disabled={cambiandoBroma}>
+                    {cambiandoBroma ? "Activando..." : "😜 Preparar la broma en la TV"}
+                  </button>
+                )}
+                {config.broma_lider && <span style={{ color: "#dc2626", fontWeight: 800 }}>PREPARADA: saltará cuando el 1º pase su QR</span>}
+              </div>
             </div>
           </>
         )}
