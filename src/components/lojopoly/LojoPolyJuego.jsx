@@ -3,6 +3,7 @@ import { filaColumna } from "../../utils/lojopolyTablero";
 import { sonidoLojoPoly, TIEMPOS_TIRADA } from "../../utils/lojopolySonido";
 import { lanzarConfeti } from "../../utils/confetti";
 import { supabaseStorage } from "../../supabaseStorageClient";
+import "./lojopolyFuentes.css";
 
 // Tablero de LojoPoly, con el dado 3D y la ficha.
 //
@@ -33,14 +34,6 @@ function urlFoto(foto) {
   return supabaseStorage.storage.from("productos").getPublicUrl(foto).data.publicUrl;
 }
 
-function cargarFuentes() {
-  if (typeof document === "undefined" || document.getElementById("lojopoly-fuentes")) return;
-  const link = document.createElement("link");
-  link.id = "lojopoly-fuentes";
-  link.rel = "stylesheet";
-  link.href = "https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Fredoka:wght@400;500;600;700&display=swap";
-  document.head.appendChild(link);
-}
 
 const esperar = (ms) => new Promise((r) => window.setTimeout(r, ms));
 
@@ -87,7 +80,6 @@ export default function LojoPolyJuego({
 
   useEffect(() => {
     montado.current = true;
-    cargarFuentes();
     return () => {
       montado.current = false;
     };
@@ -320,7 +312,7 @@ export default function LojoPolyJuego({
         <div className="lp-tvlayout">
           <div className="lp-tv-tablero">{tableroJSX}</div>
           <aside className="lp-tv-panel">
-            <LogoLojoPoly tamano={64} />
+            <LogoLojoPoly tamano={64} cinta={false} dado />
             {clienteNombre && <div className="lp-tv-cliente">{clienteNombre}</div>}
             {pendientes !== null && (
               <div className="lp-tv-tiradas">
@@ -525,16 +517,31 @@ const CSS = `
 .lp-premio-entregado,.lp-premio-caducado{background:#f3f4f6;border-color:#e5e7eb}
 .lp-nota{font-size:13px;color:#6b7280;margin:14px 0 0;line-height:1.4}
 
-.lp-tvlayout{display:flex;gap:3vh;height:100vh;padding:3vh;background:repeating-conic-gradient(from 0deg at 50% 0%,rgba(255,255,255,.05) 0 6deg,transparent 6deg 14deg),radial-gradient(120% 70% at 50% 0%,var(--azul2),var(--azul) 70%);color:#fff;overflow:hidden}
-.lp-tv-tablero{height:100%;aspect-ratio:1;flex:none;max-width:62vw;display:flex;align-items:center}
-.lp-tv-panel{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2.4vh;overflow:hidden}
-.lp-tv-cliente{font-family:"Luckiest Guy","Arial Black",sans-serif;font-size:4.4vh;text-align:center;line-height:1.05;paint-order:stroke fill;-webkit-text-stroke:.12em var(--ink)}
-.lp-tv-tiradas{display:flex;flex-direction:column;align-items:center;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:.8vh 3vh;font-size:1.8vh;letter-spacing:.12em;text-transform:uppercase;font-weight:600}
-.lp-tv-tiradas strong{font-family:"Luckiest Guy","Arial Black",sans-serif;font-size:6vh;line-height:1;color:var(--gold);letter-spacing:0;paint-order:stroke fill;-webkit-text-stroke:.1em var(--ink)}
-.lp-tvlayout .lp-grupos{width:100%;grid-template-columns:1fr 1fr;gap:1.2vh}
-.lp-tvlayout .lp-grupo-cab{font-size:2.2vh;padding:.8vh 1.2vh}
-.lp-tvlayout .lp-grupo-cuenta{font-size:1.8vh}
-.lp-tvlayout .lp-grupo-premio{font-size:1.7vh;padding:.8vh 1.2vh}
+.lp-tvlayout{display:flex;gap:2.2vh;height:100vh;padding:2vh;background:repeating-conic-gradient(from 0deg at 50% 0%,rgba(255,255,255,.05) 0 6deg,transparent 6deg 14deg),radial-gradient(120% 70% at 50% 0%,var(--azul2),var(--azul) 70%);color:#fff;overflow:hidden}
+.lp-tv-tablero{flex:1;min-width:0;height:100%;display:flex}
+.lp-board-tv{aspect-ratio:auto;width:100%;height:100%;container-type:size}
+.lp-board-tv .lp-cell{font-size:calc(min(100cqw, 100cqh * 1.25) / var(--lado) / 9)}
+.lp-board-tv .lp-esp{font-size:calc(min(100cqw, 100cqh * 1.25) / var(--lado) / 8)}
+.lp-board-tv .lp-foto{padding:5% 4% 2%}
+.lp-board-tv .lp-nombre{-webkit-line-clamp:2;padding:0 4% 5%}
+.lp-board-tv .lp-check{top:22%;left:auto;right:4%;width:1.9em;height:1.9em}
+.lp-board-tv .lp-ficha{width:auto;height:42%;right:auto;left:5%;top:22%;bottom:auto}
+.lp-board-tv .lp-toss{--s:13cqmin}
+.lp-board-tv .lp-center{gap:3.5cqmin;padding:3cqmin}
+.lp-board-tv .lp-msg{font-size:3.4cqmin}
+.lp-board-tv .lp-cele-card{padding:5cqmin 6cqmin}
+.lp-board-tv .lp-cele-titulo{font-size:6cqmin}
+.lp-board-tv .lp-cele-premio{font-size:4cqmin;margin-top:2.5cqmin}
+.lp-board-tv .lp-cele-sub{font-size:3cqmin}
+.lp-tv-panel{flex:0 0 21vw;min-width:0;display:flex;flex-direction:column;align-items:center;gap:1.8vh;overflow:hidden;padding-top:1vh}
+.lp-tv-panel .lp-logo{font-size:min(6.2vh,3.3vw)!important}
+.lp-tv-cliente{font-family:"Luckiest Guy","Arial Black",sans-serif;font-size:3.6vh;text-align:center;line-height:1.05;paint-order:stroke fill;-webkit-text-stroke:.12em var(--ink);margin-top:.6vh}
+.lp-tv-tiradas{display:flex;align-items:center;gap:1.4vh;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:.4vh 2.4vh;font-size:1.7vh;letter-spacing:.12em;text-transform:uppercase;font-weight:600}
+.lp-tv-tiradas strong{font-family:"Luckiest Guy","Arial Black",sans-serif;font-size:5vh;line-height:1;color:var(--gold);letter-spacing:0;paint-order:stroke fill;-webkit-text-stroke:.1em var(--ink);margin-top:.5vh}
+.lp-tvlayout .lp-grupos{width:100%;grid-template-columns:1fr;gap:.9vh}
+.lp-tvlayout .lp-grupo-cab{font-size:2.1vh;padding:.6vh 1.2vh}
+.lp-tvlayout .lp-grupo-cuenta{font-size:1.7vh}
+.lp-tvlayout .lp-grupo-premio{font-size:1.6vh;padding:.6vh 1.2vh}
 .lp-root-tpv .lp-board{max-width:520px;margin:0 auto}
 
 /* ---------- Móvil: mismo estilo que el boceto ---------- */
