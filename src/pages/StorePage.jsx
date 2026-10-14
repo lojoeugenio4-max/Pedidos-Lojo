@@ -10,6 +10,7 @@ import { abrirPantallaGrande } from "../utils/pantallaGrande";
 import PedidosExportar from "../admin/PedidosExportar";
 import { prepararVueltaTrasJugar } from "../admin/QrPendientes";
 import { duracionAnimacionPuntosClienteMes, duracionBromaLider } from "../utils/clienteMes";
+import LojoPolyJuego from "../components/lojopoly/LojoPolyJuego";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
 const BINGO_CONTROL_CHANNEL = "lojo-bingo-control";
@@ -355,6 +356,11 @@ export default function StorePage() {
   const [bolaBingo, setBolaBingo] = useState(null);
   const [procesandoBingo, setProcesandoBingo] = useState(false);
   const [procesandoSorteo, setProcesandoSorteo] = useState(false);
+  // LojoPoly: tablero del cliente, última tirada y si el dado está rodando.
+  const [lojopolyTablero, setLojopolyTablero] = useState(null);
+  const [lojopolyTirada, setLojopolyTirada] = useState(null);
+  const [lojopolyRodando, setLojopolyRodando] = useState(false);
+  const [lojopolyResultado, setLojopolyResultado] = useState("");
   const [bomboGirando, setBomboGirando] = useState(false);
   // Además del estado (que solo sirve para pintar la UI), guardamos el
   // mismo valor en una ref. El estado, al leerse dentro de una función
@@ -495,7 +501,7 @@ export default function StorePage() {
       }
 
       setMensaje(`Bola ${message.ball_number} registrada correctamente.`);
-      setEstado((entitlement?.roulette_available || entitlement?.sorteo_available) ? "game-choice" : "bingo-result");
+      setEstado((entitlement?.roulette_available || entitlement?.sorteo_available || entitlement?.lojopoly_available) ? "game-choice" : "bingo-result");
     }
 
     let channel;
@@ -515,7 +521,7 @@ export default function StorePage() {
       channel?.close?.();
       window.removeEventListener("storage", handleStorage);
     };
-  }, [codigo, entitlement?.code, entitlement?.roulette_available, entitlement?.sorteo_available]);
+  }, [codigo, entitlement?.code, entitlement?.roulette_available, entitlement?.sorteo_available, entitlement?.lojopoly_available]);
 
   useEffect(() => {
     const codeFromUrl = extraerCodigoQr(
@@ -623,6 +629,35 @@ export default function StorePage() {
       }
     }
 
+    // LojoPoly va en su propia tabla (lojopoly_pedidos): se pregunta aparte
+    // si a este QR le quedan tiradas. Un fallo aquí nunca bloquea el resto.
+    const estadoLojoPoly = await consultarLojoPoly(code);
+    if (!unifiedError && unified?.ok && estadoLojoPoly) {
+      unified = {
+        ...unified,
+        lojopoly_available: true,
+        lojopoly_pendientes: estadoLojoPoly.pendientes,
+      };
+    }
+
+    // QR al que solo le quedan tiradas de LojoPoly (validate_game_qr lo da
+    // por usado porque no conoce LojoPoly): se abre igualmente.
+    if (estadoLojoPoly && !(!unifiedError && unified?.ok)) {
+      const soloLojoPoly = {
+        ok: true,
+        code,
+        order_id: estadoLojoPoly.order_id,
+        customer_name: estadoLojoPoly.cliente_nombre,
+        lojopoly_available: true,
+        lojopoly_pendientes: estadoLojoPoly.pendientes,
+      };
+      setCodigo(code);
+      setEntitlement(soloLojoPoly);
+      notificarQrLeido({ orderId: estadoLojoPoly.order_id, code });
+      setEstado("lojopoly-ready");
+      return;
+    }
+
     if (!unifiedError && unified?.ok) {
       setCodigo(code);
       setEntitlement(unified);
@@ -701,6 +736,7 @@ export default function StorePage() {
         unified.roulette_available,
         unified.bingo_available,
         unified.sorteo_available,
+        unified.lojopoly_available,
       ].filter(Boolean).length;
 
       // Pedido que solo traía Cliente del mes: no hay nada más que jugar.
@@ -716,7 +752,9 @@ export default function StorePage() {
             ? "bingo-ready"
             : unified.sorteo_available
               ? "sorteo-ready"
-              : "ready",
+              : unified.lojopoly_available
+                ? "lojopoly-ready"
+                : "ready",
         resultadoClienteMes
       );
       return;
@@ -1085,7 +1123,7 @@ export default function StorePage() {
       // Si queda Ruleta o Sorteo por jugar, se ofrece "ELEGIR SIGUIENTE
       // JUEGO" (antes solo se miraba la Ruleta y el Sorteo se perdía).
       setEstado(
-        entitlement?.roulette_available || entitlement?.sorteo_available
+        entitlement?.roulette_available || entitlement?.sorteo_available || entitlement?.lojopoly_available
           ? "bingo-result-with-roulette"
           : "bingo-result"
       );
@@ -1211,11 +1249,12 @@ export default function StorePage() {
     setPremioObjetivo(null);
     setMensaje("");
 
-    if (entitlement?.bingo_available || entitlement?.sorteo_available) {
+    if (entitlement?.bingo_available || entitlement?.sorteo_available || entitlement?.lojopoly_available) {
       const juegosDisponibles = [
         entitlement?.roulette_available,
         entitlement?.bingo_available,
         entitlement?.sorteo_available,
+        entitlement?.lojopoly_available,
       ].filter(Boolean).length;
 
       setEstado(
@@ -1223,7 +1262,9 @@ export default function StorePage() {
           ? "game-choice"
           : entitlement?.bingo_available
             ? "bingo-ready"
-            : "sorteo-ready"
+            : entitlement?.sorteo_available
+              ? "sorteo-ready"
+              : "lojopoly-ready"
       );
       return;
     }
@@ -1271,6 +1312,86 @@ export default function StorePage() {
     } finally {
       setProcesandoSorteo(false);
     }
+  }
+
+  // ---------------- LojoPoly ----------------
+  async function consultarLojoPoly(code) {
+    try {
+      const { data, error } = await supabase.rpc("lojopoly_estado_qr", { p_code: code });
+      if (error) throw error;
+      return data?.ok && Number(data.pendientes) > 0 ? data : null;
+    } catch (err) {
+      // Si la migración de LojoPoly aún no está aplicada, se ignora.
+      console.warn("No se pudo comprobar LojoPoly para este QR:", err);
+      return null;
+    }
+  }
+
+  async function abrirLojoPoly() {
+    if (!entitlement?.code) return;
+    setMensaje("");
+    setLojopolyTirada(null);
+    setLojopolyResultado("");
+    try {
+      const { data, error } = await supabase.rpc("lojopoly_tablero_qr", { p_code: entitlement.code });
+      if (error) throw error;
+      if (!data?.ok) throw new Error("No se encontró el tablero de LojoPoly de este pedido.");
+      setLojopolyTablero(data);
+      setEstado("lojopoly");
+      enviarEventoDisplay("lojopoly", {
+        tablero: data,
+        clienteNombre: data.cliente_nombre || entitlement.customer_name || "",
+        pendientes: entitlement.lojopoly_pendientes ?? null,
+      });
+    } catch (err) {
+      console.error("No se pudo abrir LojoPoly:", err);
+      setMensaje(err?.message || "No se pudo abrir LojoPoly.");
+      setEstado("error");
+    }
+  }
+
+  async function tirarLojoPoly() {
+    if (!entitlement?.code || lojopolyRodando) return;
+    setLojopolyRodando(true);
+    setLojopolyResultado("");
+    try {
+      const { data, error } = await supabase.rpc("lojopoly_tirar_qr", { p_code: entitlement.code });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.mensaje || "No se pudo tirar el dado.");
+
+      const tirada = { ...data, token: `${Date.now()}-${Math.random()}` };
+      const pendientes = Number(data.pendientes) || 0;
+      setEntitlement((actual) =>
+        actual ? { ...actual, lojopoly_pendientes: pendientes, lojopoly_available: pendientes > 0 } : actual
+      );
+      setLojopolyTirada(tirada);
+      enviarEventoDisplay("lojopoly-tirada", {
+        tirada,
+        clienteNombre: lojopolyTablero?.cliente_nombre || entitlement.customer_name || "",
+        pendientes,
+      });
+    } catch (err) {
+      console.error("Error en la tirada de LojoPoly:", err);
+      setLojopolyRodando(false);
+      setLojopolyResultado(err?.message || "No se pudo tirar el dado.");
+    }
+  }
+
+  function terminarTiradaLojoPoly(tirada) {
+    setLojopolyRodando(false);
+    setLojopolyTablero(tirada.tablero || lojopolyTablero);
+    const nombre = tirada.casilla?.nombre || "";
+    const textos = {
+      nueva: `Casilla nueva: ${nombre}`,
+      repetida: `Casilla repetida: ${nombre}`,
+      grupo_completado: `¡GRUPO ${tirada.casilla?.grupo_nombre || ""} COMPLETADO! Entregar: ${tirada.premio?.texto || tirada.casilla?.grupo_premio || "premio del grupo"}`,
+      premio_instantaneo: `Premio instantáneo: ${tirada.premio?.texto || ""}. Entregar en caja.`,
+      sin_premio: "Casilla especial sin premio esta vez.",
+      descanso: "Descanso.",
+      salida: "Salida.",
+    };
+    const extra = tirada.paso_salida && tirada.tirada_extra ? " Ha pasado por Salida: +1 tirada." : "";
+    setLojopolyResultado(`Dado: ${tirada.dado}. ${textos[tirada.resultado] || ""}${extra}`);
   }
 
   // Pasa a "siguiente" ya, o tras la celebración de la TV si el cliente
@@ -1342,6 +1463,10 @@ export default function StorePage() {
 
   function reset() {
     cancelarEsperaCelebracion(true);
+    setLojopolyTablero(null);
+    setLojopolyTirada(null);
+    setLojopolyRodando(false);
+    setLojopolyResultado("");
     stopSpinSound();
     setCodigo("");
     setEntrada(null);
@@ -1420,7 +1545,10 @@ export default function StorePage() {
       return;
     }
     const quedanJuegos = Boolean(
-      entitlement.bingo_available || entitlement.roulette_available || entitlement.sorteo_available
+      entitlement.bingo_available ||
+        entitlement.roulette_available ||
+        entitlement.sorteo_available ||
+        entitlement.lojopoly_available
     );
     if (quedanJuegos) {
       reset();
@@ -1652,13 +1780,13 @@ export default function StorePage() {
         </section>
       )}
 
-      {(estado === "game-choice" || estado === "bingo-ready" || estado === "sorteo-ready" || estado === "bingo-result" || estado === "bingo-result-with-roulette" || estado === "sorteo-result") && entitlement && (
+      {(estado === "game-choice" || estado === "bingo-ready" || estado === "sorteo-ready" || estado === "lojopoly-ready" || estado === "bingo-result" || estado === "bingo-result-with-roulette" || estado === "sorteo-result") && entitlement && (
         <section style={styles.card}>
           <h2 style={styles.cardTitle}>QR válido · Pedido identificado</h2>
           <p style={styles.info}>Cliente: <strong>{entitlement.customer_name || "sin nombre"}</strong></p>
           <p style={styles.info}>Pedido: <strong>{entitlement.order_id || "sin referencia"}</strong></p>
 
-          {(estado === "game-choice" || estado === "bingo-ready" || estado === "sorteo-ready") && (
+          {(estado === "game-choice" || estado === "bingo-ready" || estado === "sorteo-ready" || estado === "lojopoly-ready") && (
             <div style={styles.gameChoiceGrid}>
               {entitlement.bingo_available && (
                 <button type="button" onClick={consumirBingo} disabled={procesandoBingo} style={styles.bingoActionButton}>
@@ -1686,6 +1814,11 @@ export default function StorePage() {
               {entitlement.sorteo_available && (
                 <button type="button" onClick={consumirSorteo} disabled={procesandoSorteo} style={styles.sorteoActionButton}>
                   🎟️ {procesandoSorteo ? "REVELANDO NÚMERO..." : "VER NÚMERO DE SORTEO"}
+                </button>
+              )}
+              {entitlement.lojopoly_available && (
+                <button type="button" onClick={abrirLojoPoly} style={styles.lojopolyActionButton}>
+                  🎲 LOJOPOLY ({entitlement.lojopoly_pendientes} {Number(entitlement.lojopoly_pendientes) === 1 ? "tirada" : "tiradas"})
                 </button>
               )}
             </div>
@@ -1725,13 +1858,42 @@ export default function StorePage() {
               >
                 📺 Volver a Cliente del mes en pantalla grande
               </button>
-              {(entitlement.roulette_available || entitlement.bingo_available) ? (
+              {(entitlement.roulette_available || entitlement.bingo_available || entitlement.lojopoly_available) ? (
                 <button type="button" onClick={() => setEstado("game-choice")} style={styles.rouletteActionButton}>ELEGIR SIGUIENTE JUEGO ›</button>
               ) : (
                 <button type="button" onClick={finalizarPartida} style={styles.nextButton}>FINALIZAR ›</button>
               )}
             </div>
           )}
+        </section>
+      )}
+
+      {estado === "lojopoly" && entitlement && lojopolyTablero && (
+        <section style={styles.card}>
+          <h2 style={styles.cardTitle}>🎲 LojoPoly · {entitlement.customer_name || lojopolyTablero.cliente_nombre || "Cliente"}</h2>
+          <LojoPolyJuego
+            variante="tpv"
+            tablero={lojopolyTablero}
+            tirada={lojopolyTirada}
+            clienteNombre={entitlement.customer_name || ""}
+            onTerminado={terminarTiradaLojoPoly}
+          />
+          {lojopolyResultado && <p style={styles.lojopolyResultado}>{lojopolyResultado}</p>}
+          <div style={styles.gameChoiceGrid}>
+            {Number(entitlement.lojopoly_pendientes) > 0 ? (
+              <button type="button" onClick={tirarLojoPoly} disabled={lojopolyRodando} style={styles.lojopolyActionButton}>
+                🎲 {lojopolyRodando
+                  ? "EL DADO ESTÁ RODANDO..."
+                  : `TIRAR DADO (${entitlement.lojopoly_pendientes} ${Number(entitlement.lojopoly_pendientes) === 1 ? "tirada" : "tiradas"})`}
+              </button>
+            ) : lojopolyRodando ? (
+              <button type="button" disabled style={styles.lojopolyActionButton}>🎲 EL DADO ESTÁ RODANDO...</button>
+            ) : entitlement.roulette_available || entitlement.bingo_available || entitlement.sorteo_available ? (
+              <button type="button" onClick={() => setEstado("game-choice")} style={styles.rouletteActionButton}>ELEGIR SIGUIENTE JUEGO ›</button>
+            ) : (
+              <button type="button" onClick={finalizarPartida} style={styles.nextButton}>FINALIZAR ›</button>
+            )}
+          </div>
         </section>
       )}
 
@@ -1961,6 +2123,29 @@ const styles = {
     fontSize: 20,
     fontWeight: 900,
     cursor: "pointer",
+  },
+  lojopolyActionButton: {
+    border: "3px solid #0b1140",
+    borderRadius: "16px",
+    padding: "18px 20px",
+    background: "linear-gradient(180deg, #ff4447, #f81a1e)",
+    color: "#fff",
+    fontSize: "22px",
+    fontWeight: 900,
+    letterSpacing: "0.03em",
+    cursor: "pointer",
+    boxShadow: "0 5px 0 #0b1140",
+  },
+  lojopolyResultado: {
+    margin: "14px 0 0",
+    padding: "12px 14px",
+    borderRadius: "12px",
+    background: "#fff7d6",
+    border: "2px solid #ffcc2e",
+    color: "#0b1140",
+    fontSize: "17px",
+    fontWeight: 800,
+    textAlign: "center",
   },
   sorteoActionButton: {
     border: 0,

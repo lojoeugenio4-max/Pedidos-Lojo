@@ -29,6 +29,7 @@ import CelebracionPremio from "./components/sorteo/CelebracionPremio";
 import SorteoDirecto from "./components/sorteo/SorteoDirecto";
 import AvisoSorteo from "./components/sorteo/AvisoSorteo";
 import MisNumerosSorteo from "./components/sorteo/MisNumerosSorteo";
+import LojoPolyJuego from "./components/lojopoly/LojoPolyJuego";
 import CarreraClienteMes from "./components/clienteMes/CarreraClienteMes";
 import PremioClienteMes from "./components/clienteMes/PremioClienteMes";
 import { puntosPedidoClienteMes, textoProximoClienteMes, useClasificacionClienteMes } from "./utils/clienteMes";
@@ -882,6 +883,9 @@ export default function App() {
   const [departamentosSorteoCliente, setDepartamentosSorteoCliente] = useState([]);
   const [mostrarJuegos, setMostrarJuegos] = useState(false);
   const [mostrarMiSorteo, setMostrarMiSorteo] = useState(false);
+  // LojoPoly: tablero del cliente (null si la campaña no está en juego para él).
+  const [tableroLojoPoly, setTableroLojoPoly] = useState(null);
+  const [mostrarLojoPoly, setMostrarLojoPoly] = useState(false);
   const [numerosSorteoCliente, setNumerosSorteoCliente] = useState([]);
   const [cargandoSorteo, setCargandoSorteo] = useState(false);
   const [errorSorteo, setErrorSorteo] = useState("");
@@ -901,6 +905,25 @@ export default function App() {
     refrescoMs: mostrarClienteMes ? 30000 : 120000,
   });
   const clienteMesVisible = Boolean(clienteMes.datos?.visible);
+  const lojopolyVisible = Boolean(tableroLojoPoly?.visible);
+
+  async function cargarTableroLojoPoly() {
+    if (!clienteToken) return;
+    try {
+      const { data, error } = await supabase.rpc("lojopoly_tablero_cliente", { p_token: clienteToken });
+      if (error) throw error;
+      setTableroLojoPoly(data?.visible ? data : null);
+    } catch (err) {
+      // Sin la migración de LojoPoly, o sin conexión: simplemente no se muestra.
+      console.warn("No se pudo cargar LojoPoly:", err);
+      setTableroLojoPoly(null);
+    }
+  }
+
+  useEffect(() => {
+    cargarTableroLojoPoly();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteToken]);
   // Puntos de Cliente del mes que vale este pedido (5 / 3 / 1). Se suman
   // al pasar el QR en caja; el servidor lo vuelve a calcular y aplica la
   // regla de 1 puntuación por cliente cada 12 horas.
@@ -3923,13 +3946,16 @@ export default function App() {
     participacionBingo = null,
     participacionSorteo = null,
     clienteMesSuma = false,
+    lojopolySuma = false,
   }) {
     const bingoConseguido = pedidoCumpleBingo(participacionBingo);
     const ruletaConseguida = Boolean(participacionRuleta);
     const sorteoConseguido = sorteoCumpleVariedad(participacionSorteo);
 
     // Cliente del mes también necesita el QR: los puntos se suman al pasarlo.
-    if (!ruletaConseguida && !bingoConseguido && !sorteoConseguido && !clienteMesSuma) return null;
+    // LojoPoly guarda sus tiradas aparte (lojopoly_pedidos), pero también
+    // necesita el QR del pedido para poder tirar en caja.
+    if (!ruletaConseguida && !bingoConseguido && !sorteoConseguido && !clienteMesSuma && !lojopolySuma) return null;
 
     const participacionRuletaId =
       participacionRuleta?.id || participacionRuleta?.participation_id || null;
@@ -4046,6 +4072,29 @@ export default function App() {
     }
 
     return result;
+  }
+
+  async function registrarPedidoParaLojoPoly(itemsPedido, pedidoId) {
+    // El servidor decide las tiradas (artículos distintos en cajas, máximo
+    // por pedido y por día, campaña activa). Solo cuentan las cajas.
+    if (!clienteToken) return null;
+
+    const items = itemsPedido
+      .map((item) => ({
+        articulo_id: item?.product?.id ?? null,
+        cajas: Number(item.boxes || 0),
+        unidades: 0,
+      }))
+      .filter((item) => item.articulo_id && item.cajas > 0);
+
+    const { data, error } = await supabase.rpc("registrar_pedido_lojopoly", {
+      p_token: clienteToken,
+      p_order_id: pedidoId,
+      p_items: items,
+    });
+
+    if (error) throw error;
+    return data && typeof data === "object" ? data : null;
   }
 
   // Dictado por voz en el buscador. Lo que dice el cliente se escribe en
@@ -4330,6 +4379,7 @@ export default function App() {
     participacionBingo = null,
     participacionJuegos = null,
     participacionSorteo = null,
+    participacionLojopoly = null,
   }) {
     const esModificacion = pedidoEnviadoActivo;
     const ventana = calcularVentanaPedido(new Date());
@@ -4344,6 +4394,7 @@ export default function App() {
       participacionBingo,
       participacionJuegos,
       participacionSorteo,
+      participacionLojopoly,
       // El servidor decide si este pedido lleva Cliente del mes (solo el
       // primero en 12 horas): se mira lo que de verdad quedó guardado en el QR.
       clienteMesActivo: Boolean(clienteToken && normalizarRespuestaRpc(participacionJuegos)?.cliente_mes_eligible),
@@ -4607,6 +4658,17 @@ export default function App() {
       );
     }
 
+    let participacionLojopoly = null;
+    try {
+      participacionLojopoly = await conLimiteDeTiempo(
+        registrarPedidoParaLojoPoly(itemsPedido, pedidoIdEstable)
+      );
+    } catch (error) {
+      // Igual que el Sorteo: un fallo aquí nunca bloquea el envío del pedido.
+      console.error("No se pudo registrar el pedido para LojoPoly (se envía igualmente):", error);
+    }
+    const lojopolySuma = Boolean(participacionLojopoly?.eligible) && Number(participacionLojopoly?.tiradas) > 0;
+
     let participacionJuegos = null;
     // El QR común debe crearse para cualquier pedido que consiga Ruleta o Bingo.
     // No puede depender de que el cliente esté identificado: los pedidos anónimos
@@ -4621,7 +4683,7 @@ export default function App() {
       Boolean(participacionRuleta) ||
       pedidoCumpleBingo(participacionBingo) ||
       sorteoCumpleVariedad(participacionSorteo);
-    if (otrosJuegos || clienteMesSuma) {
+    if (otrosJuegos || clienteMesSuma || lojopolySuma) {
       try {
         participacionJuegos = await conLimiteDeTiempo(
           crearParticipacionJuegos({
@@ -4632,6 +4694,7 @@ export default function App() {
             participacionBingo,
             participacionSorteo,
             clienteMesSuma,
+            lojopolySuma,
           })
         );
       } catch (error) {
@@ -4675,7 +4738,9 @@ export default function App() {
       participacionBingo,
       participacionJuegos,
       participacionSorteo,
+      participacionLojopoly,
     });
+    if (lojopolySuma) cargarTableroLojoPoly();
   };
 
   const pushItems = Array.isArray(pushOferta?.articulos)
@@ -4950,6 +5015,25 @@ export default function App() {
                     <span style={styles.juegoTarjetaSubtitulo}>{motivoSorteoNoDisponible || "Aún no disponible"}</span>
                   )}
                 </button>
+                {lojopolyVisible && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMostrarJuegos(false);
+                      setMostrarLojoPoly(true);
+                      cargarTableroLojoPoly();
+                    }}
+                    style={{ ...styles.juegoTarjeta, ...styles.juegoTarjetaLojoPoly }}
+                  >
+                    <span style={styles.juegoTarjetaIcono}>🎲</span>
+                    <span style={styles.juegoTarjetaTitulo}>LojoPoly</span>
+                    <span style={styles.juegoTarjetaSubtitulo}>
+                      {Number(tableroLojoPoly?.tiradas_pendientes) > 0
+                        ? `${tableroLojoPoly.tiradas_pendientes} ${Number(tableroLojoPoly.tiradas_pendientes) === 1 ? "tirada" : "tiradas"} en tu QR`
+                        : `${(tableroLojoPoly?.mias || []).length} de ${(tableroLojoPoly?.casillas || []).filter((c) => c.tipo === "propiedad").length} casillas`}
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -4994,6 +5078,25 @@ export default function App() {
               )}
               {clienteMes.error && !clienteMes.datos && <div style={styles.bingoErrorBox}>{clienteMes.error}</div>}
               <CarreraClienteMes datos={clienteMes.datos} variante="movil" maxFilas={10} cargando={clienteMes.cargando} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mostrarLojoPoly && clienteIdentificado && tableroLojoPoly && (
+        <div style={styles.bingoOverlay} onClick={() => setMostrarLojoPoly(false)} role="presentation">
+          <div
+            style={{ ...styles.bingoModal, maxWidth: 640 }}
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="LojoPoly"
+          >
+            <button type="button" onClick={() => setMostrarLojoPoly(false)} style={styles.bingoCloseButton} aria-label="Cerrar LojoPoly">
+              <X size={24} />
+            </button>
+            <div style={styles.bingoModalBody}>
+              <LojoPolyJuego variante="movil" tablero={tableroLojoPoly} />
             </div>
           </div>
         </div>
@@ -5178,7 +5281,7 @@ export default function App() {
                   {/* Pestaña "Juegos" (Bingo + Sorteo en pantalla de selección),
                       ya disponible para todos los clientes identificados;
                       sustituye al antiguo botón "Mi Bingo" independiente. */}
-                  {(configuracionBingoCliente || configuracionSorteoCliente || clienteMesVisible) && (
+                  {(configuracionBingoCliente || configuracionSorteoCliente || clienteMesVisible || lojopolyVisible) && (
                     <button type="button" onClick={() => setMostrarJuegos(true)} style={styles.bingoButton}>
                       <Grid3X3 size={17} />
                       Juegos
@@ -8551,6 +8654,10 @@ const styles = {
   juegoTarjetaSorteo: {
     background: "linear-gradient(135deg, #059669, #064e3b)",
     boxShadow: "0 10px 26px rgba(5,150,105,.35)",
+  },
+  juegoTarjetaLojoPoly: {
+    background: "linear-gradient(135deg, #f81a1e, #0b22b8)",
+    boxShadow: "0 10px 26px rgba(248,26,30,.35)",
   },
   juegoTarjetaCapada: {
     background: "linear-gradient(135deg, #6b7280, #374151)",

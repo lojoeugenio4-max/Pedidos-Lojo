@@ -51,12 +51,17 @@ function construirBloqueParticipacion({
   participacionJuegos,
   participacionBingo,
   participacionSorteo,
+  participacionLojopoly = null,
   premio,
   clienteMesPuntos = 0,
   clienteMesActivo = false,
   clienteMesYaHoy = false,
 }) {
   const lines = [];
+
+  // LojoPoly: participacionLojopoly es el resultado de registrar_pedido_lojopoly.
+  const tiradasLojopoly = Math.max(0, Number(participacionLojopoly?.tiradas ?? 0));
+  const lojopolyConseguido = Boolean(participacionLojopoly?.eligible) && tiradasLojopoly > 0;
 
   const participacionJuegosNormalizada = normalizarRespuestaJuego(participacionJuegos);
   const participacionBingoNormalizada = normalizarRespuestaJuego(participacionBingo);
@@ -117,7 +122,8 @@ function construirBloqueParticipacion({
   // ver "ya lo ha jugado". Por eso el bloque con QR solo se pinta si de
   // verdad hay algo que jugar/revelar.
   const clienteMesSuma = Boolean(clienteMesActivo) || Number(clienteMesPuntos) > 0;
-  const hayAlgoJugable = numeroTiradas > 0 || bingoConseguido || sorteoConseguido || clienteMesSuma;
+  const hayAlgoJugable =
+    numeroTiradas > 0 || bingoConseguido || sorteoConseguido || lojopolyConseguido || clienteMesSuma;
 
   if (codigoJuegos && hayAlgoJugable) {
     const urlQr = construirUrlQr(codigoJuegos);
@@ -133,8 +139,8 @@ function construirBloqueParticipacion({
 
     const bannerLineas = [];
     bannerLineas.push(
-      numeroTiradas > 0 || bingoConseguido || sorteoConseguido
-        ? "🎉 *¡TIENES PARTICIPACIÓN EN RULETA/BINGO/SORTEO!* 🎉"
+      numeroTiradas > 0 || bingoConseguido || sorteoConseguido || lojopolyConseguido
+        ? "🎉 *¡TIENES PARTICIPACIÓN EN RULETA/BINGO/SORTEO/LOJOPOLY!* 🎉"
         : "🏆 *¡ESTE PEDIDO SUMA EN CLIENTE DEL MES!* 🏆"
     );
     if (numeroTiradas > 0) bannerLineas.push(`🎡 Ruleta: *${numeroTiradas} tirada${numeroTiradas === 1 ? "" : "s"}*`);
@@ -148,6 +154,12 @@ function construirBloqueParticipacion({
     if (sorteoConseguido) {
       bannerLineas.push(
         `🎟️ Al pasar el QR te asignaremos *${sorteoPlaysTotal} ${sorteoPlaysTotal === 1 ? "número" : "números"}* para que participes en el Sorteo`
+      );
+    }
+
+    if (lojopolyConseguido) {
+      bannerLineas.push(
+        `🎲 LojoPoly: al pasar el QR tirarás el dado *${tiradasLojopoly} ${tiradasLojopoly === 1 ? "vez" : "veces"}*`
       );
     }
 
@@ -218,6 +230,7 @@ export function construirTextoPedidoWhatsApp({
   participacionBingo = null,
   participacionJuegos = null,
   participacionSorteo = null,
+  participacionLojopoly = null,
   clienteMesPuntos = 0,
   clienteMesActivo = false,
   clienteMesYaHoy = false,
@@ -235,6 +248,7 @@ export function construirTextoPedidoWhatsApp({
       participacionJuegos,
       participacionBingo,
       participacionSorteo,
+      participacionLojopoly,
       premio,
       clienteMesPuntos,
       clienteMesActivo,

@@ -16,6 +16,7 @@ import {
 const VACIA = {
   nombre: "LojoPoly",
   activa: false,
+  solo_pruebas: true,
   fecha_inicio: "",
   fecha_fin: "",
   dias_recogida: 15,
@@ -40,6 +41,7 @@ export default function LojoPolyConfiguracion({ campana, onGuardado }) {
     setForm({
       nombre: campana.nombre || "LojoPoly",
       activa: Boolean(campana.activa),
+      solo_pruebas: campana.solo_pruebas ?? true,
       fecha_inicio: campana.fecha_inicio || "",
       fecha_fin: campana.fecha_fin || "",
       dias_recogida: campana.dias_recogida ?? 15,
@@ -70,6 +72,7 @@ export default function LojoPolyConfiguracion({ campana, onGuardado }) {
     const payload = {
       nombre: form.nombre.trim() || "LojoPoly",
       activa: form.activa,
+      solo_pruebas: form.solo_pruebas,
       fecha_inicio: form.fecha_inicio || null,
       fecha_fin: form.fecha_fin || null,
       dias_recogida: Math.max(0, Number(form.dias_recogida) || 0),
@@ -111,6 +114,11 @@ export default function LojoPolyConfiguracion({ campana, onGuardado }) {
       <label style={campoCheckbox}>
         <input id="lp-activa" type="checkbox" checked={form.activa} onChange={(e) => cambiar("activa", e.target.checked)} />
         <span>LojoPoly activo</span>
+      </label>
+
+      <label style={campoCheckbox}>
+        <input id="lp-pruebas" type="checkbox" checked={form.solo_pruebas} onChange={(e) => cambiar("solo_pruebas", e.target.checked)} />
+        <span>Solo clientes de pruebas (el resto de clientes no lo ve todavía)</span>
       </label>
 
       <div style={fila}>
