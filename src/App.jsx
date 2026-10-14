@@ -4987,7 +4987,7 @@ export default function App() {
                       : clienteMes.datos.yo.pedido_hoy && !clienteMes.datos.yo.hoy_cuenta
                         ? `🛒 Ya tienes un pedido que suma en Cliente del mes: los puntos se suman al pasar su QR en caja. ${textoProximoClienteMes(clienteMes.datos.yo.proximo_at)}`
                         : clienteMes.datos.yo.hoy_cuenta
-                        ? `✅ Ya tienes ${clienteMes.datos.yo.puntos_hoy} ${clienteMes.datos.yo.puntos_hoy === 1 ? "punto" : "puntos"} por tu último pedido. ${textoProximoClienteMes(clienteMes.datos.yo.proximo_at)}`
+                        ? `✅ Ya tienes ${clienteMes.datos.yo.puntos_hoy} ${clienteMes.datos.yo.puntos_hoy === 1 ? "punto" : "puntos"}${Number(clienteMes.datos.yo.extra_hoy) > 0 ? ` + ${clienteMes.datos.yo.extra_hoy} de regalo ⛽` : ""} por tu último pedido. ${textoProximoClienteMes(clienteMes.datos.yo.proximo_at)}`
                         : `🛒 Cada vez que pidas por la App (con 12 horas entre pedidos) sumas puntos al pasar el QR en caja: ${clienteMes.datos.puntos_alto}, ${clienteMes.datos.puntos_medio} o ${clienteMes.datos.puntos_base} según tu pedido.`}
                   </div>
                 </div>

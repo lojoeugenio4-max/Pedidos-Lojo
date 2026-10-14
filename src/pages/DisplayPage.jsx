@@ -15,6 +15,7 @@ import CarreraClienteMes from "../components/clienteMes/CarreraClienteMes";
 import CeremoniaPodio from "../components/clienteMes/CeremoniaPodio";
 import CelebracionPuntosTV from "../components/clienteMes/CelebracionPuntosTV";
 import BromaLiderTV from "../components/clienteMes/BromaLiderTV";
+import RepostajeTV from "../components/clienteMes/RepostajeTV";
 import { useClasificacionClienteMes } from "../utils/clienteMes";
 import logoLojo from "../assets/logo-lojo.jpg";
 
@@ -852,6 +853,17 @@ function DisplayPageContenido() {
         key={celebracionClienteMes.id}
         celebracion={celebracionClienteMes}
         revelar={celebracionClienteMes.revelar}
+        onFin={terminarCelebracionClienteMes}
+      />
+    );
+  }
+  // Repostaje extra (pocos puntos y del 16º para abajo): sale en lugar de la
+  // celebración normal, que ya enseña al principio los puntos del pedido.
+  if (celebracionClienteMes?.repostaje) {
+    return (
+      <RepostajeTV
+        key={celebracionClienteMes.id}
+        celebracion={celebracionClienteMes}
         onFin={terminarCelebracionClienteMes}
       />
     );

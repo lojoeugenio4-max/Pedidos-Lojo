@@ -144,3 +144,31 @@ export const BROMA_CM = { fin: 13400, revelacion: 18500, conRevelar: 27000, sinR
 export function duracionBromaLider(revelar) {
   return revelar ? BROMA_CM.conRevelar : BROMA_CM.sinRevelar;
 }
+
+// ---------------------------------------------------------------------
+// REPOSTAJE EXTRA (RepostajeTV): cuando un pedido suma menos de 5 puntos y
+// el cliente va del 16º para abajo, el servidor le regala 5 puntos de
+// "gasolina" (cliente_mes_canjear_qr devuelve repostaje = true). En la TV
+// sale el repostaje EN LUGAR de la celebración normal (ya enseña al
+// principio los puntos del pedido) y el TPV espera lo que dura.
+// ---------------------------------------------------------------------
+export const REPOSTAJE_CM = {
+  resultado: 800, // nombre + "+3 PUNTOS · VA 18º"
+  reserva: 2700, // ¡DEPÓSITO EN RESERVA!
+  boxes: 5000, // entra el surtidor
+  engancha: 6100, // manguera puesta
+  chorros: 7000, // primer chorro
+  paso: 1100, // un chorro = 1 punto
+  final: 9500, // desde el último chorro hasta el final
+};
+
+export function duracionRepostajeClienteMes(extra = 5) {
+  const n = Math.max(1, Math.min(10, Math.round(Number(extra) || 5)));
+  return REPOSTAJE_CM.chorros + n * REPOSTAJE_CM.paso + REPOSTAJE_CM.final;
+}
+
+// Duración de lo que sale en la TV al sumar puntos (repostaje o normal).
+export function duracionAnimacionPuntosClienteMes(resultado) {
+  if (resultado?.repostaje) return duracionRepostajeClienteMes(resultado.puntos_extra);
+  return duracionCelebracionClienteMes(resultado?.puntos);
+}

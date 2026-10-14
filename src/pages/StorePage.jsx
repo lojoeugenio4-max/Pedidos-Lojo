@@ -9,7 +9,7 @@ import { notificarPremioBingo } from "../utils/premiosBingoEvento";
 import { abrirPantallaGrande } from "../utils/pantallaGrande";
 import PedidosExportar from "../admin/PedidosExportar";
 import { prepararVueltaTrasJugar } from "../admin/QrPendientes";
-import { duracionBromaLider, duracionCelebracionClienteMes } from "../utils/clienteMes";
+import { duracionAnimacionPuntosClienteMes, duracionBromaLider } from "../utils/clienteMes";
 
 const DISPLAY_EVENT_KEY = "lojo-ruleta-display-event";
 const BINGO_CONTROL_CHANNEL = "lojo-bingo-control";
@@ -653,6 +653,11 @@ export default function StorePage() {
             puntos: rawClienteMes.puntos,
             total: rawClienteMes.total,
             posicion: rawClienteMes.posicion,
+            // Repostaje extra: +5 de regalo por sumar poco yendo del 16º abajo.
+            repostaje: Boolean(rawClienteMes.repostaje),
+            puntos_extra: rawClienteMes.puntos_extra,
+            total_antes: rawClienteMes.total_antes,
+            posicion_antes: rawClienteMes.posicion_antes,
           });
         }
       } catch (err) {
@@ -1275,7 +1280,7 @@ export default function StorePage() {
       setEstado(siguiente);
       return;
     }
-    let ms = duracionCelebracionClienteMes(resultadoClienteMes.puntos) + 300;
+    let ms = duracionAnimacionPuntosClienteMes(resultadoClienteMes) + 300;
     setBromaEnTV(false);
     trasCelebracionRef.current = siguiente;
     celebracionFinAtRef.current = Date.now() + ms;
@@ -1541,12 +1546,17 @@ export default function StorePage() {
               <h2 style={{ margin: "4px 0 6px" }}>🖥️ ¡Mirad la TV grande! 😏</h2>
             ) : (
               <>
-            <div style={styles.clienteMesGrande}>+{clienteMesResultado?.puntos}</div>
+            <div style={styles.clienteMesGrande}>
+              +{clienteMesResultado?.puntos}
+              {clienteMesResultado?.repostaje ? ` ⛽+${clienteMesResultado?.puntos_extra || 5}` : ""}
+            </div>
             <h2 style={{ margin: "4px 0 6px" }}>
               ¡Puntos para {clienteMesResultado?.nombre || entitlement?.customer_name || "el cliente"}!
             </h2>
             <p style={styles.info}>
-              🖥️ Mirad la TV grande: el carrito avanza con un bocinazo por cada punto.
+              {clienteMesResultado?.repostaje
+                ? `🖥️ Mirad la TV grande: ¡repostaje! Se le regalan ${clienteMesResultado?.puntos_extra || 5} puntos extra de gasolina.`
+                : "🖥️ Mirad la TV grande: el carrito avanza con un bocinazo por cada punto."}
               {clienteMesResultado?.total ? ` Lleva ${clienteMesResultado.total} puntos` : ""}
               {clienteMesResultado?.posicion ? ` y va ${clienteMesResultado.posicion}º.` : clienteMesResultado?.total ? "." : ""}
             </p>
@@ -1860,10 +1870,12 @@ function textoClienteMes(r) {
       r.motivo === "mejorado"
         ? `+${pts(r.puntos)} para ${r.nombre || "el cliente"}: este pedido vale ${r.valor_pedido} y mejora al que ya tenía hoy.`
         : `+${pts(r.puntos)} para ${r.nombre || "el cliente"}.`;
-    return `${base} Lleva ${pts(r.total)}${r.posicion ? ` y va ${r.posicion}º` : ""}.`;
+    const extra = r.repostaje ? ` ⛽ Repostaje: +${pts(r.puntos_extra || 5)} extra de regalo.` : "";
+    return `${base}${extra} Lleva ${pts(r.total)}${r.posicion ? ` y va ${r.posicion}º` : ""}.`;
   }
   if (r.motivo === "ya_sumado_hoy") {
-    return `Ya sumó ${pts(r.puntos_hoy)} con otro pedido hace menos de 12 horas: solo suma un pedido cada 12 horas.`;
+    const regalo = Number(r.extra_hoy) > 0 ? ` + ${r.extra_hoy} de regalo` : "";
+    return `Ya sumó ${pts(r.puntos_hoy)}${regalo} con otro pedido hace menos de 12 horas: solo suma un pedido cada 12 horas.`;
   }
   if (r.motivo === "ya_canjeado") return "Los puntos de este pedido ya se sumaron.";
   return "Este pedido no suma puntos.";
