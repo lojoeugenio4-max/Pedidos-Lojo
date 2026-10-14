@@ -539,13 +539,13 @@ const CSS = `
 
 /* ---------- Móvil: mismo estilo que el boceto ---------- */
 .lp-movil{margin:-4px;padding:14px 12px 18px;border-radius:18px;color:#fff;background:repeating-conic-gradient(from 0deg at 50% 0%,rgba(255,255,255,.05) 0 6deg,transparent 6deg 14deg),radial-gradient(120% 70% at 50% 0%,var(--azul2),var(--azul) 70%)}
-.lp-movil-cab{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 4px 16px}
+.lp-movil-cab{display:flex;flex-direction:column;align-items:flex-start;gap:12px;padding:6px 56px 16px 4px}
 .lp-movil-cab .lp-logo{transform:rotate(-4deg)}
 .lp-mini-die{width:.62em;height:.62em;margin-left:.06em;border-radius:.14em;background:#fff;transform:rotate(14deg) translateY(-.08em);box-shadow:0 0 0 .05em var(--ink),.05em .07em 0 .03em var(--ink);display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:.08em}
 .lp-mini-die i{border-radius:50%;background:var(--red);margin:.02em}
 .lp-mini-die i:nth-child(2),.lp-mini-die i:nth-child(4),.lp-mini-die i:nth-child(6),.lp-mini-die i:nth-child(8){visibility:hidden}
-.lp-movil-tiradas{flex:none;text-align:center;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#c8cef3;font-weight:600;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:6px 14px}
-.lp-movil-tiradas strong{display:block;font-family:"Luckiest Guy","Arial Black",sans-serif;font-weight:400;font-size:34px;line-height:1;color:var(--gold);letter-spacing:0;paint-order:stroke fill;-webkit-text-stroke:4px var(--ink);margin-top:2px}
+.lp-movil-tiradas{display:flex;align-items:center;gap:10px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#c8cef3;font-weight:600;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:4px 16px 4px 14px}
+.lp-movil-tiradas strong{display:block;font-family:"Luckiest Guy","Arial Black",sans-serif;font-weight:400;font-size:34px;line-height:1;color:var(--gold);letter-spacing:0;paint-order:stroke fill;-webkit-text-stroke:4px var(--ink);margin-top:3px}
 .lp-board-movil{gap:2px;padding:4px}
 .lp-board-movil .lp-prop{padding:0;border:0;margin:0;font:inherit;font-size:calc(100cqw / var(--lado) / 6.6);font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .lp-board-movil .lp-band{height:22%}
