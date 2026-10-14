@@ -185,3 +185,43 @@ export const repFuegos = seguro((n = 6) => {
     ruido(t + 0.35, 0.5, 0.12, { tipo: "lowpass", f: 1500, fFin: 200 });
   }
 });
+
+// Frenazo seco al salir la señal de STOP
+export const repFrenazo = seguro(() => {
+  ruido(0, 0.9, 0.22, { tipo: "bandpass", f: 3200, fFin: 900 });
+  tono(88, 0, 0.8, { tipo: "sawtooth", vol: 0.04, deslizar: -10, vibrato: 18 });
+  ruido(0.85, 0.25, 0.3, { tipo: "lowpass", f: 700 });
+  tono(33, 0.85, 0.3, { tipo: "triangle", vol: 0.3, deslizar: -5 });
+});
+
+// Sirena de policía (sube y baja), "dur" segundos
+export const repSirena = seguro((dur = 3.6) => {
+  const a = obtenerAudioCompartido();
+  if (!a) return;
+  const t = a.currentTime;
+  const o = a.createOscillator();
+  const o2 = a.createOscillator();
+  const g = a.createGain();
+  o.type = "square";
+  o2.type = "sawtooth";
+  const ciclo = 0.9;
+  for (let x = 0; x < dur; x += ciclo) {
+    o.frequency.setValueAtTime(640, t + x);
+    o.frequency.linearRampToValueAtTime(1280, t + x + ciclo / 2);
+    o.frequency.linearRampToValueAtTime(640, t + x + ciclo);
+    o2.frequency.setValueAtTime(645, t + x);
+    o2.frequency.linearRampToValueAtTime(1290, t + x + ciclo / 2);
+    o2.frequency.linearRampToValueAtTime(645, t + x + ciclo);
+  }
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.06, t + 0.05);
+  g.gain.setValueAtTime(0.06, t + dur - 0.2);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g);
+  o2.connect(g);
+  g.connect(a.destination);
+  o.start(t);
+  o2.start(t);
+  o.stop(t + dur + 0.05);
+  o2.stop(t + dur + 0.05);
+});

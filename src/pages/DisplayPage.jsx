@@ -857,12 +857,28 @@ function DisplayPageContenido() {
       />
     );
   }
-  // Repostaje extra (pocos puntos y del 16º para abajo): sale en lugar de la
-  // celebración normal, que ya enseña al principio los puntos del pedido.
+  // Repostaje extra (pocos puntos y del 16º para abajo), en dos partes:
+  // 1º la celebración normal con los puntos del pedido (total y puesto de
+  // ANTES del regalo) y, al terminar, el STOP + repostaje con los +5.
   if (celebracionClienteMes?.repostaje) {
+    if (celebracionClienteMes.etapa !== "repostaje") {
+      const antes = {
+        ...celebracionClienteMes,
+        total: celebracionClienteMes.total_antes ?? celebracionClienteMes.total,
+        posicion: celebracionClienteMes.posicion_antes ?? celebracionClienteMes.posicion,
+      };
+      return (
+        <CelebracionPuntosTV
+          key={celebracionClienteMes.id}
+          celebracion={antes}
+          meta={clienteMesTV.datos?.meta_puntos}
+          onFin={() => setCelebracionClienteMes((c) => (c ? { ...c, etapa: "repostaje" } : c))}
+        />
+      );
+    }
     return (
       <RepostajeTV
-        key={celebracionClienteMes.id}
+        key={`${celebracionClienteMes.id}-rep`}
         celebracion={celebracionClienteMes}
         onFin={terminarCelebracionClienteMes}
       />

@@ -1555,7 +1555,7 @@ export default function StorePage() {
             </h2>
             <p style={styles.info}>
               {clienteMesResultado?.repostaje
-                ? `🖥️ Mirad la TV grande: ¡repostaje! Se le regalan ${clienteMesResultado?.puntos_extra || 5} puntos extra de gasolina.`
+                ? `🖥️ Mirad la TV grande: primero el carrito con sus puntos y después ¡STOP y repostaje! Se le regalan ${clienteMesResultado?.puntos_extra || 5} puntos extra de gasolina.`
                 : "🖥️ Mirad la TV grande: el carrito avanza con un bocinazo por cada punto."}
               {clienteMesResultado?.total ? ` Lleva ${clienteMesResultado.total} puntos` : ""}
               {clienteMesResultado?.posicion ? ` y va ${clienteMesResultado.posicion}º.` : clienteMesResultado?.total ? "." : ""}

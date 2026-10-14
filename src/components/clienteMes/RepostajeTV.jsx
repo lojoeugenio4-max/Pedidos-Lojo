@@ -1,10 +1,13 @@
 // CLIENTE DEL MES · REPOSTAJE EXTRA (TV grande, pantalla completa).
 //
-// Sale EN LUGAR de CelebracionPuntosTV cuando el pedido suma menos de 5
+// Sale cuando el pedido suma menos de 5
 // puntos y el cliente va del 16º para abajo: el servidor le regala 5 puntos
 // de "gasolina" (cliente_mes_canjear_qr devuelve repostaje = true).
 //
-//  1. RESULTADO  nombre + "+3 PUNTOS · VA 18º" con trombón triste.
+// Va DESPUÉS de la celebración normal de los puntos del pedido
+// (CelebracionPuntosTV), para que se vean como dos partes distintas.
+//
+//  1. STOP       señal de STOP gigante, frenazo, sirenas y bocinazos.
 //  2. RESERVA    alarma roja, aguja en la R, el carrito petardea y echa humo.
 //  3. BOXES      entra el surtidor LOJO y se engancha la manguera.
 //  4. CHORROS    un chorro por punto: gotas por la manguera, "glug", +1,
@@ -18,7 +21,6 @@ import {
   repBoxes,
   repChorro,
   repClank,
-  repEntrada,
   repFuegos,
   repGlug,
   repLleno,
@@ -26,20 +28,23 @@ import {
   repPetardeo,
   repRugido,
   repSalida,
-  repTrombon,
+  repFrenazo,
+  repSirena,
   repVictoria,
 } from "../../utils/sonidoRepostaje";
+import { sonidoBocina } from "../../utils/sonido8bits";
 
 const COLORES = ["#ffe14d", "#ff3d7f", "#00e5ff", "#76ff03", "#d500f9", "#ff9100"];
+const BOCINAS_STOP = [
+  ["¡PIIIIII!", 8, 30], ["¡NINO-NINO!", 70, 26], ["¡MOC-MOC!", 12, 62], ["¡PII-PIII!", 72, 64], ["¡MEEEEC!", 40, 80],
+];
 const GLUGS = ["¡GLUG!", "¡GLU-GLU!", "¡BLUP!", "¡GLUUUG!", "¡LLENANDO!"];
 const RUTA_MANGUERA = "M372 330 C470 330 470 470 560 460 C610 455 625 420 648 392";
 
 export default function RepostajeTV({ celebracion, onFin }) {
   const extra = Math.max(1, Math.min(10, Math.round(Number(celebracion?.puntos_extra) || 5)));
-  const puntosPedido = Number(celebracion?.puntos) || 0;
   const totalFinal = Number(celebracion?.total) || 0;
   const totalAntes = celebracion?.total_antes != null ? Number(celebracion.total_antes) : Math.max(0, totalFinal - extra);
-  const tenia = Math.max(0, totalAntes - puntosPedido);
   const posAntes = Number(celebracion?.posicion_antes) || null;
   const posFinal = Number(celebracion?.posicion) || null;
   const nombre = celebracion?.nombre || "CLIENTE";
@@ -47,7 +52,7 @@ export default function RepostajeTV({ celebracion, onFin }) {
 
   const [f, setF] = useState({}); // banderas de la escena
   const [rotulo, setRotulo] = useState(null); // { txt, clase, n }
-  const [marcador, setMarcador] = useState(tenia);
+  const [marcador, setMarcador] = useState(totalAntes);
   const [llenado, setLlenado] = useState(0); // chorros ya echados
   const [flotantes, setFlotantes] = useState([]);
   const [gotas, setGotas] = useState([]);
@@ -73,15 +78,22 @@ export default function RepostajeTV({ celebracion, onFin }) {
       window.setTimeout(() => setFlotantes((l) => l.filter((e) => e.id !== id)), 1300);
     };
 
+    // 1. STOP: frenazo, sirenas y bocinazos
     en(30, () => {
-      repEntrada();
-      poner({ cae: true });
+      poner({ stop: true });
+      setFlash((n) => n + 1);
+      setTemblor((n) => n + 1);
+      repFrenazo();
     });
-    en(REPOSTAJE_CM.resultado, () => {
-      poner({ resultado: true });
-      setMarcador(tenia + puntosPedido);
-      repTrombon();
+    en(250, () => repSirena(REPOSTAJE_CM.stop / 1000 - 0.4));
+    BOCINAS_STOP.forEach(([txt, x, y], i) => {
+      en(600 + i * 600, () => {
+        sonidoBocina(i);
+        flotar("rpt-bocina", txt, x, y);
+      });
     });
+    en(REPOSTAJE_CM.stop, () => poner({ stop: false }));
+
     en(REPOSTAJE_CM.reserva, () => {
       poner({ reserva: true });
       rot("⚠ ¡DEPÓSITO EN RESERVA! ⚠", "rpt-rot-reserva");
@@ -89,7 +101,7 @@ export default function RepostajeTV({ celebracion, onFin }) {
       repPetardeo();
     });
     en(REPOSTAJE_CM.boxes, () => {
-      poner({ reserva: false, resultado: false, surtidor: true });
+      poner({ reserva: false, surtidor: true });
       rot("¡PARADA EN BOXES!", "rpt-rot-boxes");
       repBoxes();
     });
@@ -114,7 +126,7 @@ export default function RepostajeTV({ celebracion, onFin }) {
       en(t0 + 240, echarGota);
       en(t0 + 450, () => {
         setLlenado(i);
-        setMarcador(tenia + puntosPedido + i);
+        setMarcador(totalAntes + i);
         setBote((n) => n + 1);
         repMoneda();
         flotar("rpt-mas", "+1", 44 + (i % 2) * 6, 40);
@@ -155,6 +167,7 @@ export default function RepostajeTV({ celebracion, onFin }) {
   const pct = 0.06 + 0.94 * (llenado / extra);
   const clases = [
     "rpt-raiz",
+    f.stop && "rpt-stop",
     f.reserva && "rpt-reserva",
     f.surtidor && "rpt-con-surtidor",
     f.enganchada && "rpt-enganchada",
@@ -175,6 +188,7 @@ export default function RepostajeTV({ celebracion, onFin }) {
       <div className="rpt-capa rpt-rayos" aria-hidden="true" />
       <div className="rpt-capa rpt-estrellas" aria-hidden="true" />
       <div className="rpt-capa rpt-alarma-luz" aria-hidden="true" />
+      <div className="rpt-capa rpt-policia" aria-hidden="true" />
 
       <div className={`rpt-escena${f.rugiendo ? " rpt-vibra" : temblor ? ` rpt-tiembla-${temblor % 2}` : ""}`}>
         <div className="rpt-gauge">
@@ -201,20 +215,9 @@ export default function RepostajeTV({ celebracion, onFin }) {
 
         <header className="rpt-cabecera">
           <div className="rpt-marquesina">★ CLIENTE DEL MES ★ PEDIDO POR LA APP ★</div>
-          <div className={`rpt-nombre${f.cae ? " rpt-cae" : ""}`}>{nombre}</div>
+          <div className="rpt-nombre">{nombre}</div>
         </header>
 
-        {f.resultado && (
-          <div className="rpt-resultado">
-            <span className="rpt-res-pts">+{puntosPedido} {puntosPedido === 1 ? "PUNTO" : "PUNTOS"}</span>
-            {posAntes && (
-              <>
-                <span>·</span>
-                <span className="rpt-res-puesto">VA {posAntes}º</span>
-              </>
-            )}
-          </div>
-        )}
         {rotulo && (
           <div className={`rpt-rotulo ${rotulo.clase}`} key={rotulo.n}>
             {rotulo.txt}
@@ -304,6 +307,20 @@ export default function RepostajeTV({ celebracion, onFin }) {
           </g>
         </svg>
       </div>
+
+      {f.stop && (
+        <div className="rpt-stop-capa">
+          <svg className="rpt-stop-senal" viewBox="0 0 220 220" aria-hidden="true">
+            <rect x="100" y="150" width="20" height="70" fill="#9ca3af" />
+            <polygon points="66,4 154,4 216,66 216,154 154,216 66,216 4,154 4,66" fill="#fff" />
+            <polygon points="70,14 150,14 206,70 206,150 150,206 70,206 14,150 14,70" fill="#e10600" />
+            <text x="110" y="132" textAnchor="middle" fontFamily="Rubik, system-ui, sans-serif" fontWeight="900" fontSize="64" fill="#fff" letterSpacing="2">
+              STOP
+            </text>
+          </svg>
+          <div className="rpt-stop-txt">¡PARADA OBLIGATORIA!</div>
+        </div>
+      )}
 
       {f.final && (
         <div className="rpt-final">
@@ -395,6 +412,21 @@ function EstilosRepostaje() {
 .rpt-alarma-luz{ z-index:4; opacity:0; background:radial-gradient(ellipse at center,transparent 40%,rgba(255,23,68,.55) 100%); }
 .rpt-reserva .rpt-alarma-luz{ animation:rptSirena .5s steps(2) infinite; }
 @keyframes rptSirena{ 0%{opacity:0} 50%{opacity:1} }
+.rpt-policia{ z-index:4; opacity:0; }
+.rpt-stop .rpt-policia{ opacity:1; animation:rptPolicia .5s steps(1) infinite; }
+@keyframes rptPolicia{ 0%{background:radial-gradient(ellipse at 0% 50%,rgba(255,23,68,.75),transparent 60%)} 50%{background:radial-gradient(ellipse at 100% 50%,rgba(41,121,255,.8),transparent 60%)} }
+.rpt-stop .rpt-rayos{ background:repeating-conic-gradient(from 0deg,#ff1744 0 6deg,transparent 6deg 18deg); opacity:.22; animation-duration:5s; }
+.rpt-stop-capa{ position:absolute; inset:0; z-index:15; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1.4cqw; pointer-events:none; padding-top:6cqw; }
+.rpt-stop-senal{ width:24cqw; max-width:56cqh; filter:drop-shadow(0 1cqw 1.5cqw rgba(0,0,0,.7)) drop-shadow(0 0 3cqw rgba(255,23,68,.7));
+  animation:rptStopEntra .55s cubic-bezier(.2,1.8,.4,1) both, rptStopLate .6s ease-in-out .7s infinite; transform-origin:50% 100%; }
+@keyframes rptStopEntra{ 0%{transform:translateY(-60cqh) rotate(-25deg) scale(1.6)} 70%{transform:translateY(1cqw) rotate(4deg) scale(.95)} 100%{transform:none} }
+@keyframes rptStopLate{ 0%,100%{transform:rotate(-3deg) scale(1)} 50%{transform:rotate(3deg) scale(1.06)} }
+.rpt-stop-txt{ font-family:'Press Start 2P',monospace; font-size:2.6cqw; color:#fff; background:#e10600; padding:1cqw 2cqw; border:.4cqw solid #fff;
+  box-shadow:.5cqw .5cqw 0 #6b0016; white-space:nowrap; animation:rptZoomC .4s cubic-bezier(.2,1.8,.4,1) .35s both, rptParpadeo .4s steps(2) .8s infinite; }
+@keyframes rptZoomC{ from{transform:scale(0)} to{transform:scale(1)} }
+.rpt-stop .rpt-coche, .rpt-stop .rpt-gauge, .rpt-stop .rpt-marcador{ opacity:.35; }
+.rpt-bocina{ position:absolute; z-index:16; font-family:'Press Start 2P',monospace; font-size:2.2cqw; color:#160b38; background:#fff; padding:1cqw 1.2cqw;
+  border-radius:1.4cqw; border:.4cqw solid #ff2d75; box-shadow:.5cqw .5cqw 0 #ff2d75; white-space:nowrap; animation:rptGlug 1s cubic-bezier(.2,1.8,.4,1) forwards; }
 .rpt-flash{ z-index:40; background:#fff; animation:rptFlash .6s ease-out forwards; }
 @keyframes rptFlash{ from{opacity:.95} to{opacity:0} }
 
@@ -413,11 +445,6 @@ function EstilosRepostaje() {
 .rpt-cae{ animation:rptCae .8s cubic-bezier(.3,1.8,.5,1) both; }
 @keyframes rptCae{ 0%{transform:translateY(-40cqw) scale(2); opacity:0} 70%{transform:translateY(1cqw) scale(.95); opacity:1} 100%{transform:none} }
 
-.rpt-resultado{ position:absolute; left:50%; top:17cqw; transform:translateX(-50%); display:flex; gap:1.4cqw; align-items:center; white-space:nowrap;
-  font-family:'Press Start 2P',monospace; font-size:1.7cqw; padding:1cqw 1.6cqw; border-radius:1cqw; background:rgba(0,0,0,.55); border:.3cqw solid #b9b0e0;
-  animation:rptZoom .5s cubic-bezier(.2,1.6,.4,1) both; }
-.rpt-res-pts{ color:#b9b0e0; } .rpt-res-puesto{ color:#ff8a80; }
-@keyframes rptZoom{ from{transform:translateX(-50%) scale(0); opacity:0} to{transform:translateX(-50%) scale(1); opacity:1} }
 
 .rpt-rotulo{ position:absolute; left:50%; top:23.5cqw; transform:translateX(-50%); font-family:'Press Start 2P',monospace; white-space:nowrap; text-align:center; z-index:8;
   animation:rptRotulo .5s cubic-bezier(.2,1.8,.4,1) both; }
