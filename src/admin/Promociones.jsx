@@ -2,6 +2,7 @@ import { useState } from "react";
 import Ruleta from "./Ruleta";
 import Bingo from "./Bingo";
 import Sorteo from "./Sorteo";
+import LojoPoly from "./LojoPoly";
 import ReactivarCodigo from "./ReactivarCodigo";
 
 export default function Promociones() {
@@ -51,6 +52,14 @@ export default function Promociones() {
           />
 
           <Tarjeta
+            icono="🎲"
+            titulo="LojoPoly"
+            descripcion="Tablero con dado: grupos de proveedores, artículos con foto, casillas difíciles y premios."
+            textoBoton="Configurar LojoPoly"
+            onClick={() => setSeccion("lojopoly")}
+          />
+
+          <Tarjeta
             icono="🔓"
             titulo="Reactivación de Códigos"
             descripcion="Busca un código de pedido y reactiva el Bingo si se bloqueó por error (1 pedido al día)."
@@ -89,6 +98,8 @@ export default function Promociones() {
       {seccion === "bingo" && <Bingo />}
 
       {seccion === "sorteo" && <Sorteo />}
+
+      {seccion === "lojopoly" && <LojoPoly />}
 
       {seccion === "reactivacion" && (
         <div>
