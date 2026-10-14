@@ -29,7 +29,7 @@ const ORIENTACION = { 1: [0, 0], 6: [0, 180], 2: [0, -90], 5: [0, 90], 3: [-90, 
 
 function urlFoto(foto) {
   if (!foto) return null;
-  if (String(foto).startsWith("http")) return foto;
+  if (/^(https?:|data:)/.test(String(foto))) return foto;
   return supabaseStorage.storage.from("productos").getPublicUrl(foto).data.publicUrl;
 }
 
@@ -73,6 +73,8 @@ export default function LojoPolyJuego({
   const [dadoRot, setDadoRot] = useState([-20, 25]);
   const [destacada, setDestacada] = useState(null);
   const [celebracion, setCelebracion] = useState(null);
+  // Móvil: casilla tocada por el cliente, para ver el artículo en grande.
+  const [seleccion, setSeleccion] = useState(null);
   const tokenAnimado = useRef(null);
   const montado = useRef(true);
 
@@ -172,6 +174,12 @@ export default function LojoPolyJuego({
   }
 
   const lado = mostrado?.campana?.lado || 7;
+  // Profundidad de la fila de casillas respecto al ancho de cada casilla:
+  // cuanto mayor, más grandes las casillas y más pequeño el centro.
+  const fondo = { movil: 1.3, tpv: 1.45, tv: 1.45 }[variante] || 1.4;
+  const esMovil = variante === "movil";
+  const tramo = lado - 1;
+  const ladoDe = (p) => (p > 0 && p < tramo ? "abajo" : p > tramo && p < 2 * tramo ? "izq" : p > 2 * tramo && p < 3 * tramo ? "arriba" : p > 3 * tramo ? "der" : "esquina");
   const mias = useMemo(() => new Set(mostrado?.mias || []), [mostrado]);
   const grupos = mostrado?.grupos || [];
   const gruposPorId = useMemo(() => new Map(grupos.map((g) => [g.id, g])), [grupos]);
@@ -192,8 +200,8 @@ export default function LojoPolyJuego({
       className={`lp-board lp-board-${variante}`}
       style={{
         "--lado": lado,
-        gridTemplateColumns: `1.25fr repeat(${lado - 2}, 1fr) 1.25fr`,
-        gridTemplateRows: `1.25fr repeat(${lado - 2}, 1fr) 1.25fr`,
+        gridTemplateColumns: `${fondo}fr repeat(${lado - 2}, 1fr) ${fondo}fr`,
+        gridTemplateRows: `${fondo}fr repeat(${lado - 2}, 1fr) ${fondo}fr`,
       }}
     >
       {mostrado.casillas.map((c) => {
@@ -203,9 +211,14 @@ export default function LojoPolyJuego({
         if (c.tipo !== "propiedad") {
           const info = ICONOS[c.tipo] || { icono: "", nombre: c.tipo };
           return (
-            <div key={c.id} className={`lp-cell lp-esp lp-${c.tipo} ${destacada === c.id ? "lp-hit" : ""}`} style={estilo}>
+            <div
+              key={c.id}
+              className={`lp-cell lp-esp lp-${c.tipo} lp-s-${ladoDe(c.posicion)} ${destacada === c.id ? "lp-hit" : ""}`}
+              style={estilo}
+              title={info.nombre}
+            >
               <span className="lp-ico">{info.icono}</span>
-              <span className="lp-esp-nombre">{info.nombre}</span>
+              {(!esMovil || ladoDe(c.posicion) === "esquina") && <span className="lp-esp-nombre">{info.nombre}</span>}
               {conFicha && <span className="lp-ficha" key={`f-${ficha}`} />}
             </div>
           );
@@ -213,24 +226,37 @@ export default function LojoPolyJuego({
         const grupo = gruposPorId.get(c.grupo_id);
         const foto = urlFoto(c.foto);
         const mia = mias.has(c.id);
-        return (
-          <div
-            key={c.id}
-            className={`lp-cell lp-prop ${mia ? "lp-mia" : ""} ${destacada === c.id ? "lp-hit" : ""}`}
-            style={{ ...estilo, "--gc": grupo?.color || "#888" }}
-            title={`${grupo?.nombre || ""}: ${c.nombre || ""}`}
-          >
+        const clases = `lp-cell lp-prop lp-s-${ladoDe(c.posicion)} ${mia ? "lp-mia" : ""} ${destacada === c.id ? "lp-hit" : ""} ${seleccion === c.id ? "lp-sel" : ""}`;
+        const contenido = (
+          <>
             <div className="lp-band" />
             <div className="lp-foto">{foto ? <img src={foto} alt="" loading="lazy" /> : null}</div>
-            <div className="lp-nombre">{c.nombre}</div>
+            {!esMovil && <div className="lp-nombre">{c.nombre}</div>}
             {mia && <span className="lp-check">✓</span>}
             {conFicha && <span className="lp-ficha" key={`f-${ficha}`} />}
+          </>
+        );
+        // En el móvil la casilla solo lleva la foto; al tocarla se ve el artículo debajo.
+        return esMovil ? (
+          <button
+            key={c.id}
+            type="button"
+            className={clases}
+            style={{ ...estilo, "--gc": grupo?.color || "#888" }}
+            onClick={() => setSeleccion(seleccion === c.id ? null : c.id)}
+            aria-label={`${c.nombre}${mia ? ", ya la tienes" : ", te falta"}`}
+          >
+            {contenido}
+          </button>
+        ) : (
+          <div key={c.id} className={clases} style={{ ...estilo, "--gc": grupo?.color || "#888" }} title={`${grupo?.nombre || ""}: ${c.nombre || ""}`}>
+            {contenido}
           </div>
         );
       })}
 
       <div className="lp-center" style={{ gridRow: `2 / ${lado}`, gridColumn: `2 / ${lado}` }}>
-        <LogoLojoPoly tamano={variante === "tv" ? 54 : variante === "tpv" ? 26 : 24} cinta={variante !== "tpv"} />
+        <LogoLojoPoly tamano={variante === "tv" ? 54 : variante === "tpv" ? 26 : 30} cinta={!esMovil && variante !== "tpv"} />
         {variante !== "movil" ? (
           <>
             <div className="lp-tray">
@@ -250,10 +276,11 @@ export default function LojoPolyJuego({
             <div className="lp-msg">{mensaje || (clienteNombre ? `Turno de ${clienteNombre}` : "Completa un grupo y gana su premio")}</div>
           </>
         ) : (
-          <div className="lp-msg">
-            {Number(mostrado.tiradas_pendientes) > 0
-              ? `Tienes ${mostrado.tiradas_pendientes} ${Number(mostrado.tiradas_pendientes) === 1 ? "tirada" : "tiradas"} esperando: pasa tu QR en caja`
-              : "Completa un grupo y gana su premio"}
+          <div className="lp-centro-movil">
+            <strong>
+              {(mostrado.mias || []).length}/{(mostrado.casillas || []).filter((x) => x.tipo === "propiedad").length}
+            </strong>
+            <span>casillas</span>
           </div>
         )}
       </div>
@@ -287,7 +314,7 @@ export default function LojoPolyJuego({
   );
 
   return (
-    <div className={`lp-root lp-root-${variante}`}>
+    <div className={`lp-root lp-root-${variante}`} lang="es">
       <style>{CSS}</style>
       {variante === "tv" ? (
         <div className="lp-tvlayout">
@@ -308,9 +335,43 @@ export default function LojoPolyJuego({
         tableroJSX
       ) : (
         <>
+          {Number(mostrado.tiradas_pendientes) > 0 && (
+            <div className="lp-aviso-tiradas">
+              🎲 Tienes <strong>{mostrado.tiradas_pendientes} {Number(mostrado.tiradas_pendientes) === 1 ? "tirada" : "tiradas"}</strong> esperando: pasa el QR de tu pedido en caja.
+            </div>
+          )}
           {tableroJSX}
+          <FichaCasilla casilla={(mostrado.casillas || []).find((x) => x.id === seleccion)} grupos={gruposPorId} mias={mias} />
           <h3 className="lp-h3">Tus grupos</h3>
-          {panelGrupos}
+          <div className="lp-gm-lista">
+            {progreso.map((g) => (
+              <div key={g.id} className={`lp-gm ${g.completo ? "lp-gm-ok" : ""}`} style={{ "--gc": g.color }}>
+                <div className="lp-gm-cab">
+                  <span>{g.nombre}</span>
+                  <span className="lp-grupo-cuenta">
+                    {g.tengo}/{g.casillas.length}
+                  </span>
+                </div>
+                <div className="lp-gm-items">
+                  {g.casillas.map((c) => {
+                    const foto = urlFoto(c.foto);
+                    const mia = mias.has(c.id);
+                    return (
+                      <div key={c.id} className={`lp-gm-item ${mia ? "lp-gm-mia" : ""}`}>
+                        <span className="lp-gm-foto">{foto ? <img src={foto} alt="" loading="lazy" /> : null}</span>
+                        <span className="lp-gm-nombre">{c.nombre}</span>
+                        <span className="lp-gm-estado">{mia ? "✓" : ""}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="lp-gm-premio">
+                  {g.completo ? "¡Completado! " : "Premio: "}
+                  <strong>{g.premio_texto || "—"}</strong>
+                </div>
+              </div>
+            ))}
+          </div>
           {(mostrado.premios || []).length > 0 && (
             <>
               <h3 className="lp-h3">Tus premios</h3>
@@ -337,6 +398,25 @@ export default function LojoPolyJuego({
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+function FichaCasilla({ casilla, grupos, mias }) {
+  if (!casilla) {
+    return <p className="lp-ficha-vacia">Toca una casilla del tablero para ver el artículo.</p>;
+  }
+  const grupo = grupos.get(casilla.grupo_id);
+  const foto = urlFoto(casilla.foto);
+  const mia = mias.has(casilla.id);
+  return (
+    <div className="lp-ficha-art" style={{ "--gc": grupo?.color || "#888" }}>
+      <span className="lp-ficha-foto">{foto ? <img src={foto} alt="" /> : null}</span>
+      <div className="lp-ficha-texto">
+        <span className="lp-ficha-grupo">{grupo?.nombre}</span>
+        <strong>{casilla.nombre}</strong>
+        <span className={mia ? "lp-ficha-si" : "lp-ficha-no"}>{mia ? "✓ Ya es tuya" : "Te falta"}</span>
+      </div>
     </div>
   );
 }
@@ -380,7 +460,8 @@ const CSS = `
 .lp-foto{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:4%}
 .lp-foto img{max-width:100%;max-height:100%;object-fit:contain}
 .lp-prop:not(.lp-mia) .lp-foto img{filter:grayscale(1);opacity:.45}
-.lp-nombre{padding:0 3% 4%;color:#8a90ad;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+.lp-nombre{padding:0 3% 4%;color:#8a90ad;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;hyphens:auto;overflow-wrap:break-word}
+
 .lp-mia{box-shadow:inset 0 0 0 2px var(--gc)}
 .lp-mia .lp-nombre{color:var(--ink)}
 .lp-check{position:absolute;left:4%;top:18%;width:1.5em;height:1.5em;border-radius:50%;background:var(--gc);color:#fff;font-weight:700;display:grid;place-items:center;font-size:1em}
@@ -451,5 +532,58 @@ const CSS = `
 .lp-tvlayout .lp-grupo-cuenta{font-size:1.8vh}
 .lp-tvlayout .lp-grupo-premio{font-size:1.7vh;padding:.8vh 1.2vh}
 .lp-root-tpv .lp-board{max-width:520px;margin:0 auto}
+
+/* ---------- Móvil: tablero solo con fotos ---------- */
+.lp-board-movil{gap:3px;padding:5px}
+.lp-board-movil .lp-prop{padding:0;border:0;margin:0;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.lp-board-movil .lp-s-arriba{flex-direction:column-reverse}
+.lp-board-movil .lp-s-izq{flex-direction:row-reverse}
+.lp-board-movil .lp-s-der{flex-direction:row}
+.lp-board-movil .lp-s-izq .lp-band,.lp-board-movil .lp-s-der .lp-band{height:auto;width:18%;min-width:5px}
+.lp-board-movil .lp-band{height:18%;min-height:5px}
+.lp-board-movil .lp-foto{padding:9%}
+.lp-board-movil .lp-prop:not(.lp-mia){background:#f4f5fa}
+.lp-board-movil .lp-prop:not(.lp-mia) .lp-foto img{opacity:.35}
+.lp-board-movil .lp-mia{box-shadow:inset 0 0 0 2px var(--gc)}
+.lp-board-movil .lp-check{left:auto;top:auto;right:6%;bottom:6%;width:15px;height:15px;font-size:10px;box-shadow:0 0 0 2px #fff}
+.lp-board-movil .lp-s-izq .lp-check{right:24%}
+.lp-board-movil .lp-s-arriba .lp-check{bottom:24%}
+.lp-board-movil .lp-sel{outline:3px solid var(--gold);outline-offset:-1px;z-index:3}
+.lp-board-movil .lp-prop:focus-visible{outline:3px solid var(--gold);outline-offset:-1px}
+.lp-board-movil .lp-esp{gap:0}
+.lp-board-movil .lp-ico{font-size:calc(100cqw / var(--lado) / 2.6)}
+.lp-board-movil .lp-s-esquina .lp-ico{font-size:calc(100cqw / var(--lado) / 2.3)}
+.lp-board-movil .lp-esp-nombre{font-size:calc(100cqw / var(--lado) / 6.2);line-height:1.05;margin-top:2px}
+.lp-board-movil .lp-ficha{width:46%;right:auto;left:27%;bottom:auto;top:27%}
+.lp-board-movil .lp-center{gap:3cqw}
+.lp-centro-movil{display:flex;flex-direction:column;align-items:center;line-height:1}
+.lp-centro-movil strong{font-family:"Luckiest Guy","Arial Black",sans-serif;font-weight:400;font-size:10cqw;color:var(--gold);paint-order:stroke fill;-webkit-text-stroke:.12em var(--ink)}
+.lp-centro-movil span{font-size:3.6cqw;font-weight:600;letter-spacing:.14em;text-transform:uppercase;margin-top:1cqw}
+.lp-aviso-tiradas{margin:0 0 12px;padding:10px 12px;border-radius:12px;background:#fff7d6;border:2px solid var(--gold);font-size:14px;color:var(--ink);line-height:1.35}
+.lp-ficha-vacia{margin:14px 0 0;text-align:center;font-size:13px;color:#6b7280}
+.lp-ficha-art{display:flex;align-items:center;gap:12px;margin-top:14px;padding:10px;border-radius:14px;background:#fff;border:2px solid var(--gc);box-shadow:0 6px 16px rgba(11,17,64,.08)}
+.lp-ficha-foto{width:72px;height:72px;flex:none;border-radius:10px;background:#f4f5fa;display:flex;align-items:center;justify-content:center;padding:6px}
+.lp-ficha-foto img{max-width:100%;max-height:100%;object-fit:contain}
+.lp-ficha-texto{display:grid;gap:3px;min-width:0}
+.lp-ficha-texto strong{font-size:16px;line-height:1.2;color:var(--ink)}
+.lp-ficha-grupo{justify-self:start;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:var(--gc);padding:2px 8px;border-radius:99px}
+.lp-ficha-si{font-size:13px;font-weight:700;color:#15803d}
+.lp-ficha-no{font-size:13px;font-weight:600;color:#6b7280}
+.lp-gm-lista{display:grid;gap:10px}
+.lp-gm{background:#fff;border-radius:14px;overflow:hidden;border:2px solid var(--gc)}
+.lp-gm-ok{box-shadow:0 0 0 3px var(--gold)}
+.lp-gm-cab{display:flex;justify-content:space-between;align-items:center;padding:7px 12px;background:var(--gc);color:#fff;font-family:"Luckiest Guy","Arial Black",sans-serif;font-size:17px;letter-spacing:.03em;text-shadow:0 2px 0 rgba(0,0,0,.25)}
+.lp-gm-items{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;padding:10px}
+.lp-gm-item{display:flex;align-items:center;gap:8px;min-width:0}
+.lp-gm-foto{width:44px;height:44px;flex:none;border-radius:8px;background:#f4f5fa;display:flex;align-items:center;justify-content:center;padding:4px}
+.lp-gm-foto img{max-width:100%;max-height:100%;object-fit:contain}
+.lp-gm-item:not(.lp-gm-mia) .lp-gm-foto img{opacity:.35}
+.lp-gm-nombre{flex:1;min-width:0;font-size:13px;font-weight:600;line-height:1.2;color:#9ca3af}
+.lp-gm-mia .lp-gm-nombre{color:var(--ink)}
+.lp-gm-estado{width:18px;height:18px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;color:#fff}
+.lp-gm-mia .lp-gm-estado{background:var(--gc)}
+.lp-gm-item:not(.lp-gm-mia) .lp-gm-estado{border:2px dashed #d1d5db}
+.lp-gm-premio{padding:8px 12px;border-top:1px dashed #e5e7eb;font-size:13px;color:#4b5563}
+.lp-gm-premio strong{color:var(--ink)}
 @media (prefers-reduced-motion:reduce){.lp-toss.lp-shake,.lp-toss.lp-go,.lp-hit,.lp-ficha,.lp-cele-card{animation:none}.lp-cube{transition:none}}
 `;
