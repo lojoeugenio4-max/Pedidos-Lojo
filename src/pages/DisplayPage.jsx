@@ -4,6 +4,7 @@ import StoreWheel from "../components/StoreWheel";
 import BingoDrumStage from "../components/BingoDrumStage";
 import SorteoGrid from "../components/sorteo/SorteoGrid";
 import SorteoDirecto from "../components/sorteo/SorteoDirecto";
+import LojoPolyJuego from "../components/lojopoly/LojoPolyJuego";
 import { formatearFechaSorteo, useSorteoDirecto } from "../utils/sorteoDirecto";
 import {
   cantarNumeroSorteo,
@@ -301,6 +302,8 @@ function DisplayPageContenido() {
   const [mensajeVozFinal, setMensajeVozFinal] = useState(null);
   const [sorteoEntrada, setSorteoEntrada] = useState(null);
   const [sorteoNumeros, setSorteoNumeros] = useState([]);
+  // LojoPoly: tablero del cliente del QR y última tirada recibida del TPV.
+  const [lojopoly, setLojopoly] = useState(null);
   const [sorteoGrids, setSorteoGrids] = useState([]);
   // undefined = cargando; null = no hay Sorteo configurado.
   const [sorteoReposoGrid, setSorteoReposoGrid] = useState(undefined);
@@ -775,6 +778,30 @@ function DisplayPageContenido() {
       setMensajeVozFinal(payload.mensaje || null);
     }
 
+    // LOJOPOLY: el TPV abre el tablero del cliente ("lojopoly") y manda cada
+    // tirada ("lojopoly-tirada", con un token nuevo). La TV anima el dado y
+    // la ficha con sonido. Al recargar la TV no se repite una tirada antigua:
+    // se pinta el tablero ya actualizado.
+    if (event.type === "lojopoly" || event.type === "lojopoly-tirada") {
+      setEstado("lojopoly");
+      const reciente = Date.now() - (Number(event.createdAt) || 0) < 15000;
+      const tirada = event.type === "lojopoly-tirada" ? payload.tirada : null;
+      setLojopoly((anterior) => ({
+        // Tirada en directo: se parte del tablero que ya había en pantalla y
+        // la animación pasa al tablero nuevo al caer la ficha. Tirada antigua
+        // (TV recargada): se pinta directamente el tablero ya actualizado.
+        tablero: tirada
+          ? reciente && anterior?.tablero
+            ? anterior.tablero
+            : tirada.tablero
+          : payload.tablero,
+        clienteNombre: payload.clienteNombre || anterior?.clienteNombre || "",
+        pendientes: Number.isFinite(Number(payload.pendientes)) ? Number(payload.pendientes) : null,
+        tirada: tirada && reciente ? tirada : null,
+      }));
+      return;
+    }
+
     if (event.type === "sorteo") {
       setEstado("sorteo");
       setSorteoEntrada(payload.entrada || null);
@@ -969,6 +996,19 @@ function DisplayPageContenido() {
           )}
         </div>
       </main>
+    );
+  }
+
+  if (estado === "lojopoly" && lojopoly?.tablero) {
+    return (
+      <LojoPolyJuego
+        variante="tv"
+        sonido
+        tablero={lojopoly.tablero}
+        tirada={lojopoly.tirada}
+        clienteNombre={lojopoly.clienteNombre}
+        pendientes={lojopoly.pendientes}
+      />
     );
   }
 

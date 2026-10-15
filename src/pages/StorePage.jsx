@@ -1416,6 +1416,20 @@ export default function StorePage() {
   function terminarTiradaLojoPoly(tirada) {
     lojopolyRodandoRef.current = false;
     setLojopolyRodando(false);
+    if (tirada.premio) {
+      // Aviso a la pantalla de almacén: hay un regalo de LojoPoly por entregar.
+      notificarPremioBingo({
+        juego: "lojopoly",
+        customerToken: entitlement?.customer_token || "",
+        customerName: lojopolyTablero?.cliente_nombre || entitlement?.customer_name || "",
+        tipo: "lojopoly",
+        etiqueta:
+          tirada.resultado === "grupo_completado"
+            ? `LojoPoly · Grupo ${tirada.casilla?.grupo_nombre || tirada.premio.grupo || ""}`.trim()
+            : "LojoPoly",
+        premioNombre: tirada.premio.texto || "",
+      });
+    }
     if (tirada.premio?.texto) {
       setLojopolyPremios((actual) => [
         ...actual,

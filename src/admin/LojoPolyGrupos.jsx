@@ -20,6 +20,7 @@ import {
   ayuda,
   etiquetaDificil,
 } from "./lojopolyEstilos";
+import LojoPolyArticuloPremio from "./LojoPolyArticuloPremio";
 
 const normalizar = (valor) =>
   String(valor || "")
@@ -307,6 +308,19 @@ function TarjetaGrupo({
             />
           </label>
         </div>
+
+        <LojoPolyArticuloPremio
+          idBase={`lp-grupo-regalo-${grupo.id}`}
+          articuloId={grupo.premio_articulo_id}
+          cantidad={grupo.premio_cantidad}
+          ocupado={ocupado}
+          onCambiar={(c) =>
+            onActualizar({
+              ...("articulo_id" in c ? { premio_articulo_id: c.articulo_id } : {}),
+              ...("cantidad" in c ? { premio_cantidad: c.cantidad } : {}),
+            })
+          }
+        />
 
         {avisos.length > 0 && (
           <div style={avisoAtencion}>

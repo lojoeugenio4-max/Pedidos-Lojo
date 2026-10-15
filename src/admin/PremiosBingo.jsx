@@ -85,16 +85,27 @@ async function cargarNombresRegalos() {
     ].filter(Boolean);
     let porId = new Map();
     if (ids.length) {
-      const { data: articulos } = await supabase.from("articulos").select("id,nombre").in("id", ids);
-      porId = new Map((articulos || []).map((a) => [String(a.id), a.nombre]));
+      const { data: articulos } = await supabase.from("articulos").select("id,codigo,nombre").in("id", ids);
+      porId = new Map((articulos || []).map((a) => [String(a.id), a]));
     }
     const nombre = (tipo) =>
-      promo[`premio_${tipo}_nombre`] || porId.get(String(promo[`premio_${tipo}_articulo_id`] || "")) || "";
+      promo[`premio_${tipo}_nombre`] || porId.get(String(promo[`premio_${tipo}_articulo_id`] || ""))?.nombre || "";
+    // Artículo de cada regalo (para la valoración en el programa de gestión)
+    const articulo = (tipo) => {
+      const a = porId.get(String(promo[`premio_${tipo}_articulo_id`] || ""));
+      return a ? { id: String(a.id), codigo: a.codigo || "", nombre: a.nombre || "" } : null;
+    };
     return {
       linea: nombre("linea"),
       lineaEspecial: nombre("linea_especial"),
       bingo: nombre("bingo"),
       bingoEspecial: nombre("especial"),
+      articulos: {
+        linea: articulo("linea"),
+        lineaEspecial: articulo("linea_especial"),
+        bingo: articulo("bingo"),
+        bingoEspecial: articulo("especial"),
+      },
     };
   } catch {
     return {};
@@ -122,6 +133,7 @@ function construirRegalos(filas, entregas, nombresRegalos) {
         especial,
         etiqueta: especial ? "★ LÍNEA ESPECIAL" : "LÍNEA",
         regalo: especial ? nombresRegalos.lineaEspecial : nombresRegalos.linea,
+        articulo: (especial ? nombresRegalos.articulos?.lineaEspecial : nombresRegalos.articulos?.linea) || null,
         entregadoEn: entregas.get(`${clave}|linea`) || null,
       });
     }
@@ -133,6 +145,7 @@ function construirRegalos(filas, entregas, nombresRegalos) {
         especial,
         etiqueta: especial ? "★ BINGO ESPECIAL" : "BINGO",
         regalo: especial ? nombresRegalos.bingoEspecial : nombresRegalos.bingo,
+        articulo: (especial ? nombresRegalos.articulos?.bingoEspecial : nombresRegalos.articulos?.bingo) || null,
         entregadoEn: entregas.get(`${clave}|bingo`) || null,
       });
     }

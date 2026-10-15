@@ -16,6 +16,7 @@ import {
   avisoAtencion,
   ayuda,
 } from "./lojopolyEstilos";
+import LojoPolyArticuloPremio from "./LojoPolyArticuloPremio";
 
 const TIPOS = [
   {
@@ -248,6 +249,15 @@ function FilaPremio({ premio, ejemplo, probabilidad, ocupado, onActualizar, onBo
       <button type="button" style={{ ...botonIcono, color: "#b91c1c" }} onClick={onBorrar} disabled={ocupado || premio.emitidos > 0} title={premio.emitidos > 0 ? "Ya se ha dado: desactívalo en vez de borrarlo" : "Eliminar"} aria-label="Eliminar premio">
         ✕
       </button>
+      <div style={{ flexBasis: "100%" }}>
+        <LojoPolyArticuloPremio
+          idBase={`lp-premio-regalo-${premio.id}`}
+          articuloId={premio.articulo_id}
+          cantidad={premio.cantidad}
+          ocupado={ocupado}
+          onCambiar={onActualizar}
+        />
+      </div>
     </div>
   );
 }

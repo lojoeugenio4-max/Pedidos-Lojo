@@ -6,7 +6,7 @@ import Ubicaciones from "./Ubicaciones";
 import Ofertas from "./Ofertas";
 import Pushes from "./Pushes";
 import Estadisticas from "./Estadisticas";
-import PremiosBingo from "./PremiosBingo";
+import Regalos from "./Regalos";
 import Configuracion from "./Configuracion";
 import Promociones from "./Promociones";
 import Clientes from "./Clientes";
@@ -169,7 +169,7 @@ export default function AdminPanel() {
             {opcion === "promociones" && <Promociones />}
             {opcion === "pushes" && <Pushes />}
             {opcion === "estadisticas" && <Estadisticas />}
-            {opcion === "premios-bingo" && <PremiosBingo />}
+            {opcion === "premios-bingo" && <Regalos />}
             {opcion === "cliente-mes" && <ClienteMes />}
             {opcion === "pedidos" && <PedidosExportar />}
             {opcion === "configuracion" && <Configuracion />}

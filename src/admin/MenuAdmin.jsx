@@ -62,9 +62,9 @@ export default function MenuAdmin({
     },
     {
       id: "premios-bingo",
-      icono: "🎉",
-      titulo: "Premios de Bingo",
-      descripcion: "Clientes con línea o bingo",
+      icono: "🎁",
+      titulo: "Regalos",
+      descripcion: "Bingo y LojoPoly · valoración",
     },
     {
       id: "pedidos",
