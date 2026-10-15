@@ -13,7 +13,7 @@ import QrPendientes, {
   hayQueVolverAQrPendientes,
   limpiarVolverAQrPendientes,
 } from "./QrPendientes";
-import { RegalosVista, useRegalos } from "./Regalos";
+import { RegalosVista, useRegalos, leerClienteRegalos, limpiarClienteRegalos } from "./Regalos";
 import { abrirPantallaGrande, enviarEventoDisplay, leerVistaReposo } from "../utils/pantallaGrande";
 import {
   cargarUbicacionesPorArticulo,
@@ -122,11 +122,15 @@ export default function PedidosExportar() {
   // Regalos de Bingo y LojoPoly pendientes de entregar (aviso en tiempo real + pestaña).
   const premiosBingo = useRegalos({ avisarConSonido: true });
   const regalosPendientes = premiosBingo.pendientes;
+  // Al terminar el último juego de un cliente con regalos por entregar, se
+  // abre directamente 🎁 Regalos filtrado a ese cliente.
+  const [clienteRegalos] = useState(() => (hayQueVolverAQrPendientes() ? null : leerClienteRegalos()));
   const [vistaPrincipal, setVistaPrincipal] = useState(() =>
-    hayQueVolverAQrPendientes() ? "qr" : "pedidos"
+    hayQueVolverAQrPendientes() ? "qr" : clienteRegalos ? "premios" : "pedidos"
   );
   useEffect(() => {
     limpiarVolverAQrPendientes();
+    limpiarClienteRegalos();
   }, []);
 
   // Pantalla grande (TV): qué se deja mostrando entre cliente y cliente y
@@ -787,7 +791,7 @@ export default function PedidosExportar() {
       </div>
 
       {vistaPrincipal === "premios" ? (
-        <RegalosVista datos={premiosBingo} modoAlmacen />
+        <RegalosVista datos={premiosBingo} modoAlmacen clienteInicial={clienteRegalos} />
       ) : vistaPrincipal === "qr" ? (
         <QrPendientes onClienteSinMasQr={() => setVistaPrincipal("pedidos")} />
       ) : (

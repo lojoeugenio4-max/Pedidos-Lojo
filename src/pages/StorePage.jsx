@@ -9,6 +9,7 @@ import { notificarPremioBingo } from "../utils/premiosBingoEvento";
 import { abrirPantallaGrande } from "../utils/pantallaGrande";
 import PedidosExportar from "../admin/PedidosExportar";
 import { prepararVueltaTrasJugar } from "../admin/QrPendientes";
+import { prepararRegalosTrasJugar } from "../admin/Regalos";
 import { duracionAnimacionPuntosClienteMes, duracionBromaLider } from "../utils/clienteMes";
 import LojoPolyJuego from "../components/lojopoly/LojoPolyJuego";
 
@@ -1585,7 +1586,10 @@ export default function StorePage() {
       : {};
     reset();
     try {
-      await prepararVueltaTrasJugar(cliente);
+      const quedanMasQr = await prepararVueltaTrasJugar(cliente);
+      // Si ya no le quedan más QR por jugar y tiene regalos por entregar,
+      // "Pedidos recibidos" se abre en 🎁 Regalos con solo los de ese cliente.
+      if (!quedanMasQr) await prepararRegalosTrasJugar(cliente);
     } finally {
       finalizandoRef.current = false;
       setMostrarPedidosRecibidos(true);

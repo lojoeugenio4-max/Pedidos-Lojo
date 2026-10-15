@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { usePremiosBingo } from "./PremiosBingo";
+import { usePremiosBingo, construirRegalos } from "./PremiosBingo";
 
 // Regalos ganados en los juegos (Bingo + LojoPoly).
 //
@@ -44,6 +44,71 @@ const cantidadTexto = (n) => {
   const v = Number(n ?? 1);
   return Number.isInteger(v) ? String(v) : v.toLocaleString("es-ES");
 };
+
+// ---------------------------------------------------------------------
+// Abrir Regalos solo con el cliente que acaba de jugar
+// ---------------------------------------------------------------------
+// StorePage, al terminar el ÚLTIMO juego de un cliente, comprueba si tiene
+// regalos por entregar. Si los tiene, lo deja guardado en sessionStorage y
+// "Pedidos recibidos" se abre en 🎁 Regalos filtrado a ese cliente. Si no,
+// todo sigue como siempre.
+const CLAVE_CLIENTE_REGALOS = "lojo-regalos-cliente";
+
+export function leerClienteRegalos() {
+  try {
+    const valor = window.sessionStorage.getItem(CLAVE_CLIENTE_REGALOS);
+    return valor ? JSON.parse(valor) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function limpiarClienteRegalos() {
+  try {
+    window.sessionStorage.removeItem(CLAVE_CLIENTE_REGALOS);
+  } catch {
+    /* sin sessionStorage */
+  }
+}
+
+async function contarRegalosPendientesCliente(token) {
+  const [premios, entregas, lojopoly] = await Promise.all([
+    supabase.rpc("admin_listar_premios_bingo"),
+    supabase.rpc("admin_listar_entregas_premios_bingo"),
+    supabase.rpc("admin_listar_regalos_lojopoly"),
+  ]);
+  let total = 0;
+  if (!premios.error && !entregas.error) {
+    const mapa = new Map((entregas.data || []).map((e) => [`${e.clave}|${e.tipo}`, e.entregado_en]));
+    const filas = (premios.data || []).filter((f) => String(f.customer_token || "") === token);
+    total += construirRegalos(filas, mapa, {}).filter((r) => !r.entregadoEn).length;
+  }
+  if (!lojopoly.error) {
+    total += (lojopoly.data || []).filter(
+      (p) => String(p.cliente_token || "") === token && p.estado === "pendiente"
+    ).length;
+  }
+  return total;
+}
+
+// Devuelve true si el cliente tiene regalos pendientes (y lo deja preparado).
+export async function prepararRegalosTrasJugar({ customerToken, customerName } = {}) {
+  limpiarClienteRegalos();
+  const token = customerToken ? String(customerToken) : "";
+  if (!token) return false;
+  try {
+    const pendientes = await contarRegalosPendientesCliente(token);
+    if (!pendientes) return false;
+    window.sessionStorage.setItem(
+      CLAVE_CLIENTE_REGALOS,
+      JSON.stringify({ token, nombre: customerName ? String(customerName) : "" })
+    );
+    return true;
+  } catch (err) {
+    console.warn("No se pudo comprobar si el cliente tiene regalos pendientes:", err);
+    return false;
+  }
+}
 
 const ETIQUETA_LOJOPOLY = {
   suerte: "SUERTE",
@@ -221,7 +286,7 @@ export default function Regalos() {
   return <RegalosVista datos={datos} conValoracion />;
 }
 
-export function RegalosVista({ datos, modoAlmacen = false, conValoracion = false }) {
+export function RegalosVista({ datos, modoAlmacen = false, conValoracion = false, clienteInicial = null }) {
   const { regalos, bingoDisponible, lojopolyDisponible, cargando, error, cargar, marcarEntregado, ultimoAviso } = datos;
 
   const [vista, setVista] = useState("pendientes");
@@ -229,11 +294,19 @@ export function RegalosVista({ datos, modoAlmacen = false, conValoracion = false
   const [juego, setJuego] = useState("todos");
   const [guardando, setGuardando] = useState(() => new Set());
   const [errorGuardar, setErrorGuardar] = useState("");
+  // Cliente que acaba de jugar: se ven solo sus regalos hasta que se quite.
+  const [cliente, setCliente] = useState(() => (clienteInicial?.token ? clienteInicial : null));
 
   const porJuego = useMemo(
-    () => regalos.filter((r) => juego === "todos" || r.origen === juego),
-    [regalos, juego]
+    () =>
+      regalos.filter(
+        (r) => (juego === "todos" || r.origen === juego) && (!cliente || r.clienteToken === cliente.token)
+      ),
+    [regalos, juego, cliente]
   );
+  const nombreCliente = cliente
+    ? cliente.nombre || regalos.find((r) => r.clienteToken === cliente.token)?.clienteNombre || "este cliente"
+    : "";
 
   const filtrados = useMemo(() => {
     const q = normalizar(busqueda);
@@ -331,6 +404,17 @@ export function RegalosVista({ datos, modoAlmacen = false, conValoracion = false
             hour: "2-digit",
             minute: "2-digit",
           })}
+        </div>
+      )}
+
+      {cliente && (
+        <div style={cajaCliente}>
+          <span>
+            🎁 Regalos de <strong>{nombreCliente}</strong>
+          </span>
+          <button type="button" style={botonClaro} onClick={() => setCliente(null)}>
+            Ver los de todos los clientes
+          </button>
         </div>
       )}
 
@@ -834,6 +918,19 @@ const cajaAvisoNuevo = {
   borderRadius: 14,
   padding: "14px 18px",
   fontSize: 17,
+};
+const cajaCliente = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 12,
+  alignItems: "center",
+  justifyContent: "space-between",
+  border: "2px solid #2563eb",
+  background: "#eff6ff",
+  color: "#1e3a8a",
+  borderRadius: 14,
+  padding: "12px 16px",
+  fontSize: 18,
 };
 const cajaVacia = { border: "1px dashed #cbd5e1", borderRadius: 12, padding: "24px 16px", textAlign: "center", color: "#64748b" };
 const tablaContenedor = { overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 14 };

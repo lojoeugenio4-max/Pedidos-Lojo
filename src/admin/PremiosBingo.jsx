@@ -113,7 +113,7 @@ async function cargarNombresRegalos() {
 }
 
 // Convierte las filas por cartón en una fila por REGALO (línea / bingo).
-function construirRegalos(filas, entregas, nombresRegalos) {
+export function construirRegalos(filas, entregas, nombresRegalos) {
   const regalos = [];
   filas.forEach((fila) => {
     const clave = claveCarton(fila);
