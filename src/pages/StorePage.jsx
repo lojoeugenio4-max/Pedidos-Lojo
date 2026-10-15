@@ -361,6 +361,28 @@ export default function StorePage() {
   const [lojopolyTirada, setLojopolyTirada] = useState(null);
   const [lojopolyRodando, setLojopolyRodando] = useState(false);
   const [lojopolyResultado, setLojopolyResultado] = useState("");
+  // Premios que han salido en las tiradas de este QR, para que el cajero
+  // no se pierda ninguno aunque las tiradas vayan seguidas.
+  const [lojopolyPremios, setLojopolyPremios] = useState([]);
+  // Las tiradas son automáticas: se encadenan solas con una pausa para que
+  // se vea el resultado en la TV. Refs para no depender de valores viejos
+  // dentro de los temporizadores.
+  const lojopolyCodigoRef = useRef("");
+  const lojopolyRodandoRef = useRef(false);
+  const lojopolyTimerRef = useRef(null);
+  function programarTiradaLojoPoly(ms) {
+    if (lojopolyTimerRef.current) window.clearTimeout(lojopolyTimerRef.current);
+    lojopolyTimerRef.current = window.setTimeout(() => {
+      lojopolyTimerRef.current = null;
+      tirarLojoPoly();
+    }, ms);
+  }
+  function cancelarTiradasLojoPoly() {
+    if (lojopolyTimerRef.current) window.clearTimeout(lojopolyTimerRef.current);
+    lojopolyTimerRef.current = null;
+    lojopolyRodandoRef.current = false;
+    lojopolyCodigoRef.current = "";
+  }
   const [bomboGirando, setBomboGirando] = useState(false);
   // Además del estado (que solo sirve para pintar la UI), guardamos el
   // mismo valor en una ref. El estado, al leerse dentro de una función
@@ -522,6 +544,14 @@ export default function StorePage() {
       window.removeEventListener("storage", handleStorage);
     };
   }, [codigo, entitlement?.code, entitlement?.roulette_available, entitlement?.sorteo_available, entitlement?.lojopoly_available]);
+
+  // Si a este QR solo le queda LojoPoly, se abre solo y empiezan las tiradas.
+  useEffect(() => {
+    if (estado !== "lojopoly-ready" || !entitlement?.lojopoly_available) return;
+    const otros = entitlement.bingo_available || entitlement.roulette_available || entitlement.sorteo_available;
+    if (!otros) abrirLojoPoly();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estado, entitlement?.code]);
 
   useEffect(() => {
     const codeFromUrl = extraerCodigoQr(
@@ -1332,6 +1362,8 @@ export default function StorePage() {
     setMensaje("");
     setLojopolyTirada(null);
     setLojopolyResultado("");
+    setLojopolyPremios([]);
+    lojopolyCodigoRef.current = entitlement.code;
     try {
       const { data, error } = await supabase.rpc("lojopoly_tablero_qr", { p_code: entitlement.code });
       if (error) throw error;
@@ -1343,6 +1375,8 @@ export default function StorePage() {
         clienteNombre: data.cliente_nombre || entitlement.customer_name || "",
         pendientes: entitlement.lojopoly_pendientes ?? null,
       });
+      // Primera tirada automática, tras dejar ver el tablero en la TV.
+      if (Number(entitlement.lojopoly_pendientes) > 0) programarTiradaLojoPoly(1800);
     } catch (err) {
       console.error("No se pudo abrir LojoPoly:", err);
       setMensaje(err?.message || "No se pudo abrir LojoPoly.");
@@ -1351,11 +1385,12 @@ export default function StorePage() {
   }
 
   async function tirarLojoPoly() {
-    if (!entitlement?.code || lojopolyRodando) return;
+    const codigoQr = lojopolyCodigoRef.current;
+    if (!codigoQr || lojopolyRodandoRef.current) return;
+    lojopolyRodandoRef.current = true;
     setLojopolyRodando(true);
-    setLojopolyResultado("");
     try {
-      const { data, error } = await supabase.rpc("lojopoly_tirar_qr", { p_code: entitlement.code });
+      const { data, error } = await supabase.rpc("lojopoly_tirar_qr", { p_code: codigoQr });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.mensaje || "No se pudo tirar el dado.");
 
@@ -1367,18 +1402,35 @@ export default function StorePage() {
       setLojopolyTirada(tirada);
       enviarEventoDisplay("lojopoly-tirada", {
         tirada,
-        clienteNombre: lojopolyTablero?.cliente_nombre || entitlement.customer_name || "",
+        clienteNombre: lojopolyTablero?.cliente_nombre || entitlement?.customer_name || "",
         pendientes,
       });
     } catch (err) {
       console.error("Error en la tirada de LojoPoly:", err);
+      lojopolyRodandoRef.current = false;
       setLojopolyRodando(false);
       setLojopolyResultado(err?.message || "No se pudo tirar el dado.");
     }
   }
 
   function terminarTiradaLojoPoly(tirada) {
+    lojopolyRodandoRef.current = false;
     setLojopolyRodando(false);
+    if (tirada.premio?.texto) {
+      setLojopolyPremios((actual) => [
+        ...actual,
+        tirada.resultado === "grupo_completado"
+          ? `Grupo ${tirada.casilla?.grupo_nombre || ""}: ${tirada.premio.texto}`
+          : tirada.premio.texto,
+      ]);
+    }
+    // Siguiente tirada automática, con más pausa si ha habido premio para
+    // que se vea bien la celebración en la TV.
+    if (lojopolyCodigoRef.current && Number(tirada.pendientes) > 0) {
+      programarTiradaLojoPoly(
+        tirada.resultado === "grupo_completado" ? 6500 : tirada.resultado === "premio_instantaneo" ? 4000 : 2600
+      );
+    }
     setLojopolyTablero(tirada.tablero || lojopolyTablero);
     const nombre = tirada.casilla?.nombre || "";
     const textos = {
@@ -1463,6 +1515,8 @@ export default function StorePage() {
 
   function reset() {
     cancelarEsperaCelebracion(true);
+    cancelarTiradasLojoPoly();
+    setLojopolyPremios([]);
     setLojopolyTablero(null);
     setLojopolyTirada(null);
     setLojopolyRodando(false);
@@ -1879,15 +1933,22 @@ export default function StorePage() {
             onTerminado={terminarTiradaLojoPoly}
           />
           {lojopolyResultado && <p style={styles.lojopolyResultado}>{lojopolyResultado}</p>}
+          {lojopolyPremios.length > 0 && (
+            <div style={styles.lojopolyPremios}>
+              <strong>🎁 Premios a entregar en caja:</strong>
+              {lojopolyPremios.map((texto, i) => (
+                <div key={i}>• {texto}</div>
+              ))}
+            </div>
+          )}
           <div style={styles.gameChoiceGrid}>
-            {Number(entitlement.lojopoly_pendientes) > 0 ? (
-              <button type="button" onClick={tirarLojoPoly} disabled={lojopolyRodando} style={styles.lojopolyActionButton}>
-                🎲 {lojopolyRodando
-                  ? "EL DADO ESTÁ RODANDO..."
-                  : `TIRAR DADO (${entitlement.lojopoly_pendientes} ${Number(entitlement.lojopoly_pendientes) === 1 ? "tirada" : "tiradas"})`}
-              </button>
-            ) : lojopolyRodando ? (
-              <button type="button" disabled style={styles.lojopolyActionButton}>🎲 EL DADO ESTÁ RODANDO...</button>
+            {Number(entitlement.lojopoly_pendientes) > 0 || lojopolyRodando ? (
+              <div style={styles.lojopolyAuto}>
+                🎲 Tirando automáticamente…{" "}
+                {Number(entitlement.lojopoly_pendientes) > 0
+                  ? `quedan ${entitlement.lojopoly_pendientes} ${Number(entitlement.lojopoly_pendientes) === 1 ? "tirada" : "tiradas"}`
+                  : "última tirada"}
+              </div>
             ) : entitlement.roulette_available || entitlement.bingo_available || entitlement.sorteo_available ? (
               <button type="button" onClick={() => setEstado("game-choice")} style={styles.rouletteActionButton}>ELEGIR SIGUIENTE JUEGO ›</button>
             ) : (
@@ -2135,6 +2196,27 @@ const styles = {
     letterSpacing: "0.03em",
     cursor: "pointer",
     boxShadow: "0 5px 0 #0b1140",
+  },
+  lojopolyAuto: {
+    padding: "16px 18px",
+    borderRadius: "16px",
+    background: "#0b1140",
+    color: "#ffcc2e",
+    fontSize: "20px",
+    fontWeight: 900,
+    textAlign: "center",
+  },
+  lojopolyPremios: {
+    margin: "12px 0 0",
+    padding: "12px 14px",
+    borderRadius: "12px",
+    background: "#dcfce7",
+    border: "2px solid #22c55e",
+    color: "#14532d",
+    fontSize: "16px",
+    fontWeight: 700,
+    display: "grid",
+    gap: "4px",
   },
   lojopolyResultado: {
     margin: "14px 0 0",
