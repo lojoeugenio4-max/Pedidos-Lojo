@@ -66,7 +66,7 @@ function sonarAviso() {
   }
 }
 
-async function cargarNombresRegalos() {
+export async function cargarNombresRegalos() {
   try {
     const { data: promo } = await supabase
       .from("promociones_bingo")

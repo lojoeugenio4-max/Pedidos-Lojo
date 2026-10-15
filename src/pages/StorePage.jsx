@@ -9,7 +9,7 @@ import { notificarPremioBingo } from "../utils/premiosBingoEvento";
 import { abrirPantallaGrande } from "../utils/pantallaGrande";
 import PedidosExportar from "../admin/PedidosExportar";
 import { prepararVueltaTrasJugar } from "../admin/QrPendientes";
-import { prepararRegalosTrasJugar } from "../admin/Regalos";
+import { prepararRegalosTrasJugar, guardarArticulosRegalosBingo } from "../admin/Regalos";
 import { duracionAnimacionPuntosClienteMes, duracionBromaLider } from "../utils/clienteMes";
 import LojoPolyJuego from "../components/lojopoly/LojoPolyJuego";
 
@@ -950,6 +950,9 @@ export default function StorePage() {
           etiqueta,
           premioNombre: nombre || "",
         });
+        // Se guarda ya qué artículo es este regalo, para que un cambio
+        // posterior en la promoción no lo cambie.
+        window.setTimeout(guardarArticulosRegalosBingo, 1500);
         setPremioBingoGanado(premio);
         enviarEventoDisplay("bingo-premio", { premio });
       });

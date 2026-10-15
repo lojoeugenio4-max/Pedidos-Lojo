@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { usePremiosBingo, construirRegalos } from "./PremiosBingo";
+import { usePremiosBingo, construirRegalos, cargarNombresRegalos } from "./PremiosBingo";
 
 // Regalos ganados en los juegos (Bingo + LojoPoly).
 //
@@ -110,6 +110,47 @@ export async function prepararRegalosTrasJugar({ customerToken, customerName } =
   }
 }
 
+// ---------------------------------------------------------------------
+// Artículo GUARDADO de los regalos del Bingo
+// ---------------------------------------------------------------------
+// El artículo de un regalo de Bingo sale de la promoción del Bingo. Para que
+// cambiar la promoción no cambie los regalos ya ganados, cada regalo guarda
+// su artículo la primera vez que se ve (al ganarlo en caja, o al abrir la
+// pantalla de Regalos) y desde ese momento ya no cambia.
+async function cargarArticulosGuardados() {
+  const { data, error } = await supabase.rpc("admin_listar_articulos_regalos");
+  if (error) return null;
+  return new Map((data || []).map((g) => [`${g.origen}:${g.clave}`, g]));
+}
+
+async function fijarArticulosBingo(regalosBingo, guardados) {
+  const items = regalosBingo
+    .filter((r) => r.articulo && !guardados.has(`bingo:${r.clave}|${r.tipo}`))
+    .map((r) => ({ origen: "bingo", clave: `${r.clave}|${r.tipo}`, articulo_id: r.articulo.id, cantidad: 1 }));
+  if (!items.length) return false;
+  const { error } = await supabase.rpc("admin_fijar_articulo_regalos", { p_items: items });
+  if (error) {
+    console.warn("No se pudo guardar el artículo de los regalos de Bingo:", error);
+    return false;
+  }
+  return true;
+}
+
+// La llama el TPV justo después de que un cliente gane línea o bingo.
+export async function guardarArticulosRegalosBingo() {
+  try {
+    const [premios, nombres, guardados] = await Promise.all([
+      supabase.rpc("admin_listar_premios_bingo"),
+      cargarNombresRegalos(),
+      cargarArticulosGuardados(),
+    ]);
+    if (premios.error || !guardados) return;
+    await fijarArticulosBingo(construirRegalos(premios.data || [], new Map(), nombres), guardados);
+  } catch (err) {
+    console.warn("No se pudo guardar el artículo de los regalos de Bingo:", err);
+  }
+}
+
 const ETIQUETA_LOJOPOLY = {
   suerte: "SUERTE",
   suerte_grande: "SUERTE GRANDE",
@@ -159,6 +200,23 @@ export function useRegalos({ avisarConSonido = false } = {}) {
     return () => clearTimeout(t);
   }, [bingo.ultimoAviso, cargarLojopoly]);
 
+  // Artículo guardado de cada regalo de Bingo. Si alguno aún no lo tiene,
+  // se le guarda ahora el de la promoción actual.
+  const [guardados, setGuardados] = useState(() => new Map());
+  useEffect(() => {
+    if (!bingo.regalos.length) return undefined;
+    let cancelado = false;
+    (async () => {
+      let mapa = await cargarArticulosGuardados();
+      if (!mapa || cancelado) return;
+      if (await fijarArticulosBingo(bingo.regalos, mapa)) mapa = (await cargarArticulosGuardados()) || mapa;
+      if (!cancelado) setGuardados(mapa);
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [bingo.regalos]);
+
   // Código Lojo de los clientes de Bingo (la lista de Bingo solo trae el token)
   const tokensBingo = useMemo(
     () => [...new Set(bingo.regalos.map((r) => r.customer_token).filter(Boolean))].sort().join(","),
@@ -180,6 +238,10 @@ export function useRegalos({ avisarConSonido = false } = {}) {
     const lista = [];
     bingo.regalos.forEach((r) => {
       const cliente = clientesBingo.get(String(r.customer_token || ""));
+      const guardado = guardados.get(`bingo:${r.clave}|${r.tipo}`);
+      const articulo = guardado?.articulo_id
+        ? { id: guardado.articulo_id, codigo: guardado.articulo_codigo || "", nombre: guardado.articulo_nombre || "" }
+        : r.articulo || null;
       lista.push({
         id: `bingo:${r.clave}|${r.tipo}`,
         origen: "bingo",
@@ -191,9 +253,9 @@ export function useRegalos({ avisarConSonido = false } = {}) {
         etiqueta: r.etiqueta,
         especial: r.especial,
         detalle: r.ronda ? `Cartón nº ${r.ronda}` : "",
-        regalo: r.regalo || r.articulo?.nombre || "",
-        articulo: r.articulo || null,
-        cantidad: 1,
+        regalo: guardado?.articulo_id ? articulo.nombre : r.regalo || r.articulo?.nombre || "",
+        articulo,
+        cantidad: Number(guardado?.cantidad ?? 1),
         ganadoEn: r.ultima_bola_en,
         entregadoEn: r.entregadoEn,
         estado: r.entregadoEn ? "entregado" : "pendiente",
@@ -233,7 +295,7 @@ export function useRegalos({ avisarConSonido = false } = {}) {
       return new Date(b.ganadoEn || 0) - new Date(a.ganadoEn || 0);
     });
     return lista;
-  }, [bingo.regalos, bingo.entregasDisponibles, lojopoly, clientesBingo]);
+  }, [bingo.regalos, bingo.entregasDisponibles, lojopoly, clientesBingo, guardados]);
 
   const pendientes = useMemo(() => regalos.filter((r) => r.estado === "pendiente" && r.editable), [regalos]);
 
