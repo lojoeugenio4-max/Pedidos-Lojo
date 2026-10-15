@@ -93,7 +93,15 @@ export async function cargarNombresRegalos() {
     // Artículo de cada regalo (para la valoración en el programa de gestión)
     const articulo = (tipo) => {
       const a = porId.get(String(promo[`premio_${tipo}_articulo_id`] || ""));
-      return a ? { id: String(a.id), codigo: a.codigo || "", nombre: a.nombre || "" } : null;
+      return a
+        ? {
+            id: String(a.id),
+            codigo: a.codigo || "",
+            nombre: a.nombre || "",
+            cantidad: Number(promo[`premio_${tipo}_cantidad`] ?? 1) || 1,
+            formato: promo[`premio_${tipo}_formato`] === "cajas" ? "cajas" : "unidades",
+          }
+        : null;
     };
     return {
       linea: nombre("linea"),

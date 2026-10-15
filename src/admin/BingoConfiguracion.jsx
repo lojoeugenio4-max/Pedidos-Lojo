@@ -10,7 +10,13 @@ const configuracionVacia = {
   premio_linea_especial_activo: false, premio_linea_especial_nombre: "", premio_linea_especial_mensaje: "", premio_linea_especial_articulo_id: "", premio_linea_especial_max_bolas: 50,
   premio_bingo_activo: false, premio_bingo_nombre: "", premio_bingo_mensaje: "", premio_bingo_articulo_id: "",
   premio_especial_activo: false, premio_especial_nombre: "", premio_especial_mensaje: "", premio_especial_articulo_id: "", premio_especial_max_bolas: 50,
+  // Cantidad y formato (cajas/unidades) de cada regalo, para la valoración
+  premio_linea_cantidad: 1, premio_linea_formato: "unidades",
+  premio_linea_especial_cantidad: 1, premio_linea_especial_formato: "unidades",
+  premio_bingo_cantidad: 1, premio_bingo_formato: "unidades",
+  premio_especial_cantidad: 1, premio_especial_formato: "unidades",
 };
+const TIPOS_PREMIO = ["linea", "linea_especial", "bingo", "especial"];
 
 function fotoUrl(foto) {
   if (!foto) return "";
@@ -24,6 +30,8 @@ export default function BingoConfiguracion() {
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState("");
   const [error, setError] = useState("");
+  // true si ya está ejecutada migracion_regalos.sql (columnas de cantidad/formato)
+  const [conFormato, setConFormato] = useState(false);
 
   useEffect(() => { cargarConfiguracion(); }, []);
 
@@ -48,7 +56,12 @@ export default function BingoConfiguracion() {
       premio_especial_activo: Boolean(data.premio_especial_activo), premio_especial_nombre: data.premio_especial_nombre || "",
       premio_especial_mensaje: data.premio_especial_mensaje || "", premio_especial_articulo_id: String(data.premio_especial_articulo_id || ""),
       premio_especial_max_bolas: data.premio_especial_max_bolas ?? 50,
+      ...Object.fromEntries(TIPOS_PREMIO.flatMap((t) => [
+        [`premio_${t}_cantidad`, data[`premio_${t}_cantidad`] ?? 1],
+        [`premio_${t}_formato`, data[`premio_${t}_formato`] === "cajas" ? "cajas" : "unidades"],
+      ])),
     });
+    setConFormato(Boolean(data && "premio_linea_formato" in data));
     setArticulos(articulosData || []); setCargando(false);
   }
 
@@ -92,6 +105,10 @@ export default function BingoConfiguracion() {
       premio_especial_activo: configuracion.premio_especial_activo, premio_especial_nombre: configuracion.premio_especial_nombre.trim(),
       premio_especial_mensaje: configuracion.premio_especial_mensaje.trim(), premio_especial_articulo_id: configuracion.premio_especial_articulo_id || null,
       premio_especial_max_bolas: maxBolasEspecial,
+      ...(conFormato ? Object.fromEntries(TIPOS_PREMIO.flatMap((t) => [
+        [`premio_${t}_cantidad`, Number(configuracion[`premio_${t}_cantidad`]) > 0 ? Number(configuracion[`premio_${t}_cantidad`]) : 1],
+        [`premio_${t}_formato`, configuracion[`premio_${t}_formato`] === "cajas" ? "cajas" : "unidades"],
+      ])) : {}),
       updated_at: new Date().toISOString(),
     };
     const resultado = actual ? await supabase.from("promociones_bingo").update(datos).eq("id", actual.id) : await supabase.from("promociones_bingo").insert(datos);
@@ -113,15 +130,15 @@ export default function BingoConfiguracion() {
       <label style={{...label,gridColumn:"1 / -1"}}>Mensaje para el cliente<textarea style={textarea} value={configuracion.mensaje_cliente} onChange={(e)=>cambiarCampo("mensaje_cliente",e.target.value)} rows={3}/></label>
     </div>
     <div style={premiosGrid}>
-      <SeccionPremio tipo="linea" titulo="🏅 Premio por línea" activo={configuracion.premio_linea_activo} nombre={configuracion.premio_linea_nombre} mensaje={configuracion.premio_linea_mensaje} articuloId={configuracion.premio_linea_articulo_id} articulos={articulos} onActivo={(v)=>cambiarCampo("premio_linea_activo",v)} onNombre={(v)=>cambiarCampo("premio_linea_nombre",v)} onMensaje={(v)=>cambiarCampo("premio_linea_mensaje",v)} onArticulo={(a)=>elegirArticulo("linea",a)} />
+      <SeccionPremio tipo="linea" titulo="🏅 Premio por línea" activo={configuracion.premio_linea_activo} nombre={configuracion.premio_linea_nombre} mensaje={configuracion.premio_linea_mensaje} articuloId={configuracion.premio_linea_articulo_id} articulos={articulos} onActivo={(v)=>cambiarCampo("premio_linea_activo",v)} onNombre={(v)=>cambiarCampo("premio_linea_nombre",v)} onMensaje={(v)=>cambiarCampo("premio_linea_mensaje",v)} onArticulo={(a)=>elegirArticulo("linea",a)} conFormato={conFormato} cantidad={configuracion.premio_linea_cantidad} formato={configuracion.premio_linea_formato} onCantidad={(v)=>cambiarCampo("premio_linea_cantidad",v)} onFormato={(v)=>cambiarCampo("premio_linea_formato",v)} />
       <div>
-        <SeccionPremio tipo="linea_especial" titulo="⭐ Línea especial (línea rápida)" activo={configuracion.premio_linea_especial_activo} nombre={configuracion.premio_linea_especial_nombre} mensaje={configuracion.premio_linea_especial_mensaje} articuloId={configuracion.premio_linea_especial_articulo_id} articulos={articulos} onActivo={(v)=>cambiarCampo("premio_linea_especial_activo",v)} onNombre={(v)=>cambiarCampo("premio_linea_especial_nombre",v)} onMensaje={(v)=>cambiarCampo("premio_linea_especial_mensaje",v)} onArticulo={(a)=>elegirArticulo("linea_especial",a)} />
+        <SeccionPremio tipo="linea_especial" titulo="⭐ Línea especial (línea rápida)" activo={configuracion.premio_linea_especial_activo} nombre={configuracion.premio_linea_especial_nombre} mensaje={configuracion.premio_linea_especial_mensaje} articuloId={configuracion.premio_linea_especial_articulo_id} articulos={articulos} onActivo={(v)=>cambiarCampo("premio_linea_especial_activo",v)} onNombre={(v)=>cambiarCampo("premio_linea_especial_nombre",v)} onMensaje={(v)=>cambiarCampo("premio_linea_especial_mensaje",v)} onArticulo={(a)=>elegirArticulo("linea_especial",a)} conFormato={conFormato} cantidad={configuracion.premio_linea_especial_cantidad} formato={configuracion.premio_linea_especial_formato} onCantidad={(v)=>cambiarCampo("premio_linea_especial_cantidad",v)} onFormato={(v)=>cambiarCampo("premio_linea_especial_formato",v)} />
         <label style={{...label,marginTop:10}}>Máximo de bolas para conseguirlo<input style={input} type="number" min="1" max="90" value={configuracion.premio_linea_especial_max_bolas} onChange={(e)=>cambiarCampo("premio_linea_especial_max_bolas",e.target.value)} disabled={!configuracion.premio_linea_especial_activo}/></label>
         <div style={{...ayuda,marginTop:8}}>Se concede únicamente si el cliente completa la línea cuando se han cantado como máximo este número de bolas.</div>
       </div>
-      <SeccionPremio tipo="bingo" titulo="🎱 Premio por Bingo" activo={configuracion.premio_bingo_activo} nombre={configuracion.premio_bingo_nombre} mensaje={configuracion.premio_bingo_mensaje} articuloId={configuracion.premio_bingo_articulo_id} articulos={articulos} onActivo={(v)=>cambiarCampo("premio_bingo_activo",v)} onNombre={(v)=>cambiarCampo("premio_bingo_nombre",v)} onMensaje={(v)=>cambiarCampo("premio_bingo_mensaje",v)} onArticulo={(a)=>elegirArticulo("bingo",a)} />
+      <SeccionPremio tipo="bingo" titulo="🎱 Premio por Bingo" activo={configuracion.premio_bingo_activo} nombre={configuracion.premio_bingo_nombre} mensaje={configuracion.premio_bingo_mensaje} articuloId={configuracion.premio_bingo_articulo_id} articulos={articulos} onActivo={(v)=>cambiarCampo("premio_bingo_activo",v)} onNombre={(v)=>cambiarCampo("premio_bingo_nombre",v)} onMensaje={(v)=>cambiarCampo("premio_bingo_mensaje",v)} onArticulo={(a)=>elegirArticulo("bingo",a)} conFormato={conFormato} cantidad={configuracion.premio_bingo_cantidad} formato={configuracion.premio_bingo_formato} onCantidad={(v)=>cambiarCampo("premio_bingo_cantidad",v)} onFormato={(v)=>cambiarCampo("premio_bingo_formato",v)} />
       <div>
-        <SeccionPremio tipo="especial" titulo="⭐ Premio especial por Bingo rápido" activo={configuracion.premio_especial_activo} nombre={configuracion.premio_especial_nombre} mensaje={configuracion.premio_especial_mensaje} articuloId={configuracion.premio_especial_articulo_id} articulos={articulos} onActivo={(v)=>cambiarCampo("premio_especial_activo",v)} onNombre={(v)=>cambiarCampo("premio_especial_nombre",v)} onMensaje={(v)=>cambiarCampo("premio_especial_mensaje",v)} onArticulo={(a)=>elegirArticulo("especial",a)} />
+        <SeccionPremio tipo="especial" titulo="⭐ Premio especial por Bingo rápido" activo={configuracion.premio_especial_activo} nombre={configuracion.premio_especial_nombre} mensaje={configuracion.premio_especial_mensaje} articuloId={configuracion.premio_especial_articulo_id} articulos={articulos} onActivo={(v)=>cambiarCampo("premio_especial_activo",v)} onNombre={(v)=>cambiarCampo("premio_especial_nombre",v)} onMensaje={(v)=>cambiarCampo("premio_especial_mensaje",v)} onArticulo={(a)=>elegirArticulo("especial",a)} conFormato={conFormato} cantidad={configuracion.premio_especial_cantidad} formato={configuracion.premio_especial_formato} onCantidad={(v)=>cambiarCampo("premio_especial_cantidad",v)} onFormato={(v)=>cambiarCampo("premio_especial_formato",v)} />
         <label style={{...label,marginTop:10}}>Máximo de bolas para conseguirlo<input style={input} type="number" min="1" max="90" value={configuracion.premio_especial_max_bolas} onChange={(e)=>cambiarCampo("premio_especial_max_bolas",e.target.value)} disabled={!configuracion.premio_especial_activo}/></label>
         <div style={{...ayuda,marginTop:8}}>Se concede únicamente si el cliente completa el Bingo cuando se han cantado como máximo este número de bolas.</div>
       </div>
@@ -132,7 +149,7 @@ export default function BingoConfiguracion() {
   </form>;
 }
 
-function SeccionPremio({titulo,activo,nombre,mensaje,articuloId,articulos,onActivo,onNombre,onMensaje,onArticulo}) {
+function SeccionPremio({titulo,activo,nombre,mensaje,articuloId,articulos,onActivo,onNombre,onMensaje,onArticulo,conFormato,cantidad,formato,onCantidad,onFormato}) {
   const [buscar,setBuscar]=useState("");
   const seleccionado=articulos.find((a)=>String(a.id)===String(articuloId));
   const filtrados=useMemo(()=>{ const q=buscar.toLowerCase().trim(); if(!q)return []; return articulos.filter(a=>`${a.codigo||""} ${a.nombre||""}`.toLowerCase().includes(q)).slice(0,8); },[buscar,articulos]);
@@ -141,6 +158,10 @@ function SeccionPremio({titulo,activo,nombre,mensaje,articuloId,articulos,onActi
     <label style={label}>Buscar artículo del premio {activo&&<span style={obligatorio}>*</span>}<input style={input} value={buscar} onChange={(e)=>setBuscar(e.target.value)} placeholder="Código o nombre del artículo"/></label>
     {filtrados.length>0&&<div style={resultados}>{filtrados.map(a=><button key={a.id} type="button" style={resultado} onClick={()=>{onArticulo(a);setBuscar("");}}>{a.foto?<img src={fotoUrl(a.foto)} alt="" style={miniFoto}/>:<span style={sinFoto}>Sin foto</span>}<span><strong>{a.nombre}</strong><small style={codigo}>Código: {a.codigo}</small></span></button>)}</div>}
     {seleccionado&&<div style={seleccionadoStyle}>{seleccionado.foto?<img src={fotoUrl(seleccionado.foto)} alt={seleccionado.nombre} style={fotoSeleccionada}/>:<div style={sinFotoGrande}>Sin foto</div>}<div><strong>{seleccionado.nombre}</strong><div style={codigo}>Código: {seleccionado.codigo}</div><button type="button" style={quitar} onClick={()=>onArticulo(null)}>Quitar selección</button></div></div>}
+    {conFormato&&<div style={{display:"flex",gap:10}}>
+      <label style={{...label,flex:1}}>Cantidad que se regala<input style={input} type="number" min="0.01" step="any" value={cantidad} onChange={(e)=>onCantidad(e.target.value)} /></label>
+      <label style={{...label,flex:1}}>En<select style={input} value={formato} onChange={(e)=>onFormato(e.target.value)}><option value="cajas">Cajas</option><option value="unidades">Unidades</option></select></label>
+    </div>}
     <label style={label}>Nombre mostrado<input style={input} value={nombre} onChange={(e)=>onNombre(e.target.value)} required={activo} /></label>
     <label style={label}>Mensaje o descripción<textarea style={textarea} value={mensaje} onChange={(e)=>onMensaje(e.target.value)} rows={3}/></label>
   </section>;

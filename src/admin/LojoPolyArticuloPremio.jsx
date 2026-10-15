@@ -31,7 +31,7 @@ const normalizar = (v) =>
     .toLowerCase()
     .trim();
 
-export default function LojoPolyArticuloPremio({ idBase, articuloId, cantidad, ocupado, onCambiar }) {
+export default function LojoPolyArticuloPremio({ idBase, articuloId, cantidad, formato = "unidades", ocupado, onCambiar }) {
   const [articulos, setArticulos] = useState([]);
   const [error, setError] = useState("");
   const [buscando, setBuscando] = useState(false);
@@ -99,6 +99,17 @@ export default function LojoPolyArticuloPremio({ idBase, articuloId, cantidad, o
             }}
           />
         </label>
+        <select
+          id={`${idBase}-formato`}
+          value={formato === "cajas" ? "cajas" : "unidades"}
+          disabled={ocupado}
+          onChange={(e) => onCambiar({ formato: e.target.value })}
+          style={{ ...input, width: "auto" }}
+          aria-label="Cajas o unidades"
+        >
+          <option value="cajas">Cajas</option>
+          <option value="unidades">Unidades</option>
+        </select>
         <button type="button" style={botonSecundario} disabled={ocupado} onClick={() => setBuscando((b) => !b)}>
           {articuloId ? "Cambiar artículo" : "Elegir artículo"}
         </button>

@@ -313,11 +313,13 @@ function TarjetaGrupo({
           idBase={`lp-grupo-regalo-${grupo.id}`}
           articuloId={grupo.premio_articulo_id}
           cantidad={grupo.premio_cantidad}
+          formato={grupo.premio_formato}
           ocupado={ocupado}
           onCambiar={(c) =>
             onActualizar({
               ...("articulo_id" in c ? { premio_articulo_id: c.articulo_id } : {}),
               ...("cantidad" in c ? { premio_cantidad: c.cantidad } : {}),
+              ...("formato" in c ? { premio_formato: c.formato } : {}),
             })
           }
         />

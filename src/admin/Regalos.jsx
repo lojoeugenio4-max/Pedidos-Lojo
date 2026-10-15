@@ -44,6 +44,12 @@ const cantidadTexto = (n) => {
   const v = Number(n ?? 1);
   return Number.isInteger(v) ? String(v) : v.toLocaleString("es-ES");
 };
+// "2 cajas", "1 caja", "6 uds.", "1 ud."
+const cantidadConFormato = (n, formato) => {
+  const v = Number(n ?? 1);
+  const cajas = formato === "cajas";
+  return `${cantidadTexto(v)} ${cajas ? (v === 1 ? "caja" : "cajas") : v === 1 ? "ud." : "uds."}`;
+};
 
 // ---------------------------------------------------------------------
 // Abrir Regalos solo con el cliente que acaba de jugar
@@ -125,8 +131,14 @@ async function cargarArticulosGuardados() {
 
 async function fijarArticulosBingo(regalosBingo, guardados) {
   const items = regalosBingo
-    .filter((r) => r.articulo && !guardados.has(`bingo:${r.clave}|${r.tipo}`))
-    .map((r) => ({ origen: "bingo", clave: `${r.clave}|${r.tipo}`, articulo_id: r.articulo.id, cantidad: 1 }));
+    .filter((r) => r.articulo && !guardados.get(`bingo:${r.clave}|${r.tipo}`)?.articulo_id)
+    .map((r) => ({
+      origen: "bingo",
+      clave: `${r.clave}|${r.tipo}`,
+      articulo_id: r.articulo.id,
+      cantidad: r.articulo.cantidad ?? 1,
+      formato: r.articulo.formato || "unidades",
+    }));
   if (!items.length) return false;
   const { error } = await supabase.rpc("admin_fijar_articulo_regalos", { p_items: items });
   if (error) {
@@ -255,7 +267,8 @@ export function useRegalos({ avisarConSonido = false } = {}) {
         detalle: r.ronda ? `Cartón nº ${r.ronda}` : "",
         regalo: guardado?.articulo_id ? articulo.nombre : r.regalo || r.articulo?.nombre || "",
         articulo,
-        cantidad: Number(guardado?.cantidad ?? 1),
+        cantidad: Number(guardado?.cantidad ?? r.articulo?.cantidad ?? 1),
+        formato: guardado?.formato || r.articulo?.formato || "unidades",
         ganadoEn: r.ultima_bola_en,
         entregadoEn: r.entregadoEn,
         estado: r.entregadoEn ? "entregado" : "pendiente",
@@ -282,6 +295,7 @@ export function useRegalos({ avisarConSonido = false } = {}) {
         regalo: p.texto || p.articulo_nombre || "",
         articulo: p.articulo_id ? { id: p.articulo_id, codigo: p.articulo_codigo || "", nombre: p.articulo_nombre || "" } : null,
         cantidad: Number(p.cantidad ?? 1),
+        formato: p.formato || "unidades",
         ganadoEn: p.ganado_at,
         entregadoEn: p.estado === "entregado" ? p.entregado_at : null,
         estado: p.estado,
@@ -518,7 +532,7 @@ export function RegalosVista({ datos, modoAlmacen = false, conValoracion = false
       {errorGuardar && <div style={cajaError}>{errorGuardar}</div>}
 
       {vista === "valoracion" ? (
-        <ValoracionRegalos regalos={porJuego} busqueda={busqueda} />
+        <ValoracionRegalos regalos={porJuego} busqueda={busqueda} onCambio={cargar} />
       ) : (
         <>
           {!cargando && filtrados.length === 0 && (
@@ -584,8 +598,7 @@ export function RegalosVista({ datos, modoAlmacen = false, conValoracion = false
                           </span>
                           {r.regalo && (
                             <div style={textoRegalo}>
-                              🎁 {r.cantidad !== 1 ? `${cantidadTexto(r.cantidad)} × ` : ""}
-                              {r.regalo}
+                              🎁 {cantidadConFormato(r.cantidad, r.formato)} · {r.regalo}
                             </div>
                           )}
                         </td>
@@ -606,7 +619,7 @@ export function RegalosVista({ datos, modoAlmacen = false, conValoracion = false
 // ---------------------------------------------------------------------
 // Valoración (solo Admin de administradores)
 // ---------------------------------------------------------------------
-function ValoracionRegalos({ regalos, busqueda }) {
+function ValoracionRegalos({ regalos, busqueda, onCambio }) {
   const [valorados, setValorados] = useState(() => new Map());
   const [disponible, setDisponible] = useState(true);
   const [filtro, setFiltro] = useState("no");
@@ -812,7 +825,7 @@ function ValoracionRegalos({ regalos, busqueda }) {
                 <th style={th}>Juego</th>
                 <th style={th}>Código</th>
                 <th style={th}>Artículo</th>
-                <th style={{ ...th, textAlign: "right" }}>Cant.</th>
+                <th style={{ ...th, textAlign: "right" }}>Cantidad</th>
                 <th style={th}>Estado</th>
               </tr>
             </thead>
@@ -842,7 +855,9 @@ function ValoracionRegalos({ regalos, busqueda }) {
                     {r.articulo?.nombre || r.regalo || "—"}
                     {!r.articulo && <div style={{ ...textoPequeno, color: "#b45309" }}>⚠️ Sin artículo asignado</div>}
                   </td>
-                  <td style={{ ...td, textAlign: "right", fontWeight: 800 }}>{cantidadTexto(r.cantidad)}</td>
+                  <td style={{ ...td, textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
+                    <CeldaCantidad regalo={r} onGuardado={onCambio} onError={setError} />
+                  </td>
                   <td style={td}>
                     {r.valoradoEn ? (
                       <>
@@ -860,6 +875,71 @@ function ValoracionRegalos({ regalos, busqueda }) {
         </div>
       )}
     </div>
+  );
+}
+
+// Cantidad + Cajas/Unidades, corregible a mano desde Valoración
+function CeldaCantidad({ regalo, onGuardado, onError }) {
+  const [cantidad, setCantidad] = useState(String(regalo.cantidad ?? 1));
+  const [formato, setFormato] = useState(regalo.formato || "unidades");
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    setCantidad(String(regalo.cantidad ?? 1));
+    setFormato(regalo.formato || "unidades");
+  }, [regalo.cantidad, regalo.formato]);
+
+  async function guardar(nuevaCantidad, nuevoFormato) {
+    const valor = Number(String(nuevaCantidad).replace(",", "."));
+    if (!(valor > 0)) {
+      setCantidad(String(regalo.cantidad ?? 1));
+      return;
+    }
+    if (valor === Number(regalo.cantidad) && nuevoFormato === (regalo.formato || "unidades")) return;
+    setGuardando(true);
+    const { error } = await supabase.rpc("admin_corregir_cantidad_regalo", {
+      p_origen: regalo.origen,
+      p_clave: regalo.clave,
+      p_articulo_id: regalo.articulo?.id || null,
+      p_cantidad: valor,
+      p_formato: nuevoFormato,
+    });
+    setGuardando(false);
+    if (error) {
+      onError?.(`No se ha podido guardar la cantidad: ${error.message}`);
+      return;
+    }
+    onGuardado?.();
+  }
+
+  return (
+    <span style={{ display: "inline-flex", gap: 6, alignItems: "center", opacity: guardando ? 0.5 : 1 }}>
+      <input
+        type="number"
+        min="0.01"
+        step="any"
+        value={cantidad}
+        disabled={guardando}
+        onChange={(e) => setCantidad(e.target.value)}
+        onBlur={() => guardar(cantidad, formato)}
+        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        style={inputCantidad}
+        aria-label="Cantidad"
+      />
+      <select
+        value={formato}
+        disabled={guardando}
+        onChange={(e) => {
+          setFormato(e.target.value);
+          guardar(cantidad, e.target.value);
+        }}
+        style={selectFormato(formato)}
+        aria-label="Cajas o unidades"
+      >
+        <option value="cajas">Cajas</option>
+        <option value="unidades">Unidades</option>
+      </select>
+    </span>
   );
 }
 
@@ -882,20 +962,23 @@ function htmlListado(lista, { filtro, desde, hasta }) {
       codigo: r.articulo?.codigo || "",
       nombre: r.articulo?.nombre || r.regalo || "(sin artículo)",
       sinArticulo: !r.articulo,
-      cantidad: 0,
+      cajas: 0,
+      unidades: 0,
       regalos: 0,
     };
-    actual.cantidad += Number(r.cantidad ?? 1);
+    if (r.formato === "cajas") actual.cajas += Number(r.cantidad ?? 1);
+    else actual.unidades += Number(r.cantidad ?? 1);
     actual.regalos += 1;
     resumen.set(k, actual);
   });
   const filasResumen = [...resumen.values()]
     .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
     .map(
-      (a) => `<tr><td class="cod">${escapar(a.codigo || "—")}</td><td>${escapar(a.nombre)}${a.sinArticulo ? ' <span class="aviso">(sin artículo)</span>' : ""}</td><td class="num">${a.regalos}</td><td class="num">${escapar(cantidadTexto(a.cantidad))}</td></tr>`
+      (a) => `<tr><td class="cod">${escapar(a.codigo || "—")}</td><td>${escapar(a.nombre)}${a.sinArticulo ? ' <span class="aviso">(sin artículo)</span>' : ""}</td><td class="num">${a.regalos}</td><td class="num">${a.cajas ? escapar(cantidadTexto(a.cajas)) : ""}</td><td class="num">${a.unidades ? escapar(cantidadTexto(a.unidades)) : ""}</td></tr>`
     )
     .join("");
-  const totalUnidades = [...resumen.values()].reduce((s, a) => s + a.cantidad, 0);
+  const totalCajas = [...resumen.values()].reduce((s, a) => s + a.cajas, 0);
+  const totalUnidades = [...resumen.values()].reduce((s, a) => s + a.unidades, 0);
 
   const filas = lista
     .map(
@@ -906,7 +989,7 @@ function htmlListado(lista, { filtro, desde, hasta }) {
         <td>${escapar(r.juego)} · ${escapar(r.etiqueta)}</td>
         <td class="cod">${escapar(r.articulo?.codigo || "—")}</td>
         <td>${escapar(r.articulo?.nombre || r.regalo || "—")}</td>
-        <td class="num">${escapar(cantidadTexto(r.cantidad))}</td>
+        <td class="num">${escapar(cantidadConFormato(r.cantidad, r.formato))}</td>
         <td>${r.valoradoEn ? "Valorado" : "No valorado"}</td>
       </tr>`
     )
@@ -928,11 +1011,11 @@ function htmlListado(lista, { filtro, desde, hasta }) {
 <h1>Cash Lojo · ${escapar(tituloListado)}</h1>
 <p class="sub">${escapar(periodo)} · ${lista.length} regalo(s) · Impreso el ${escapar(fechaHora(new Date().toISOString()))}</p>
 <h2>Resumen por artículo</h2>
-<table><thead><tr><th>Código</th><th>Artículo</th><th class="num">Regalos</th><th class="num">Unidades</th></tr></thead>
+<table><thead><tr><th>Código</th><th>Artículo</th><th class="num">Regalos</th><th class="num">Cajas</th><th class="num">Unidades</th></tr></thead>
 <tbody>${filasResumen}</tbody>
-<tfoot><tr><td colspan="2">Total</td><td class="num">${lista.length}</td><td class="num">${escapar(cantidadTexto(totalUnidades))}</td></tr></tfoot></table>
+<tfoot><tr><td colspan="2">Total</td><td class="num">${lista.length}</td><td class="num">${escapar(cantidadTexto(totalCajas))}</td><td class="num">${escapar(cantidadTexto(totalUnidades))}</td></tr></tfoot></table>
 <h2>Detalle</h2>
-<table><thead><tr><th>Entregado</th><th>Cód. Lojo</th><th>Cliente</th><th>Juego</th><th>Código</th><th>Artículo</th><th class="num">Cant.</th><th>Estado</th></tr></thead>
+<table><thead><tr><th>Entregado</th><th>Cód. Lojo</th><th>Cliente</th><th>Juego</th><th>Código</th><th>Artículo</th><th class="num">Cantidad</th><th>Estado</th></tr></thead>
 <tbody>${filas}</tbody></table>
 </body></html>`;
 }
@@ -1002,6 +1085,16 @@ const td = { padding: "12px 14px", borderBottom: "1px solid #f1f5f9", verticalAl
 const textoPequeno = { color: "#94a3b8", fontSize: 12, marginTop: 2 };
 const textoRegalo = { marginTop: 6, fontSize: 13, fontWeight: 700, color: "#334155" };
 const checkGrande = { width: 26, height: 26, cursor: "pointer", accentColor: "#16a34a" };
+const inputCantidad = { width: 64, border: "1px solid #cbd5e1", borderRadius: 8, padding: "6px 8px", fontSize: 14, fontWeight: 800, textAlign: "right" };
+const selectFormato = (formato) => ({
+  border: "1px solid #cbd5e1",
+  borderRadius: 8,
+  padding: "6px 8px",
+  fontSize: 13,
+  fontWeight: 800,
+  background: formato === "cajas" ? "#fef3c7" : "#e0f2fe",
+  color: formato === "cajas" ? "#92400e" : "#075985",
+});
 const checkMediano = { width: 20, height: 20, cursor: "pointer", accentColor: "#7c3aed" };
 const etiquetaCheck = (entregado, deshabilitado) => ({
   display: "inline-flex",

@@ -254,6 +254,7 @@ function FilaPremio({ premio, ejemplo, probabilidad, ocupado, onActualizar, onBo
           idBase={`lp-premio-regalo-${premio.id}`}
           articuloId={premio.articulo_id}
           cantidad={premio.cantidad}
+          formato={premio.formato}
           ocupado={ocupado}
           onCambiar={onActualizar}
         />
