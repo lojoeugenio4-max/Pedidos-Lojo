@@ -25,6 +25,12 @@ export default function MenuAdmin({
       descripcion: "Organización del catálogo",
     },
     {
+      id: "busqueda-foto",
+      icono: "📷",
+      titulo: "Búsqueda por foto",
+      descripcion: "Pedir con la cámara",
+    },
+    {
       id: "ubicaciones",
       icono: "📍",
       titulo: "Ubicaciones",

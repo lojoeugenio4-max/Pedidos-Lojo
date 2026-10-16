@@ -16,7 +16,10 @@ import {
   Plus,
   Minus,
   Mic,
+  Camera,
 } from "lucide-react";
+import BuscarPorFoto from "./components/BuscarPorFoto";
+import { prepararModeloHuella } from "./utils/huellaFoto";
 import { supabase } from "./supabaseClient";
 import { supabaseStorage } from "./supabaseStorageClient";
 import StorePage from "./pages/StorePage";
@@ -813,6 +816,9 @@ export default function App() {
   const [selectedDepartment, setSelectedDepartment] = useState("TODOS");
   const [articuloDestacado, setArticuloDestacado] = useState(null);
   const [fichaProductoId, setFichaProductoId] = useState(null);
+  // Pedido por foto: la foto que acaba de hacer el cliente con la cámara.
+  const [fotoCamara, setFotoCamara] = useState(null);
+  const inputCamaraRef = useRef(null);
   const [campoCantidadActivo, setCampoCantidadActivo] = useState(null);
   const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
   const [showOrderSummary, setShowOrderSummary] = useState(false);
@@ -5409,6 +5415,22 @@ export default function App() {
               )}
             </div>
 
+            {/* Pedir por foto: abre la cámara del móvil. Se empieza a
+                cargar el reconocimiento mientras el cliente hace la foto. */}
+            <button
+              type="button"
+              onClick={() => {
+                if (escuchandoVoz || modoVozContinuoRef.current) detenerBusquedaPorVoz();
+                prepararModeloHuella().catch(() => {});
+                inputCamaraRef.current?.click();
+              }}
+              aria-label={language === "zh" ? "拍照点单" : "Pedir con una foto"}
+              title={language === "zh" ? "拍照点单" : "Pedir con una foto"}
+              style={styles.botonCamara}
+            >
+              <Camera size={18} strokeWidth={2.6} />
+            </button>
+
             <button
               type="button"
               onClick={() => setShowOrderSummary(true)}
@@ -5677,6 +5699,33 @@ export default function App() {
             );
           })}
       </main>
+
+      <input
+        ref={inputCamaraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: "none" }}
+        onChange={(event) => {
+          const archivo = event.target.files?.[0];
+          event.target.value = "";
+          if (archivo) setFotoCamara(archivo);
+        }}
+      />
+
+      {fotoCamara && (
+        <BuscarPorFoto
+          archivo={fotoCamara}
+          productos={productosVisibles}
+          language={language}
+          onElegir={(id) => {
+            setFotoCamara(null);
+            setFichaProductoId(String(id));
+          }}
+          onRepetir={() => inputCamaraRef.current?.click()}
+          onCerrar={() => setFotoCamara(null)}
+        />
+      )}
 
       {(() => {
         if (!fichaProductoId) return null;
@@ -6773,7 +6822,7 @@ const styles = {
 
   compactTopRow: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto 62px",
+    gridTemplateColumns: "minmax(0, 1fr) auto auto 62px",
     gap: "6px",
     alignItems: "center",
     marginBottom: "5px",
@@ -6901,6 +6950,22 @@ const styles = {
     cursor: "pointer",
     boxShadow: "0 2px 6px rgba(22, 163, 74, 0.35)",
     whiteSpace: "nowrap",
+  },
+
+  botonCamara: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    width: "38px",
+    height: "34px",
+    padding: 0,
+    border: "none",
+    borderRadius: "9px",
+    background: "#2563eb",
+    color: "#fff",
+    cursor: "pointer",
+    boxShadow: "0 2px 6px rgba(37, 99, 235, 0.35)",
   },
 
   botonHablarActivo: {

@@ -55,7 +55,14 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key !== CACHE_NAME && key !== IMAGES_CACHE_NAME)
+            .filter(
+              (key) =>
+                key !== CACHE_NAME &&
+                key !== IMAGES_CACHE_NAME &&
+                // Modelo del pedido por foto (lo guarda la propia librería):
+                // no se borra al actualizar la app para no volver a bajarlo.
+                key !== "transformers-cache"
+            )
             .map((key) => caches.delete(key))
         )
       )
