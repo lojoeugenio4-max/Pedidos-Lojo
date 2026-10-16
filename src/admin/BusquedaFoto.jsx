@@ -178,7 +178,7 @@ export default function BusquedaFoto() {
       const miniatura = await miniaturaFoto(archivo);
       setPrueba((p) => ({ ...p, miniatura }));
       const visibles = articulos.filter((a) => a.activo !== false && !a.oculto);
-      const { resultados: lista, palabrasLeidas } = await buscarArticulosPorFoto(archivo, visibles, {
+      const { resultados: lista, palabrasLeidas, errorIA } = await buscarArticulosPorFoto(archivo, visibles, {
         limite: 8,
         onProgreso: (info) => setDescargaModelo(info?.fase === "listo" ? null : info),
       });
@@ -188,7 +188,7 @@ export default function BusquedaFoto() {
         similitud: r.similitud,
         puntosTexto: r.puntosTexto,
       }));
-      setPrueba({ miniatura, resultados, palabrasLeidas, buscando: false, error: "" });
+      setPrueba({ miniatura, resultados, palabrasLeidas, errorIA, buscando: false, error: "" });
     } catch (e) {
       console.error(e);
       setPrueba((p) => ({ ...p, buscando: false, error: "No se pudo buscar: " + (e.message || e) }));
@@ -302,8 +302,8 @@ export default function BusquedaFoto() {
           <h3 style={estilos.subtitulo}>Probar</h3>
           <p style={estilos.texto}>
             Sube una foto (o hazla con el móvil) y verás los artículos que le saldrían al cliente, en el
-            mismo orden. Debajo de cada uno: cuánto se parece la foto y cuánto coincide el texto de la
-            etiqueta con su nombre.
+            mismo orden. Arriba, lo que la IA ha leído en el envase; debajo de cada artículo, cuánto se
+            parece la forma y si es el que ha elegido la IA.
           </p>
           <input
             ref={inputPruebaRef}
@@ -333,9 +333,16 @@ export default function BusquedaFoto() {
                 {prueba.error && <div style={estilos.error}>{prueba.error}</div>}
                 {!prueba.buscando && !prueba.error && (
                   <p style={{ ...estilos.texto, marginBottom: "8px" }}>
-                    <b>Texto leído en la etiqueta:</b>{" "}
-                    {prueba.palabrasLeidas?.length ? prueba.palabrasLeidas.join(" · ") : "(no se ha leído nada claro)"}
+                    <b>La IA ha leído:</b>{" "}
+                    {prueba.palabrasLeidas?.length ? prueba.palabrasLeidas.join(" · ") : "(nada)"}
                   </p>
+                )}
+                {!prueba.buscando && prueba.errorIA && (
+                  <div style={{ ...estilos.error, marginBottom: "8px" }}>
+                    No se pudo preguntar a la IA: {prueba.errorIA}. Revisa que la función
+                    "identificar-articulo" está publicada en Supabase y que tiene el secreto
+                    ANTHROPIC_API_KEY.
+                  </div>
                 )}
                 {!prueba.buscando && !prueba.error && !prueba.resultados.length && (
                   <p style={estilos.texto}>No se encontró nada.</p>
@@ -346,7 +353,8 @@ export default function BusquedaFoto() {
                       <img src={urlFoto(r.foto)} alt="" style={estilos.fotoResultado} />
                       <div style={estilos.nombreResultado}>{r.nombre}</div>
                       <div style={estilos.textoPequeno}>
-                        Foto {Math.round(r.similitud * 100)}% · Texto {Math.round((r.puntosTexto || 0) * 100)}%
+                        Forma {Math.round(r.similitud * 100)}%
+                        {r.puntosTexto >= 1 ? " · ✅ elegido por la IA" : r.puntosTexto > 0 ? " · posible según la IA" : ""}
                       </div>
                     </div>
                   ))}
