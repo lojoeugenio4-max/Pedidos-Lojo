@@ -16,6 +16,7 @@ import {
   miniaturaFoto,
   prepararModeloHuella,
 } from "../utils/huellaFoto";
+import { buscarArticulosPorFoto } from "../utils/buscarPorFoto";
 
 const TAMANO_PAGINA = 1000;
 const GUARDAR_CADA = 20;
@@ -176,20 +177,18 @@ export default function BusquedaFoto() {
     try {
       const miniatura = await miniaturaFoto(archivo);
       setPrueba((p) => ({ ...p, miniatura }));
-      await prepararModeloHuella((info) => setDescargaModelo(info));
-      setDescargaModelo(null);
-      const huella = await calcularHuella(archivo);
-      const { data, error: errorBuscar } = await supabase.rpc("buscar_articulos_por_foto", {
-        p_huella: JSON.stringify(huella),
-        p_version: VERSION_HUELLA,
-        p_limite: 8,
+      const visibles = articulos.filter((a) => a.activo !== false && !a.oculto);
+      const { resultados: lista, palabrasLeidas } = await buscarArticulosPorFoto(archivo, visibles, {
+        limite: 8,
+        onProgreso: (info) => setDescargaModelo(info?.fase === "listo" ? null : info),
       });
-      if (errorBuscar) throw errorBuscar;
-      const porId = new Map(articulos.map((a) => [String(a.id), a]));
-      const resultados = (data || [])
-        .map((r) => ({ ...porId.get(String(r.articulo_id)), similitud: r.similitud }))
-        .filter((r) => r.id != null);
-      setPrueba({ miniatura, resultados, buscando: false, error: "" });
+      setDescargaModelo(null);
+      const resultados = lista.map((r) => ({
+        ...r.producto,
+        similitud: r.similitud,
+        puntosTexto: r.puntosTexto,
+      }));
+      setPrueba({ miniatura, resultados, palabrasLeidas, buscando: false, error: "" });
     } catch (e) {
       console.error(e);
       setPrueba((p) => ({ ...p, buscando: false, error: "No se pudo buscar: " + (e.message || e) }));
@@ -302,7 +301,9 @@ export default function BusquedaFoto() {
 
           <h3 style={estilos.subtitulo}>Probar</h3>
           <p style={estilos.texto}>
-            Sube una foto (o hazla con el móvil) y verás los artículos que le saldrían al cliente.
+            Sube una foto (o hazla con el móvil) y verás los artículos que le saldrían al cliente, en el
+            mismo orden. Debajo de cada uno: cuánto se parece la foto y cuánto coincide el texto de la
+            etiqueta con su nombre.
           </p>
           <input
             ref={inputPruebaRef}
@@ -330,6 +331,12 @@ export default function BusquedaFoto() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 {prueba.buscando && <p style={estilos.texto}>Buscando…</p>}
                 {prueba.error && <div style={estilos.error}>{prueba.error}</div>}
+                {!prueba.buscando && !prueba.error && (
+                  <p style={{ ...estilos.texto, marginBottom: "8px" }}>
+                    <b>Texto leído en la etiqueta:</b>{" "}
+                    {prueba.palabrasLeidas?.length ? prueba.palabrasLeidas.join(" · ") : "(no se ha leído nada claro)"}
+                  </p>
+                )}
                 {!prueba.buscando && !prueba.error && !prueba.resultados.length && (
                   <p style={estilos.texto}>No se encontró nada.</p>
                 )}
@@ -338,7 +345,9 @@ export default function BusquedaFoto() {
                     <div key={r.id} style={{ ...estilos.resultado, ...(i === 0 ? estilos.resultadoPrimero : {}) }}>
                       <img src={urlFoto(r.foto)} alt="" style={estilos.fotoResultado} />
                       <div style={estilos.nombreResultado}>{r.nombre}</div>
-                      <div style={estilos.textoPequeno}>{Math.round(r.similitud * 100)}% parecido</div>
+                      <div style={estilos.textoPequeno}>
+                        Foto {Math.round(r.similitud * 100)}% · Texto {Math.round((r.puntosTexto || 0) * 100)}%
+                      </div>
                     </div>
                   ))}
                 </div>

@@ -19,7 +19,7 @@ import {
   Camera,
 } from "lucide-react";
 import BuscarPorFoto from "./components/BuscarPorFoto";
-import { prepararModeloHuella } from "./utils/huellaFoto";
+import { precargarBusquedaPorFoto } from "./utils/buscarPorFoto";
 import { supabase } from "./supabaseClient";
 import { supabaseStorage } from "./supabaseStorageClient";
 import StorePage from "./pages/StorePage";
@@ -5421,7 +5421,7 @@ export default function App() {
               type="button"
               onClick={() => {
                 if (escuchandoVoz || modoVozContinuoRef.current) detenerBusquedaPorVoz();
-                prepararModeloHuella().catch(() => {});
+                precargarBusquedaPorFoto();
                 inputCamaraRef.current?.click();
               }}
               aria-label={language === "zh" ? "拍照点单" : "Pedir con una foto"}

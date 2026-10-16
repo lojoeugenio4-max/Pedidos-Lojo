@@ -2,21 +2,16 @@
 //
 // El cliente pulsa el botón de la cámara, hace una foto a un artículo y
 // aquí se busca en el catálogo el que más se parece (por la huella visual
-// de las fotos, ver utils/huellaFoto.js). Se le enseña el más parecido en
+// de las fotos) y leyendo el texto de la etiqueta para compararlo con los
+// nombres del catálogo (ver utils/buscarPorFoto.js). Se le enseña el más parecido en
 // grande y otros parecidos debajo; al tocar uno se abre su ficha y solo
 // tiene que poner las unidades.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Camera, X } from "lucide-react";
-import { supabase } from "../supabaseClient";
-import {
-  VERSION_HUELLA,
-  calcularHuella,
-  miniaturaFoto,
-  prepararModeloHuella,
-} from "../utils/huellaFoto";
+import { miniaturaFoto } from "../utils/huellaFoto";
+import { buscarArticulosPorFoto } from "../utils/buscarPorFoto";
 
-const RESULTADOS_A_PEDIR = 15;
 const RESULTADOS_A_MOSTRAR = 6;
 // Por debajo de este parecido se avisa de que no está claro (se siguen
 // enseñando las opciones). Ajustable tras probar con fotos reales.
@@ -39,11 +34,6 @@ export default function BuscarPorFoto({
   const [resultados, setResultados] = useState([]);
   const [mensajeError, setMensajeError] = useState("");
 
-  const productosPorId = useMemo(
-    () => new Map((productos || []).map((p) => [String(p.id), p])),
-    [productos]
-  );
-
   useEffect(() => {
     let cancelado = false;
 
@@ -54,28 +44,15 @@ export default function BuscarPorFoto({
       try {
         miniaturaFoto(archivo).then((m) => !cancelado && setMiniatura(m)).catch(() => {});
 
-        await prepararModeloHuella((info) => !cancelado && setDescarga(info));
-        if (cancelado) return;
-        setFase("buscando");
-
-        const huella = await calcularHuella(archivo);
-        if (cancelado) return;
-
-        const { data, error } = await supabase.rpc("buscar_articulos_por_foto", {
-          p_huella: JSON.stringify(huella),
-          p_version: VERSION_HUELLA,
-          p_limite: RESULTADOS_A_PEDIR,
+        const { resultados: lista } = await buscarArticulosPorFoto(archivo, productos, {
+          limite: RESULTADOS_A_MOSTRAR,
+          onProgreso: (info) => {
+            if (cancelado) return;
+            setDescarga(info);
+            if (info?.fase === "listo") setFase("buscando");
+          },
         });
-        if (error) throw error;
         if (cancelado) return;
-
-        const lista = (data || [])
-          .map((fila) => {
-            const producto = productosPorId.get(String(fila.articulo_id));
-            return producto ? { producto, similitud: Number(fila.similitud) || 0 } : null;
-          })
-          .filter(Boolean)
-          .slice(0, RESULTADOS_A_MOSTRAR);
 
         setResultados(lista);
         setFase("resultados");
@@ -101,7 +78,7 @@ export default function BuscarPorFoto({
 
   const mejor = resultados[0];
   const otros = resultados.slice(1);
-  const pocoClaro = mejor && mejor.similitud < PARECIDO_BAJO;
+  const pocoClaro = mejor && mejor.similitud < PARECIDO_BAJO && mejor.puntosTexto < 0.3;
 
   const contenido = (
     <div style={estilos.fondo} onClick={onCerrar}>
