@@ -80,8 +80,9 @@ export async function leerTextoEtiqueta(archivo) {
   const tokens = new Set();
   await leerPalabras(lector, gris, tokens);
 
-  // 2ª lectura, en color, solo si la primera apenas ha sacado nada.
-  if (tokens.size < 2) await leerPalabras(lector, lienzo, tokens);
+  // 2ª lectura, en color: según el envase, unas palabras salen mejor en
+  // gris y otras en color, así que se juntan las dos.
+  await leerPalabras(lector, lienzo, tokens);
 
   return [...tokens];
 }
@@ -92,9 +93,13 @@ async function leerPalabras(lector, lienzo, tokens) {
     (bloque.paragraphs || []).forEach((parrafo) =>
       (parrafo.lines || []).forEach((linea) =>
         (linea.words || []).forEach((palabra) => {
-          if ((palabra.confidence || 0) < CONFIANZA_MINIMA) return;
+          const segura = (palabra.confidence || 0) >= CONFIANZA_MINIMA;
           trocear(palabra.text).forEach((t) => {
-            if (tokenUtilOCR(t)) tokens.add(t);
+            if (!tokenUtilOCR(t)) return;
+            // Las palabras leídas con poca seguridad solo se guardan si son
+            // largas: suelen ser varias palabras pegadas
+            // ("ELMAIZDELAREBUJINA") y dentro puede haber una marca.
+            if (segura || t.length >= 8) tokens.add(t);
           });
         })
       )
@@ -193,7 +198,11 @@ function coinciden(ocr, nombre) {
   if (esNumero || /^[0-9]+$/.test(ocr)) return false;
   if (nombre.length >= 3 && ocr.length > nombre.length && ocr.startsWith(nombre)) return true;
   if (nombre.length > ocr.length && nombre.startsWith(ocr)) return false;
-  if (nombre.length >= 4 && ocr.length >= 4) {
+  // Palabras pegadas: "elmaizdelarebujina" contiene "rebujina".
+  if (nombre.length >= 5 && ocr.length >= nombre.length + 2 && ocr.includes(nombre)) return true;
+  // Fallos de lectura: solo si empiezan igual (las dos primeras letras).
+  // Sin esto "harina" se confundía con "pardina" y "fina" con "piña".
+  if (nombre.length >= 5 && ocr.length >= 4 && ocr.slice(0, 2) === nombre.slice(0, 2)) {
     const maximo = nombre.length >= 7 && ocr.length >= 5 ? 2 : 1;
     return distancia(ocr, nombre, maximo) <= maximo;
   }
@@ -219,7 +228,7 @@ function indiceCatalogo(productos) {
   const peso = new Map();
   frecuencia.forEach((n, t) => peso.set(t, Math.log(1 + total / n)));
 
-  const indice = { porProducto, peso };
+  const indice = { porProducto, peso, frecuencia };
   cacheIndices.set(productos, indice);
   return indice;
 }
@@ -230,7 +239,7 @@ export function puntuarPorTexto(tokensLeidos, productos) {
   const resultado = new Map();
   if (!tokensLeidos?.length || !productos?.length) return resultado;
 
-  const { porProducto, peso } = indiceCatalogo(productos);
+  const { porProducto, peso, frecuencia } = indiceCatalogo(productos);
 
   // Qué palabras del catálogo aparecen en la etiqueta (se calcula una vez
   // por palabra distinta, no por artículo).
@@ -240,25 +249,42 @@ export function puntuarPorTexto(tokensLeidos, productos) {
   });
   if (!encontradas.size) return resultado;
 
+  // Por cada artículo:
+  //   cobertura = qué parte de su nombre se ha leído,
+  //   acertado  = cuánto pesa lo leído (suma),
+  //   rareza    = 1 / en cuántos artículos sale la palabra más rara
+  //               leída. Una marca que solo tiene este artículo (MAIZENA)
+  //               decide; una palabra que tienen varios (MAÍZ, HARINA)
+  //               cuenta mucho menos.
   let maximoAcertado = 0;
+  let maximaRareza = 0;
   const parciales = [];
   porProducto.forEach(({ producto, tokens }) => {
     if (!tokens.length) return;
     let acertado = 0;
     let totalPeso = 0;
+    let rareza = 0;
     tokens.forEach((t) => {
       const w = peso.get(t) || 0;
       totalPeso += w;
-      if (encontradas.has(t)) acertado += w;
+      if (encontradas.has(t)) {
+        acertado += w;
+        const r = 1 / (frecuencia.get(t) || 1);
+        if (r > rareza) rareza = r;
+      }
     });
     if (acertado > 0) {
-      parciales.push({ id: String(producto.id), acertado, cobertura: acertado / (totalPeso || 1) });
+      parciales.push({ id: String(producto.id), acertado, rareza, cobertura: acertado / (totalPeso || 1) });
       if (acertado > maximoAcertado) maximoAcertado = acertado;
+      if (rareza > maximaRareza) maximaRareza = rareza;
     }
   });
 
-  parciales.forEach(({ id, acertado, cobertura }) => {
-    resultado.set(id, 0.5 * cobertura + 0.5 * (acertado / maximoAcertado));
+  parciales.forEach(({ id, acertado, rareza, cobertura }) => {
+    resultado.set(
+      id,
+      0.2 * cobertura + 0.15 * (acertado / maximoAcertado) + 0.65 * (rareza / maximaRareza)
+    );
   });
   return resultado;
 }

@@ -12,6 +12,9 @@ const CANDIDATOS_POR_TEXTO = 20;
 // etiqueta (p. ej. MAIZENA), ese artículo pasa por delante de cualquier
 // envase que solo "se parezca" a la vista.
 export const PESO_TEXTO = 1;
+// Cuándo el texto "manda" (ver más abajo).
+const TEXTO_CLARO = 0.65;
+const VENTAJA_CLARA = 0.15;
 
 // Empieza a cargar todo (se llama al pulsar el botón de la cámara, para
 // que vaya avanzando mientras el cliente hace la foto).
@@ -81,8 +84,21 @@ export async function buscarArticulosPorFoto(archivo, productos, { onProgreso, l
       return { producto, similitud, puntosTexto: texto, puntos: similitud + PESO_TEXTO * texto };
     })
     .filter(Boolean)
-    .sort((a, b) => b.puntos - a.puntos)
-    .slice(0, limite);
+    .sort((a, b) => b.puntos - a.puntos);
 
-  return { resultados, palabrasLeidas };
+  // Si la etiqueta señala claramente un artículo (p. ej. se ha leído
+  // MAIZENA y solo hay un artículo con esa palabra), ese va el primero
+  // aunque otra foto "se parezca" más.
+  const porTextoOrdenados = [...puntosTexto.entries()].sort((a, b) => b[1] - a[1]);
+  if (porTextoOrdenados.length) {
+    const [idLider, puntosLider] = porTextoOrdenados[0];
+    const segundo = porTextoOrdenados[1]?.[1] || 0;
+    if (puntosLider >= TEXTO_CLARO && puntosLider - segundo >= VENTAJA_CLARA) {
+      const posicion = resultados.findIndex((r) => String(r.producto.id) === idLider);
+      if (posicion > 0) resultados.unshift(resultados.splice(posicion, 1)[0]);
+    }
+  }
+
+  return { resultados: resultados.slice(0, limite), palabrasLeidas };
+
 }
