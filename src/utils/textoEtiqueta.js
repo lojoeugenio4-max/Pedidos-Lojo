@@ -11,7 +11,10 @@
 
 const URL_TESSERACT = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.esm.min.js";
 const LADO_MAXIMO_OCR = 1600;
-const CONFIANZA_MINIMA = 55; // 0-100: palabras leídas con menos seguridad se ignoran
+// 0-100: palabras leídas con menos seguridad se ignoran. Es bajo a
+// propósito: lo que se lea solo cuenta si coincide con un nombre del
+// catálogo, así que el "ruido" no estorba.
+const CONFIANZA_MINIMA = 35;
 
 let cargaLector = null;
 
@@ -64,26 +67,67 @@ export async function leerTextoEtiqueta(archivo) {
   ctx.fillRect(0, 0, lienzo.width, lienzo.height);
   ctx.drawImage(img, 0, 0, lienzo.width, lienzo.height);
 
-  const { data } = await lector.recognize(lienzo, {}, { text: true, blocks: true });
+  // 1ª lectura: en gris y con el contraste estirado. Con letras sobre
+  // fondos de color (p. ej. MAIZENA negro sobre amarillo) se lee mucho
+  // mejor que en color.
+  const gris = document.createElement("canvas");
+  gris.width = lienzo.width;
+  gris.height = lienzo.height;
+  const ctxGris = gris.getContext("2d");
+  ctxGris.drawImage(lienzo, 0, 0);
+  pasarAGrisConContraste(ctxGris, gris.width, gris.height);
 
-  const palabras = [];
+  const tokens = new Set();
+  await leerPalabras(lector, gris, tokens);
+
+  // 2ª lectura, en color, solo si la primera apenas ha sacado nada.
+  if (tokens.size < 2) await leerPalabras(lector, lienzo, tokens);
+
+  return [...tokens];
+}
+
+async function leerPalabras(lector, lienzo, tokens) {
+  const { data } = await lector.recognize(lienzo, {}, { text: true, blocks: true });
   (data?.blocks || []).forEach((bloque) =>
     (bloque.paragraphs || []).forEach((parrafo) =>
       (parrafo.lines || []).forEach((linea) =>
         (linea.words || []).forEach((palabra) => {
-          if ((palabra.confidence || 0) >= CONFIANZA_MINIMA) palabras.push(palabra.text);
+          if ((palabra.confidence || 0) < CONFIANZA_MINIMA) return;
+          trocear(palabra.text).forEach((t) => {
+            if (tokenUtilOCR(t)) tokens.add(t);
+          });
         })
       )
     )
   );
+}
 
-  const tokens = new Set();
-  palabras.forEach((p) =>
-    trocear(p).forEach((t) => {
-      if (tokenUtilOCR(t)) tokens.add(t);
-    })
-  );
-  return [...tokens];
+// Escala de grises + "autocontraste" (el 1 % más oscuro pasa a negro y el
+// 1 % más claro a blanco).
+function pasarAGrisConContraste(ctx, ancho, alto) {
+  const imagen = ctx.getImageData(0, 0, ancho, alto);
+  const d = imagen.data;
+  const histograma = new Uint32Array(256);
+  for (let i = 0; i < d.length; i += 4) {
+    const y = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+    d[i] = y;
+    histograma[y] += 1;
+  }
+  const total = ancho * alto;
+  let acumulado = 0;
+  let bajo = 0;
+  while (bajo < 255 && acumulado + histograma[bajo] < total * 0.01) acumulado += histograma[bajo++];
+  acumulado = 0;
+  let alto2 = 255;
+  while (alto2 > 0 && acumulado + histograma[alto2] < total * 0.01) acumulado += histograma[alto2--];
+  const rango = Math.max(1, alto2 - bajo);
+  for (let i = 0; i < d.length; i += 4) {
+    const v = Math.max(0, Math.min(255, Math.round(((d[i] - bajo) * 255) / rango)));
+    d[i] = v;
+    d[i + 1] = v;
+    d[i + 2] = v;
+  }
+  ctx.putImageData(imagen, 0, 0);
 }
 
 // ---------------------------------------------------------------------
@@ -139,15 +183,18 @@ function distancia(a, b, maximo) {
 }
 
 // ¿La palabra leída (ocr) corresponde a la palabra del nombre (nombre)?
-// Admite fallos de una letra y las abreviaturas típicas del catálogo
-// ("CERV" ↔ "cerveza").
+// Admite fallos de lectura ("MALENA" ↔ "maizena", "REVILA" ↔ "revilla")
+// y las abreviaturas típicas del catálogo ("CERV" ↔ "cerveza"), pero no
+// confunde una palabra con otra más larga que empieza igual ("leche" no
+// es "lechera").
 function coinciden(ocr, nombre) {
   if (ocr === nombre) return true;
   const esNumero = /^[0-9]+$/.test(nombre);
   if (esNumero || /^[0-9]+$/.test(ocr)) return false;
   if (nombre.length >= 3 && ocr.length > nombre.length && ocr.startsWith(nombre)) return true;
+  if (nombre.length > ocr.length && nombre.startsWith(ocr)) return false;
   if (nombre.length >= 4 && ocr.length >= 4) {
-    const maximo = nombre.length >= 9 ? 2 : 1;
+    const maximo = nombre.length >= 7 && ocr.length >= 5 ? 2 : 1;
     return distancia(ocr, nombre, maximo) <= maximo;
   }
   return false;

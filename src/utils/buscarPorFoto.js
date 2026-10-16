@@ -8,9 +8,10 @@ import { leerTextoEtiqueta, prepararLectorEtiqueta, puntuarPorTexto } from "./te
 
 const CANDIDATOS_POR_FOTO = 40;
 const CANDIDATOS_POR_TEXTO = 20;
-// Cuánto pesa el texto frente a la foto. Con 0.5, una marca bien leída
-// pasa por delante de un envase que solo "se parece".
-export const PESO_TEXTO = 0.5;
+// Cuánto pesa el texto frente a la foto. Con 1, si se lee la marca en la
+// etiqueta (p. ej. MAIZENA), ese artículo pasa por delante de cualquier
+// envase que solo "se parezca" a la vista.
+export const PESO_TEXTO = 1;
 
 // Empieza a cargar todo (se llama al pulsar el botón de la cámara, para
 // que vaya avanzando mientras el cliente hace la foto).

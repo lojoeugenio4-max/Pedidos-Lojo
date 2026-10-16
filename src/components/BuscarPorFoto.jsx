@@ -221,7 +221,7 @@ const estilos = {
     display: "flex",
     flexDirection: "column",
     gap: "12px",
-    fontFamily: "inherit",
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif',
   },
   cabecera: { display: "flex", alignItems: "center", justifyContent: "space-between" },
   tituloCabecera: { display: "flex", alignItems: "center", gap: "6px", fontSize: "17px", color: "#111827" },
