@@ -19,6 +19,21 @@ export const VERSION_HUELLA = "dinov2s-q8-v1";
 const TIPO_MODELO = "q8"; // model_quantized.onnx (~24 MB)
 const LADO_MAXIMO = 512; // la foto se reduce antes de pasarla al modelo
 
+// La librería de reconocimiento se carga desde internet (CDN) solo cuando
+// se usa la cámara. Así no hace falta instalarla en el proyecto ni en
+// Vercel, y no pesa nada para quien no usa la cámara.
+const URL_LIBRERIA = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6";
+let cargaLibreria = null;
+function cargarLibreria() {
+  if (!cargaLibreria) {
+    cargaLibreria = import(/* @vite-ignore */ URL_LIBRERIA).catch((error) => {
+      cargaLibreria = null;
+      throw error;
+    });
+  }
+  return cargaLibreria;
+}
+
 let cargaModelo = null;
 const avisosProgreso = new Set();
 
@@ -39,7 +54,7 @@ export async function prepararModeloHuella(onProgreso) {
 
   if (!cargaModelo) {
     cargaModelo = (async () => {
-      const { AutoModel, AutoProcessor, env } = await import("@huggingface/transformers");
+      const { AutoModel, AutoProcessor, env } = await cargarLibreria();
       env.allowLocalModels = false;
 
       const descargas = new Map();
@@ -157,7 +172,7 @@ function normalizar(vector) {
 // mandarlo a Supabase.
 export async function calcularHuella(origen) {
   const { procesador, modelo } = await prepararModeloHuella();
-  const { RawImage } = await import("@huggingface/transformers");
+  const { RawImage } = await cargarLibreria();
 
   const img = await abrirImagen(origen);
   const lienzo = imagenALienzo(img);
