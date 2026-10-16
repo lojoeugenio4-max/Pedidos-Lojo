@@ -196,10 +196,19 @@ function coinciden(ocr, nombre) {
   if (ocr === nombre) return true;
   const esNumero = /^[0-9]+$/.test(nombre);
   if (esNumero || /^[0-9]+$/.test(ocr)) return false;
-  if (nombre.length >= 3 && ocr.length > nombre.length && ocr.startsWith(nombre)) return true;
+  // Abreviaturas del catálogo ("CERV" ↔ "cerveza"). Con al menos 2 letras
+  // de diferencia: "natural" NO es la marca "NATURA".
+  if (nombre.length >= 3 && ocr.length >= nombre.length + 2 && ocr.startsWith(nombre)) return true;
+  if (ocr.length > nombre.length && ocr.startsWith(nombre)) return false;
   if (nombre.length > ocr.length && nombre.startsWith(ocr)) return false;
   // Palabras pegadas: "elmaizdelarebujina" contiene "rebujina".
   if (nombre.length >= 5 && ocr.length >= nombre.length + 2 && ocr.includes(nombre)) return true;
+  // Palabras largas (marcas como FUENTELAJARA): se admiten hasta 1 fallo
+  // cada 4 letras, aunque falle el principio ("Nentelajara").
+  if (nombre.length >= 8 && ocr.length >= 7) {
+    const maximo = Math.floor(nombre.length / 4);
+    return distancia(ocr, nombre, maximo) <= maximo;
+  }
   // Fallos de lectura: solo si empiezan igual (las dos primeras letras).
   // Sin esto "harina" se confundía con "pardina" y "fina" con "piña".
   if (nombre.length >= 5 && ocr.length >= 4 && ocr.slice(0, 2) === nombre.slice(0, 2)) {
@@ -235,7 +244,9 @@ function indiceCatalogo(productos) {
 
 // Puntuación de texto (0 a 1) para cada artículo, según las palabras
 // leídas en la etiqueta. Devuelve un Map id → puntos (solo los que > 0).
-export function puntuarPorTexto(tokensLeidos, productos) {
+// soloIds (opcional): puntuar solo estos artículos (los finalistas por
+// forma). La rareza de cada palabra se sigue midiendo en TODO el catálogo.
+export function puntuarPorTexto(tokensLeidos, productos, soloIds = null) {
   const resultado = new Map();
   if (!tokensLeidos?.length || !productos?.length) return resultado;
 
@@ -261,6 +272,7 @@ export function puntuarPorTexto(tokensLeidos, productos) {
   const parciales = [];
   porProducto.forEach(({ producto, tokens }) => {
     if (!tokens.length) return;
+    if (soloIds && !soloIds.has(String(producto.id))) return;
     let acertado = 0;
     let totalPeso = 0;
     let rareza = 0;

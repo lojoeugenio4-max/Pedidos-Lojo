@@ -1,20 +1,19 @@
-// Búsqueda de un artículo a partir de una foto, combinando dos pistas:
-//   1) Cuánto se parece la foto a la foto del catálogo (huella visual).
-//   2) Las palabras de la etiqueta que coinciden con el nombre del artículo.
+// Búsqueda de un artículo a partir de una foto, en dos pasos:
+//   1) FORMA: se compara la foto con las del catálogo (huella visual) y se
+//      quedan los 30 artículos más parecidos.
+//   2) ETIQUETA: entre esos 30 (y solo entre esos), gana el que tiene en su
+//      nombre las palabras leídas en la etiqueta. Así la etiqueta nunca
+//      puede traer un artículo de forma distinta (agua → jamón).
 // La usan la app del cliente y la prueba del Admin, para que den lo mismo.
 import { supabase } from "../supabaseClient";
 import { VERSION_HUELLA, calcularHuella, prepararModeloHuella } from "./huellaFoto";
 import { leerTextoEtiqueta, prepararLectorEtiqueta, puntuarPorTexto } from "./textoEtiqueta";
 
-const CANDIDATOS_POR_FOTO = 40;
-const CANDIDATOS_POR_TEXTO = 20;
-// Cuánto pesa el texto frente a la foto. Con 1, si se lee la marca en la
-// etiqueta (p. ej. MAIZENA), ese artículo pasa por delante de cualquier
-// envase que solo "se parezca" a la vista.
-export const PESO_TEXTO = 1;
-// Cuándo el texto "manda" (ver más abajo).
-const TEXTO_CLARO = 0.65;
-const VENTAJA_CLARA = 0.15;
+// Paso 1: cuántos artículos "de forma parecida" pasan a la final.
+const CANDIDATOS_POR_FORMA = 30;
+// Paso 2: dentro de esos, lo que coincide la etiqueta pesa el doble que el
+// parecido de la foto (la foto solo desempata).
+export const PESO_TEXTO = 2;
 
 // Empieza a cargar todo (se llama al pulsar el botón de la cámara, para
 // que vaya avanzando mientras el cliente hace la foto).
@@ -35,7 +34,7 @@ export async function buscarArticulosPorFoto(archivo, productos, { onProgreso, l
     const { data, error } = await supabase.rpc("buscar_articulos_por_foto", {
       p_huella: JSON.stringify(huella),
       p_version: VERSION_HUELLA,
-      p_limite: CANDIDATOS_POR_FOTO,
+      p_limite: CANDIDATOS_POR_FORMA,
     });
     if (error) throw error;
     return data || [];
@@ -55,50 +54,40 @@ export async function buscarArticulosPorFoto(archivo, productos, { onProgreso, l
     porTexto,
   ]);
 
-  const puntosTexto = puntuarPorTexto(palabrasLeidas, productos || []);
+  // Paso 1: la lista corta por forma.
+  const finalistas = (filasFoto || [])
+    .map((fila) => ({ producto: porId.get(String(fila.articulo_id)), similitud: Number(fila.similitud) || 0 }))
+    .filter((f) => f.producto);
 
-  if (filasFoto === null && !puntosTexto.size) {
-    throw new Error("No se pudo buscar la foto");
+  // Si la comparación de fotos falla del todo (sin conexión, etc.), se
+  // busca solo por la etiqueta en todo el catálogo, para no dejar al
+  // cliente sin nada.
+  if (!finalistas.length) {
+    const soloTexto = puntuarPorTexto(palabrasLeidas, productos || []);
+    if (!soloTexto.size) throw new Error("No se pudo buscar la foto");
+    const resultados = [...soloTexto.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([id, texto]) => ({ producto: porId.get(id), similitud: 0, puntosTexto: texto, puntos: texto }))
+      .filter((r) => r.producto)
+      .slice(0, limite);
+    return { resultados, palabrasLeidas };
   }
 
-  const similitudes = new Map();
-  (filasFoto || []).forEach((fila) => {
-    similitudes.set(String(fila.articulo_id), Number(fila.similitud) || 0);
-  });
-  // Los que no salen entre los parecidos por foto cuentan como el menos
-  // parecido de la lista (no como cero, para no hundirlos del todo).
-  const similitudMinima = similitudes.size ? Math.min(...similitudes.values()) : 0;
+  // Paso 2: la etiqueta elige SOLO entre los finalistas. Lo "rara" que es
+  // cada palabra se mide en todo el catálogo: MAIZENA (un artículo) pesa
+  // mucho más que HARINA o NATURAL (muchos artículos).
+  const puntosTexto = puntuarPorTexto(
+    palabrasLeidas,
+    productos || [],
+    new Set(finalistas.map((f) => String(f.producto.id)))
+  );
 
-  const candidatos = new Set(similitudes.keys());
-  [...puntosTexto.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, CANDIDATOS_POR_TEXTO)
-    .forEach(([id]) => candidatos.add(id));
-
-  const resultados = [...candidatos]
-    .map((id) => {
-      const producto = porId.get(id);
-      if (!producto) return null;
-      const similitud = similitudes.has(id) ? similitudes.get(id) : similitudMinima;
-      const texto = puntosTexto.get(id) || 0;
+  const resultados = finalistas
+    .map(({ producto, similitud }) => {
+      const texto = puntosTexto.get(String(producto.id)) || 0;
       return { producto, similitud, puntosTexto: texto, puntos: similitud + PESO_TEXTO * texto };
     })
-    .filter(Boolean)
     .sort((a, b) => b.puntos - a.puntos);
 
-  // Si la etiqueta señala claramente un artículo (p. ej. se ha leído
-  // MAIZENA y solo hay un artículo con esa palabra), ese va el primero
-  // aunque otra foto "se parezca" más.
-  const porTextoOrdenados = [...puntosTexto.entries()].sort((a, b) => b[1] - a[1]);
-  if (porTextoOrdenados.length) {
-    const [idLider, puntosLider] = porTextoOrdenados[0];
-    const segundo = porTextoOrdenados[1]?.[1] || 0;
-    if (puntosLider >= TEXTO_CLARO && puntosLider - segundo >= VENTAJA_CLARA) {
-      const posicion = resultados.findIndex((r) => String(r.producto.id) === idLider);
-      if (posicion > 0) resultados.unshift(resultados.splice(posicion, 1)[0]);
-    }
-  }
-
   return { resultados: resultados.slice(0, limite), palabrasLeidas };
-
 }
