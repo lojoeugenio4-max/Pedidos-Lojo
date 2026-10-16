@@ -47,7 +47,16 @@ async function preguntarIA(archivo, finalistas) {
       })),
     },
   });
-  if (error) throw error;
+  if (error) {
+    // Se intenta sacar el motivo que ha devuelto la función.
+    let detalle = "";
+    try {
+      detalle = (await error.context?.json())?.error || "";
+    } catch {
+      // nada
+    }
+    throw new Error(detalle || error.message);
+  }
   if (data?.error) throw new Error(data.error);
   return data;
 }
@@ -71,6 +80,7 @@ export async function buscarArticulosPorFoto(archivo, productos, { onProgreso, l
   let errorIA = "";
   try {
     ia = await preguntarIA(archivo, finalistas);
+    if (ia?.aviso) errorIA = ia.aviso;
   } catch (error) {
     console.warn("No se pudo preguntar a la IA:", error);
     errorIA = String(error?.message || error);
