@@ -16,10 +16,21 @@ const CANDIDATOS_POR_FORMA = 30;
 // unos 800 "tokens" y la marca se lee perfectamente.
 const LADO_FOTO_IA = 768;
 
-// Empieza a cargar el modelo de forma (se llama al pulsar el botón de la
-// cámara, para que vaya avanzando mientras el cliente hace la foto).
+// Se llama al pulsar el botón de la cámara, para que todo vaya
+// arrancando mientras el cliente hace la foto:
+//   - despierta la función de Supabase (y que lea el catálogo),
+//   - carga el modelo de forma.
 export function precargarBusquedaPorFoto() {
+  supabase.functions.invoke("identificar-articulo", { body: { ping: true } }).catch(() => {});
   prepararModeloHuella().catch(() => {});
+}
+
+// Cuánto se espera, como mucho, a la comparación de forma cuando la IA ya
+// ha encontrado el artículo (solo sirve para rellenar "otros parecidos").
+const ESPERA_FORMA_SI_IA_ACIERTA_MS = 400;
+
+function esperarComoMucho(promesa, ms, valorSiNo) {
+  return Promise.race([promesa, new Promise((r) => setTimeout(() => r(valorSiNo), ms))]);
 }
 
 async function finalistasPorForma(archivo, porId, onProgreso) {
@@ -36,16 +47,10 @@ async function finalistasPorForma(archivo, porId, onProgreso) {
     .filter((f) => f.producto);
 }
 
-async function preguntarIA(archivo, finalistas) {
+async function preguntarIA(archivo) {
   const foto = await miniaturaFoto(archivo, LADO_FOTO_IA);
   const { data, error } = await supabase.functions.invoke("identificar-articulo", {
-    body: {
-      imagen: foto,
-      candidatos: finalistas.map(({ producto }) => ({
-        id: String(producto.id),
-        nombre: producto.name ?? producto.nombre,
-      })),
-    },
+    body: { imagen: foto },
   });
   if (error) {
     // Se intenta sacar el motivo que ha devuelto la función.
@@ -67,24 +72,28 @@ export async function buscarArticulosPorFoto(archivo, productos, { onProgreso, l
   const lista = productos || [];
   const porId = new Map(lista.map((p) => [String(p.id), p]));
 
-  // Paso 1: forma.
-  let finalistas = [];
-  try {
-    finalistas = await finalistasPorForma(archivo, porId, onProgreso);
-  } catch (error) {
+  // RAPIDEZ: la IA y la comparación de forma van A LA VEZ. La IA no
+  // espera a la forma (antes sí, y era lo que más tardaba).
+  const promesaForma = finalistasPorForma(archivo, porId, onProgreso).catch((error) => {
     console.warn("No se pudo comparar la forma:", error);
-  }
+    return [];
+  });
 
-  // Paso 2: la IA lee la marca y elige.
   let ia = null;
   let errorIA = "";
   try {
-    ia = await preguntarIA(archivo, finalistas);
+    ia = await preguntarIA(archivo);
     if (ia?.aviso) errorIA = ia.aviso;
   } catch (error) {
     console.warn("No se pudo preguntar a la IA:", error);
     errorIA = String(error?.message || error);
   }
+
+  // Si la IA ya tiene el artículo, no se espera a la forma más que un
+  // momento; si no lo tiene, la forma es la única pista y se espera.
+  const finalistas = ia?.id
+    ? await esperarComoMucho(promesaForma, ESPERA_FORMA_SI_IA_ACIERTA_MS, [])
+    : await promesaForma;
 
   if (!finalistas.length && !ia) throw new Error("No se pudo buscar la foto");
 

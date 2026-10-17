@@ -97,12 +97,7 @@ export default function BuscarPorFoto({
             {miniatura && <img src={miniatura} alt="" style={estilos.miniaturaGrande} />}
             <div style={estilos.ruedita} className="lojo-foto-girando" />
             <div style={estilos.textoEspera}>
-              {fase === "preparando" && descarga?.fase === "descargando"
-                ? txt(
-                    `Preparando la cámara (solo la primera vez)… ${descarga.porcentaje}%`,
-                    `正在准备（仅第一次）… ${descarga.porcentaje}%`
-                  )
-                : txt("Buscando el artículo…", "正在查找商品…")}
+              {txt("Buscando el artículo…", "正在查找商品…")}
             </div>
           </div>
         )}
