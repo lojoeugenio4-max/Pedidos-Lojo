@@ -3,6 +3,7 @@ import Ruleta from "./Ruleta";
 import Bingo from "./Bingo";
 import Sorteo from "./Sorteo";
 import LojoPoly from "./LojoPoly";
+import Carrera from "./Carrera";
 import ReactivarCodigo from "./ReactivarCodigo";
 
 export default function Promociones() {
@@ -60,6 +61,14 @@ export default function Promociones() {
           />
 
           <Tarjeta
+            icono="🏁"
+            titulo="La Loca Carrera"
+            descripcion="Carrera estilo Oca: tiradas por pedido, villanos, amigos, casillas de premio y premio final."
+            textoBoton="Configurar La Loca Carrera"
+            onClick={() => setSeccion("carrera")}
+          />
+
+          <Tarjeta
             icono="🔓"
             titulo="Reactivación de Códigos"
             descripcion="Busca un código de pedido y reactiva el Bingo si se bloqueó por error (1 pedido al día)."
@@ -100,6 +109,8 @@ export default function Promociones() {
       {seccion === "sorteo" && <Sorteo />}
 
       {seccion === "lojopoly" && <LojoPoly />}
+
+      {seccion === "carrera" && <Carrera />}
 
       {seccion === "reactivacion" && (
         <div>

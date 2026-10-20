@@ -52,6 +52,7 @@ function construirBloqueParticipacion({
   participacionBingo,
   participacionSorteo,
   participacionLojopoly = null,
+  participacionCarrera = null,
   premio,
   clienteMesPuntos = 0,
   clienteMesActivo = false,
@@ -62,6 +63,10 @@ function construirBloqueParticipacion({
   // LojoPoly: participacionLojopoly es el resultado de registrar_pedido_lojopoly.
   const tiradasLojopoly = Math.max(0, Number(participacionLojopoly?.tiradas ?? 0));
   const lojopolyConseguido = Boolean(participacionLojopoly?.eligible) && tiradasLojopoly > 0;
+
+  // La Loca Carrera: participacionCarrera es el resultado de registrar_pedido_carrera.
+  const tiradasCarrera = Math.max(0, Number(participacionCarrera?.tiradas ?? 0));
+  const carreraConseguida = Boolean(participacionCarrera?.eligible) && tiradasCarrera > 0;
 
   const participacionJuegosNormalizada = normalizarRespuestaJuego(participacionJuegos);
   const participacionBingoNormalizada = normalizarRespuestaJuego(participacionBingo);
@@ -123,7 +128,7 @@ function construirBloqueParticipacion({
   // verdad hay algo que jugar/revelar.
   const clienteMesSuma = Boolean(clienteMesActivo) || Number(clienteMesPuntos) > 0;
   const hayAlgoJugable =
-    numeroTiradas > 0 || bingoConseguido || sorteoConseguido || lojopolyConseguido || clienteMesSuma;
+    numeroTiradas > 0 || bingoConseguido || sorteoConseguido || lojopolyConseguido || carreraConseguida || clienteMesSuma;
 
   if (codigoJuegos && hayAlgoJugable) {
     const urlQr = construirUrlQr(codigoJuegos);
@@ -139,7 +144,7 @@ function construirBloqueParticipacion({
 
     const bannerLineas = [];
     bannerLineas.push(
-      numeroTiradas > 0 || bingoConseguido || sorteoConseguido || lojopolyConseguido
+      numeroTiradas > 0 || bingoConseguido || sorteoConseguido || lojopolyConseguido || carreraConseguida
         ? "🎉 *¡TIENES PARTICIPACIÓN EN RULETA/BINGO/SORTEO/LOJOPOLY!* 🎉"
         : "🏆 *¡ESTE PEDIDO SUMA EN CLIENTE DEL MES!* 🏆"
     );
@@ -160,6 +165,12 @@ function construirBloqueParticipacion({
     if (lojopolyConseguido) {
       bannerLineas.push(
         `🎲 LojoPoly: al pasar el QR tirarás el dado *${tiradasLojopoly} ${tiradasLojopoly === 1 ? "vez" : "veces"}*`
+      );
+    }
+
+    if (carreraConseguida) {
+      bannerLineas.push(
+        `🏁 La Loca Carrera de Lojo: al pasar el QR tirarás el dado *${tiradasCarrera} ${tiradasCarrera === 1 ? "vez" : "veces"}*`
       );
     }
 
@@ -231,6 +242,7 @@ export function construirTextoPedidoWhatsApp({
   participacionJuegos = null,
   participacionSorteo = null,
   participacionLojopoly = null,
+  participacionCarrera = null,
   clienteMesPuntos = 0,
   clienteMesActivo = false,
   clienteMesYaHoy = false,
@@ -249,6 +261,7 @@ export function construirTextoPedidoWhatsApp({
       participacionBingo,
       participacionSorteo,
       participacionLojopoly,
+      participacionCarrera,
       premio,
       clienteMesPuntos,
       clienteMesActivo,

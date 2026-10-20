@@ -3966,6 +3966,7 @@ export default function App() {
     participacionSorteo = null,
     clienteMesSuma = false,
     lojopolySuma = false,
+    carreraSuma = false,
   }) {
     const bingoConseguido = pedidoCumpleBingo(participacionBingo);
     const ruletaConseguida = Boolean(participacionRuleta);
@@ -3974,7 +3975,9 @@ export default function App() {
     // Cliente del mes también necesita el QR: los puntos se suman al pasarlo.
     // LojoPoly guarda sus tiradas aparte (lojopoly_pedidos), pero también
     // necesita el QR del pedido para poder tirar en caja.
-    if (!ruletaConseguida && !bingoConseguido && !sorteoConseguido && !clienteMesSuma && !lojopolySuma) return null;
+    // La Loca Carrera también guarda sus tiradas aparte (carrera_pedidos) y
+    // se juega con el mismo QR del pedido.
+    if (!ruletaConseguida && !bingoConseguido && !sorteoConseguido && !clienteMesSuma && !lojopolySuma && !carreraSuma) return null;
 
     const participacionRuletaId =
       participacionRuleta?.id || participacionRuleta?.participation_id || null;
@@ -4107,6 +4110,30 @@ export default function App() {
       .filter((item) => item.articulo_id && item.cajas > 0);
 
     const { data, error } = await supabase.rpc("registrar_pedido_lojopoly", {
+      p_token: clienteToken,
+      p_order_id: pedidoId,
+      p_items: items,
+    });
+
+    if (error) throw error;
+    return data && typeof data === "object" ? data : null;
+  }
+
+  async function registrarPedidoParaCarrera(itemsPedido, pedidoId) {
+    // La Loca Carrera: igual que el Sorteo, el servidor decide las tiradas
+    // (cajas de artículos distintos, todos o por departamentos, máximo por
+    // pedido y por día, carrera en juego). Solo cuentan las cajas.
+    if (!clienteToken) return null;
+
+    const items = itemsPedido
+      .map((item) => ({
+        articulo_id: item?.product?.id ?? null,
+        cajas: Number(item.boxes || 0),
+        unidades: 0,
+      }))
+      .filter((item) => item.articulo_id && item.cajas > 0);
+
+    const { data, error } = await supabase.rpc("registrar_pedido_carrera", {
       p_token: clienteToken,
       p_order_id: pedidoId,
       p_items: items,
@@ -4399,6 +4426,7 @@ export default function App() {
     participacionJuegos = null,
     participacionSorteo = null,
     participacionLojopoly = null,
+    participacionCarrera = null,
   }) {
     const esModificacion = pedidoEnviadoActivo;
     const ventana = calcularVentanaPedido(new Date());
@@ -4414,6 +4442,7 @@ export default function App() {
       participacionJuegos,
       participacionSorteo,
       participacionLojopoly,
+      participacionCarrera,
       // El servidor decide si este pedido lleva Cliente del mes (solo el
       // primero en 12 horas): se mira lo que de verdad quedó guardado en el QR.
       clienteMesActivo: Boolean(clienteToken && normalizarRespuestaRpc(participacionJuegos)?.cliente_mes_eligible),
@@ -4688,6 +4717,17 @@ export default function App() {
     }
     const lojopolySuma = Boolean(participacionLojopoly?.eligible) && Number(participacionLojopoly?.tiradas) > 0;
 
+    let participacionCarrera = null;
+    try {
+      participacionCarrera = await conLimiteDeTiempo(
+        registrarPedidoParaCarrera(itemsPedido, pedidoIdEstable)
+      );
+    } catch (error) {
+      // Igual que el Sorteo: un fallo aquí nunca bloquea el envío del pedido.
+      console.error("No se pudo registrar el pedido para La Loca Carrera (se envía igualmente):", error);
+    }
+    const carreraSuma = Boolean(participacionCarrera?.eligible) && Number(participacionCarrera?.tiradas) > 0;
+
     let participacionJuegos = null;
     // El QR común debe crearse para cualquier pedido que consiga Ruleta o Bingo.
     // No puede depender de que el cliente esté identificado: los pedidos anónimos
@@ -4702,7 +4742,7 @@ export default function App() {
       Boolean(participacionRuleta) ||
       pedidoCumpleBingo(participacionBingo) ||
       sorteoCumpleVariedad(participacionSorteo);
-    if (otrosJuegos || clienteMesSuma || lojopolySuma) {
+    if (otrosJuegos || clienteMesSuma || lojopolySuma || carreraSuma) {
       try {
         participacionJuegos = await conLimiteDeTiempo(
           crearParticipacionJuegos({
@@ -4714,6 +4754,7 @@ export default function App() {
             participacionSorteo,
             clienteMesSuma,
             lojopolySuma,
+            carreraSuma,
           })
         );
       } catch (error) {
@@ -4758,6 +4799,7 @@ export default function App() {
       participacionJuegos,
       participacionSorteo,
       participacionLojopoly,
+      participacionCarrera,
     });
     if (lojopolySuma) cargarTableroLojoPoly();
   };
