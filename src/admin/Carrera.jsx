@@ -13,7 +13,7 @@ import { avisoAtencion, boton } from "./lojopolyEstilos";
 
 const PESTANAS = [
   { id: "configuracion", titulo: "Configuración y tiradas" },
-  { id: "villanos", titulo: "Villanos, amigos y La Vieja" },
+  { id: "villanos", titulo: "Villanos y amigos" },
   { id: "casillas", titulo: "Casillas de premio" },
   { id: "final", titulo: "Premio final" },
   { id: "clasificacion", titulo: "Clasificación y premios" },

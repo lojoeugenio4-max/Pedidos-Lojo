@@ -12,8 +12,13 @@ import {
   ayuda,
 } from "./lojopolyEstilos";
 
-// Villanos al azar (Melón Cabezón y Jubilado), amigos que los anulan
-// (José Luis y Rafa) y % de caída en La Vieja (casilla 31).
+// Los 3 villanos están en casillas fijas (el cliente ve dónde está el
+// peligro): El Melón Cabezón (24), La Vieja (31) y El Jubilado (50).
+// Cada uno tiene su % de caída: cuando el dado iba a llevar a esa casilla,
+// solo cae con ese porcentaje; las demás veces el dado saca otro número.
+// José Luis y Rafa pueden anular a cualquiera de los tres.
+
+export const CASILLAS_VILLANOS = { melon: 24, vieja: 31, jubilado: 50 };
 
 const CASTIGOS_DEFECTO = [
   { casillas: 3, prob: 60 },
@@ -32,6 +37,7 @@ function normalizarCastigos(lista) {
 
 const num = (v) => Number(String(v).replace(",", ".")) || 0;
 const pct = (v) => Math.min(100, Math.max(0, num(v)));
+const redondeo = (v) => (Math.round(v * 10) / 10).toLocaleString("es-ES");
 
 export default function CarreraVillanos({ edicion, onGuardado }) {
   const [form, setForm] = useState(null);
@@ -42,12 +48,12 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
 
   useEffect(() => {
     setForm({
-      prob_villano: edicion.prob_villano ?? 15,
-      prob_melon: edicion.prob_melon ?? 50,
+      prob_caida_melon: edicion.prob_caida_melon ?? 30,
+      prob_caida_jubilado: edicion.prob_caida_jubilado ?? 30,
+      prob_vieja: edicion.prob_vieja ?? 20,
       castigos_melon: normalizarCastigos(edicion.castigos_melon),
       castigos_jubilado: normalizarCastigos(edicion.castigos_jubilado),
       prob_anulacion: edicion.prob_anulacion ?? 40,
-      prob_vieja: edicion.prob_vieja ?? 20,
     });
   }, [edicion]);
 
@@ -55,10 +61,7 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
 
   const cambiar = (clave, valor) => setForm((a) => ({ ...a, [clave]: valor }));
   const cambiarCastigo = (villano, i, clave, valor) =>
-    setForm((a) => {
-      const lista = a[villano].map((c, j) => (j === i ? { ...c, [clave]: valor } : c));
-      return { ...a, [villano]: lista };
-    });
+    setForm((a) => ({ ...a, [villano]: a[villano].map((c, j) => (j === i ? { ...c, [clave]: valor } : c)) }));
 
   const sumaMelon = form.castigos_melon.reduce((s, c) => s + num(c.prob), 0);
   const sumaJubilado = form.castigos_jubilado.reduce((s, c) => s + num(c.prob), 0);
@@ -76,12 +79,12 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
     const { error: err } = await supabase
       .from("carrera_ediciones")
       .update({
-        prob_villano: pct(form.prob_villano),
-        prob_melon: pct(form.prob_melon),
+        prob_caida_melon: pct(form.prob_caida_melon),
+        prob_caida_jubilado: pct(form.prob_caida_jubilado),
+        prob_vieja: pct(form.prob_vieja),
         castigos_melon: limpiar(form.castigos_melon),
         castigos_jubilado: limpiar(form.castigos_jubilado),
         prob_anulacion: pct(form.prob_anulacion),
-        prob_vieja: pct(form.prob_vieja),
         updated_at: new Date().toISOString(),
       })
       .eq("id", edicion.id);
@@ -95,84 +98,129 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
     onGuardado?.();
   }
 
-  // Resumen: de cada 100 tiradas que caen en casilla normal...
-  const villanos = pct(form.prob_villano);
-  const anulados = (villanos * pct(form.prob_anulacion)) / 100;
-  const retrocesos = villanos - anulados;
-  const redondeo = (v) => (Math.round(v * 10) / 10).toLocaleString("es-ES");
+  const anula = pct(form.prob_anulacion);
 
   return (
     <div style={contenedor}>
-      <h4 style={tituloSeccion}>😈 Villanos al azar</h4>
+      <h4 style={tituloSeccion}>😈 Villanos en casillas fijas</h4>
 
       {error && <div style={avisoError}>{error}</div>}
       {mensaje && <div style={avisoOk}>{mensaje}</div>}
 
       <p style={ayuda}>
-        Los villanos no tienen casilla fija. Cada vez que un cliente cae en una casilla normal, el sistema decide si aparece
-        uno por sorpresa. Nunca salen después de un premio, de La Vieja, de un palet, de una casilla Lojo ni de la meta.
-        Cuando el villano hace retroceder al cliente, la ficha nunca se queda en una casilla especial (si cae en una, se
-        coloca en la casilla normal de detrás).
+        Los 3 villanos están dibujados en su casilla, así el cliente sabe dónde está el peligro. El <strong>% de caída</strong>{" "}
+        decide cuántas veces atrapan: cuando el dado iba a llevar a un cliente a la casilla de un villano, solo cae con ese
+        porcentaje; las demás veces el dado saca otro número. Con un 30 %, de cada 10 veces que el dado «apunta» al
+        villano, cae unas 3. Al retroceder, la ficha nunca se queda en una casilla especial.
       </p>
 
-      <div style={fila}>
-        <CampoPct id="lc-prob-villano" texto="% de que aparezca un villano en cada tirada" valor={form.prob_villano} bloqueada={bloqueada} onCambio={(v) => cambiar("prob_villano", v)} />
-        <CampoPct id="lc-prob-melon" texto="De esas veces, % que sale el Melón Cabezón" valor={form.prob_melon} bloqueada={bloqueada} onCambio={(v) => cambiar("prob_melon", v)} />
-        <div style={{ ...campo, justifyContent: "end" }}>
-          <span>El Jubilado sale el resto</span>
-          <div style={{ ...input, background: "#f3f4f6" }}>{redondeo(100 - pct(form.prob_melon))} %</div>
-        </div>
-      </div>
+      <TarjetaVillano
+        titulo="🍈 El Melón Cabezón"
+        casilla={CASILLAS_VILLANOS.melon}
+        probCaida={form.prob_caida_melon}
+        onProbCaida={(v) => cambiar("prob_caida_melon", v)}
+        castigos={form.castigos_melon}
+        suma={sumaMelon}
+        bloqueada={bloqueada}
+        onCastigo={(i, clave, valor) => cambiarCastigo("castigos_melon", i, clave, valor)}
+        anula={anula}
+      />
 
-      <div style={fila}>
-        <TablaCastigos
-          titulo="🍈 El Melón Cabezón"
-          castigos={form.castigos_melon}
-          suma={sumaMelon}
-          bloqueada={bloqueada}
-          onCambio={(i, clave, valor) => cambiarCastigo("castigos_melon", i, clave, valor)}
-        />
-        <TablaCastigos
-          titulo="👴 El Jubilado"
-          castigos={form.castigos_jubilado}
-          suma={sumaJubilado}
-          bloqueada={bloqueada}
-          onCambio={(i, clave, valor) => cambiarCastigo("castigos_jubilado", i, clave, valor)}
-        />
-      </div>
+      <TarjetaVillano
+        titulo="👵 La Vieja"
+        casilla={CASILLAS_VILLANOS.vieja}
+        probCaida={form.prob_vieja}
+        onProbCaida={(v) => cambiar("prob_vieja", v)}
+        textoCastigo="Vuelta a la salida (casilla 1)."
+        bloqueada={bloqueada}
+        anula={anula}
+      />
+
+      <TarjetaVillano
+        titulo="👴 El Jubilado"
+        casilla={CASILLAS_VILLANOS.jubilado}
+        probCaida={form.prob_caida_jubilado}
+        onProbCaida={(v) => cambiar("prob_caida_jubilado", v)}
+        castigos={form.castigos_jubilado}
+        suma={sumaJubilado}
+        bloqueada={bloqueada}
+        onCastigo={(i, clave, valor) => cambiarCastigo("castigos_jubilado", i, clave, valor)}
+        anula={anula}
+      />
 
       <h4 style={{ ...tituloSeccion, marginTop: 6 }}>🦸 Amigos: José Luis y Rafa</h4>
       <div style={fila}>
         <CampoPct id="lc-prob-anulacion" texto="% de que un amigo anule al villano" valor={form.prob_anulacion} bloqueada={bloqueada} onCambio={(v) => cambiar("prob_anulacion", v)} />
         <div style={{ flex: 2, minWidth: 220, alignSelf: "end" }}>
           <p style={ayuda}>
-            A más porcentaje, más veces aparecen José Luis o Rafa (uno de los dos al azar), apartan al villano y el cliente
-            se queda donde estaba.
+            Vale para los 3 villanos. Cuando un cliente cae en un villano, con este porcentaje aparece José Luis o Rafa
+            (uno de los dos al azar), lo aparta y el cliente se queda donde estaba.
           </p>
         </div>
-      </div>
-
-      <h4 style={{ ...tituloSeccion, marginTop: 6 }}>👵 La Vieja (casilla 31)</h4>
-      <div style={fila}>
-        <CampoPct id="lc-prob-vieja" texto="% de caída en La Vieja" valor={form.prob_vieja} bloqueada={bloqueada} onCambio={(v) => cambiar("prob_vieja", v)} />
-        <div style={{ flex: 2, minWidth: 220, alignSelf: "end" }}>
-          <p style={ayuda}>
-            Cuando el dado iba a llevar a un cliente a La Vieja, solo cae con este porcentaje; las demás veces el dado saca
-            otro número. Quien cae vuelve a la casilla 1.
-          </p>
-        </div>
-      </div>
-
-      <div style={resumen}>
-        De cada 100 tiradas que caen en una casilla normal: aparecen villanos unas <strong>{redondeo(villanos)}</strong> veces;
-        José Luis o Rafa anulan unas <strong>{redondeo(anulados)}</strong> y el cliente retrocede unas{" "}
-        <strong>{redondeo(retrocesos)}</strong>.
       </div>
 
       {!bloqueada && (
         <button type="button" style={boton} onClick={guardar} disabled={guardando}>
           {guardando ? "Guardando..." : "Guardar"}
         </button>
+      )}
+    </div>
+  );
+}
+
+function TarjetaVillano({ titulo, casilla, probCaida, onProbCaida, castigos, suma, textoCastigo, bloqueada, onCastigo, anula }) {
+  const caida = pct(probCaida);
+  const castiga = (caida * (100 - anula)) / 100;
+  return (
+    <div style={tarjetaVillano}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={numeroCasilla}>{casilla}</span>
+        <strong style={{ fontSize: 15, color: "#111827" }}>{titulo}</strong>
+        <span style={{ fontSize: 13, color: "#6b7280" }}>Casilla {casilla}</span>
+      </div>
+
+      <div style={fila}>
+        <CampoPct id={`lc-caida-${casilla}`} texto="% de caída en su casilla" valor={probCaida} bloqueada={bloqueada} onCambio={onProbCaida} />
+        <div style={{ flex: 2, minWidth: 220, alignSelf: "end" }}>
+          <p style={resumen}>
+            De cada 100 veces que el dado apunta a esta casilla: cae unas <strong>{redondeo(caida)}</strong>, y de ellas
+            castiga de verdad unas <strong>{redondeo(castiga)}</strong> (las demás las anulan José Luis o Rafa).
+          </p>
+        </div>
+      </div>
+
+      {textoCastigo ? (
+        <p style={{ margin: 0, fontSize: 14, color: "#374151" }}>
+          <strong>Castigo:</strong> {textoCastigo}
+        </p>
+      ) : (
+        <>
+          <table style={{ width: "100%", maxWidth: 480, borderCollapse: "collapse", fontSize: 14 }}>
+            <thead>
+              <tr style={{ color: "#6b7280", textAlign: "left" }}>
+                <th style={th}>Castigo</th>
+                <th style={th}>Retrocede</th>
+                <th style={th}>Probabilidad</th>
+              </tr>
+            </thead>
+            <tbody>
+              {castigos.map((c, i) => (
+                <tr key={i}>
+                  <td style={td}>{NOMBRES_CASTIGO[i]}</td>
+                  <td style={td}>
+                    <input style={{ ...input, width: 70 }} type="number" min={1} max={62} value={c.casillas} disabled={bloqueada} onChange={(e) => onCastigo(i, "casillas", e.target.value)} aria-label={`Casillas castigo ${NOMBRES_CASTIGO[i]}`} /> casillas
+                  </td>
+                  <td style={td}>
+                    <input style={{ ...input, width: 70 }} type="number" min={0} max={100} step="any" value={c.prob} disabled={bloqueada} onChange={(e) => onCastigo(i, "prob", e.target.value)} aria-label={`Probabilidad castigo ${NOMBRES_CASTIGO[i]}`} /> %
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <span style={{ fontSize: 13, fontWeight: 700, color: Math.round(suma) === 100 ? "#166534" : "#b91c1c" }}>
+            Suma: {Math.round(suma * 10) / 10} % {Math.round(suma) === 100 ? "✓" : "(tiene que ser 100 %)"}
+          </span>
+        </>
       )}
     </div>
   );
@@ -190,41 +238,8 @@ function CampoPct({ id, texto, valor, bloqueada, onCambio }) {
   );
 }
 
-function TablaCastigos({ titulo, castigos, suma, bloqueada, onCambio }) {
-  const correcta = Math.round(suma) === 100;
-  return (
-    <div style={tarjetaVillano}>
-      <strong style={{ fontSize: 15, color: "#111827" }}>{titulo}</strong>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-        <thead>
-          <tr style={{ color: "#6b7280", textAlign: "left" }}>
-            <th style={th}>Castigo</th>
-            <th style={th}>Retrocede</th>
-            <th style={th}>Probabilidad</th>
-          </tr>
-        </thead>
-        <tbody>
-          {castigos.map((c, i) => (
-            <tr key={i}>
-              <td style={td}>{NOMBRES_CASTIGO[i]}</td>
-              <td style={td}>
-                <input style={{ ...input, width: 70 }} type="number" min={1} max={62} value={c.casillas} disabled={bloqueada} onChange={(e) => onCambio(i, "casillas", e.target.value)} aria-label={`Casillas castigo ${NOMBRES_CASTIGO[i]}`} /> casillas
-              </td>
-              <td style={td}>
-                <input style={{ ...input, width: 70 }} type="number" min={0} max={100} step="any" value={c.prob} disabled={bloqueada} onChange={(e) => onCambio(i, "prob", e.target.value)} aria-label={`Probabilidad castigo ${NOMBRES_CASTIGO[i]}`} /> %
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <span style={{ fontSize: 13, fontWeight: 700, color: correcta ? "#166534" : "#b91c1c" }}>
-        Suma: {Math.round(suma * 10) / 10} % {correcta ? "✓" : "(tiene que ser 100 %)"}
-      </span>
-    </div>
-  );
-}
-
-const tarjetaVillano = { flex: 1, minWidth: 280, display: "grid", gap: 8, padding: 12, borderRadius: 12, border: "1px solid #e5e7eb", background: "#fafafa" };
+const tarjetaVillano = { display: "grid", gap: 10, padding: 14, borderRadius: 12, border: "1px solid #e5e7eb", background: "#fafafa" };
+const numeroCasilla = { width: 34, height: 34, borderRadius: 999, background: "#b91c1c", color: "#fff", display: "grid", placeItems: "center", fontWeight: 900 };
 const th = { padding: "4px 6px", fontWeight: 700, fontSize: 13 };
 const td = { padding: "4px 6px", whiteSpace: "nowrap" };
-const resumen = { padding: "11px 13px", borderRadius: 10, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e3a8a", fontSize: 14, lineHeight: 1.45 };
+const resumen = { margin: 0, padding: "10px 12px", borderRadius: 10, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e3a8a", fontSize: 13, lineHeight: 1.4 };
