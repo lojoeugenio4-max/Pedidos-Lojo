@@ -170,24 +170,55 @@ function combinarConLojoPoly(filas, filasLojoPoly) {
   return Array.from(porPedido.values());
 }
 
-// Pide las listas (Bingo/Ruleta, Sorteo, Cliente del mes y LojoPoly) y las une.
+// Añade los QR con tiradas de La Loca Carrera sin jugar:
+// - si el pedido ya está en la lista, se le añaden sus tiradas;
+// - si solo tiene Carrera, se añade como fila nueva.
+function combinarConCarrera(filas, filasCarrera) {
+  const porPedido = new Map(filas.map((fila) => [String(fila.order_id), fila]));
+  filasCarrera.forEach((fila) => {
+    const clave = String(fila.order_id);
+    const restantes = Number(fila.carrera_remaining || 0);
+    const existente = porPedido.get(clave);
+    if (existente) {
+      existente.carrera_remaining = restantes;
+      if (!existente.codigo_lojo && fila.codigo_lojo) existente.codigo_lojo = fila.codigo_lojo;
+      if (!existente.code && fila.code) existente.code = fila.code;
+      if (!existente.customer_token && fila.customer_token) existente.customer_token = fila.customer_token;
+    } else {
+      porPedido.set(clave, {
+        ...fila,
+        bingo_remaining: 0,
+        roulette_remaining: 0,
+        sorteo_remaining: 0,
+        tiene_bingo_o_ruleta: false,
+        carrera_remaining: restantes,
+      });
+    }
+  });
+  return Array.from(porPedido.values());
+}
+
+// Pide las listas (Bingo/Ruleta, Sorteo, Cliente del mes, LojoPoly y Carrera) y las une.
 async function cargarTodasLasListas() {
-  const [principal, sorteo, clienteMes, lojopoly] = await Promise.all([
+  const [principal, sorteo, clienteMes, lojopoly, carrera] = await Promise.all([
     supabase.rpc("admin_listar_qr_pendientes"),
     supabase.rpc("admin_listar_qr_pendientes_sorteo"),
     supabase.rpc("admin_listar_qr_pendientes_cliente_mes"),
     supabase.rpc("admin_listar_qr_pendientes_lojopoly"),
+    supabase.rpc("admin_listar_qr_pendientes_carrera"),
   ]);
   if (principal.error) throw principal.error;
   if (clienteMes.error) console.warn("QR pendientes: no se pudo cargar Cliente del mes:", clienteMes.error);
   if (lojopoly.error) console.warn("QR pendientes: no se pudo cargar LojoPoly:", lojopoly.error);
-  const filas = combinarConLojoPoly(
+  if (carrera.error) console.warn("QR pendientes: no se pudo cargar La Loca Carrera:", carrera.error);
+  const filasSinCarrera = combinarConLojoPoly(
     combinarConClienteMes(
       combinarConSorteo(principal.data || [], sorteo.error ? [] : sorteo.data || []),
       clienteMes.error ? [] : clienteMes.data || []
     ),
     lojopoly.error ? [] : lojopoly.data || []
   );
+  const filas = combinarConCarrera(filasSinCarrera, carrera.error ? [] : carrera.data || []);
   return { filas, sorteoError: sorteo.error };
 }
 
@@ -341,6 +372,12 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
         });
         if (rpcLojoPolyError) throw rpcLojoPolyError;
       }
+      if (pedido.carrera_remaining > 0) {
+        const { error: rpcCarreraError } = await supabase.rpc("admin_anular_carrera_pendiente", {
+          p_order_id: String(pedido.order_id),
+        });
+        if (rpcCarreraError) throw rpcCarreraError;
+      }
       setFilas((prev) => prev.filter((fila) => fila.order_id !== pedido.order_id));
     } catch (err) {
       setError(err?.message || "No se pudo eliminar el código.");
@@ -383,6 +420,10 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
         p_antes: antes,
       });
       if (rpcLojoPolyError) console.warn("No se pudieron anular las tiradas de LojoPoly antiguas:", rpcLojoPolyError);
+      const { error: rpcCarreraError } = await supabase.rpc("admin_anular_carrera_pendientes_antiguos", {
+        p_antes: antes,
+      });
+      if (rpcCarreraError) console.warn("No se pudieron anular las tiradas de La Loca Carrera antiguas:", rpcCarreraError);
       await cargar({ mostrarCargando: false });
       window.alert(
         `Eliminados ${data ?? 0} código(s) de Bingo/Ruleta y ${dataSorteo ?? 0} pendiente(s) de Sorteo.`
@@ -675,6 +716,7 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
               <th style={th}>🔢 Sorteo</th>
               <th style={th}>🏆 Cliente mes</th>
               <th style={th}>🎲 LojoPoly</th>
+              <th style={th}>🏁 Carrera</th>
               <th style={th}>QR</th>
               <th style={th}>Código QR</th>
               <th style={th}></th>
@@ -683,7 +725,7 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
           <tbody>
             {gruposFiltrados.length === 0 && !cargando && (
               <tr>
-                <td style={td} colSpan={11}>
+                <td style={td} colSpan={12}>
                   {filas.length === 0
                     ? "No hay ningún QR pendiente de leer ahora mismo."
                     : "Ningún cliente coincide con la búsqueda."}
@@ -740,6 +782,15 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
                     {pedido.lojopoly_remaining > 0 ? (
                       <span style={badgeLojoPoly} title="Tiradas de LojoPoly que hará al pasar el QR">
                         {pedido.lojopoly_remaining}
+                      </span>
+                    ) : (
+                      <span style={celdaVacia}>—</span>
+                    )}
+                  </td>
+                  <td style={td}>
+                    {pedido.carrera_remaining > 0 ? (
+                      <span style={badgeCarrera} title="Tiradas de La Loca Carrera que hará al pasar el QR">
+                        {pedido.carrera_remaining}
                       </span>
                     ) : (
                       <span style={celdaVacia}>—</span>
@@ -923,6 +974,16 @@ const badgeLojoPoly = {
   borderRadius: "999px",
   background: "#fee2e2",
   color: "#b91c1c",
+  fontWeight: 800,
+  fontSize: "14px",
+};
+
+const badgeCarrera = {
+  display: "inline-block",
+  padding: "3px 10px",
+  borderRadius: "999px",
+  background: "#dcfce7",
+  color: "#166534",
   fontWeight: 800,
   fontSize: "14px",
 };

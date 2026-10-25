@@ -880,9 +880,20 @@ export default function App() {
   const [cargandoBingo, setCargandoBingo] = useState(false);
   const [errorBingo, setErrorBingo] = useState("");
   const [premiosBingo, setPremiosBingo] = useState({ line: null, lineSpecial: null, bingo: null, special: null });
-  const [configuracionBingoCliente, setConfiguracionBingoCliente] = useState(null);
-  const [articulosBingoCliente, setArticulosBingoCliente] = useState([]);
+  // Bingo: la promoción vigente y sus artículos tal cual vienen de la base de
+  // datos. Desde oct 2026 ya no se dan cartones nuevos: solo ve y juega el
+  // Bingo quien tiene un cartón activo (sin completar y dentro de sus 3
+  // meses). Para el resto, configuracionBingoCliente/articulosBingoCliente
+  // quedan vacíos y el Bingo desaparece de su App.
+  const [configuracionBingoPromo, setConfiguracionBingoCliente] = useState(null);
+  const [articulosBingoPromo, setArticulosBingoCliente] = useState([]);
   const [fechaLimiteBingoPropia, setFechaLimiteBingoPropia] = useState(null);
+  const [bingoActivoCliente, setBingoActivoCliente] = useState(false);
+  const configuracionBingoCliente = bingoActivoCliente ? configuracionBingoPromo : null;
+  const articulosBingoCliente = useMemo(
+    () => (bingoActivoCliente ? articulosBingoPromo : []),
+    [bingoActivoCliente, articulosBingoPromo]
+  );
 
   // Sorteo: disponible para todos los clientes identificados.
   const [configuracionSorteoCliente, setConfiguracionSorteoCliente] = useState(null);
@@ -1609,8 +1620,12 @@ export default function App() {
   useEffect(() => {
     let activo = true;
     async function cargarFechaLimitePropia() {
-      if (!clienteToken || !configuracionBingoCliente?.id) {
+      // Además de la fecha límite, decide si este cliente sigue teniendo
+      // Bingo: cartón activo, sin completar y dentro de su plazo. Los clientes
+      // de pruebas siempre lo tienen.
+      if (!clienteToken || !configuracionBingoPromo?.id) {
         setFechaLimiteBingoPropia(null);
+        setBingoActivoCliente(false);
         return;
       }
       const { data, error } = await supabase.rpc("obtener_estado_carton_bingo", {
@@ -1618,21 +1633,32 @@ export default function App() {
       });
       if (!activo) return;
       const respuesta = Array.isArray(data) ? data[0] : data;
+      const esPruebas = Boolean(clienteIdentificado?.es_pruebas);
       if (error || !respuesta?.ok) {
         setFechaLimiteBingoPropia(null);
+        setBingoActivoCliente(esPruebas);
         return;
       }
       setFechaLimiteBingoPropia(respuesta.fecha_limite || null);
+      const mismaEdicion =
+        !respuesta.edition_id ||
+        !configuracionBingoPromo.edition_id ||
+        String(respuesta.edition_id) === String(configuracionBingoPromo.edition_id);
+      const dentroDePlazo =
+        !respuesta.fecha_limite || new Date(respuesta.fecha_limite).getTime() > Date.now();
+      const cartonVivo =
+        mismaEdicion && respuesta.estado_carton === "active" && !respuesta.completo && dentroDePlazo;
+      setBingoActivoCliente(esPruebas || cartonVivo);
     }
     cargarFechaLimitePropia();
     return () => { activo = false; };
-  }, [clienteToken, configuracionBingoCliente?.id]);
+  }, [clienteToken, configuracionBingoPromo?.id, configuracionBingoPromo?.edition_id, clienteIdentificado?.es_pruebas]);
 
   useEffect(() => {
     let activo = true;
 
     async function cargarArticulosBingo() {
-      const promocionId = configuracionBingoCliente?.id;
+      const promocionId = configuracionBingoPromo?.id;
       if (!promocionId) {
         setArticulosBingoCliente([]);
         return;
@@ -1688,7 +1714,7 @@ export default function App() {
 
     cargarArticulosBingo();
     return () => { activo = false; };
-  }, [configuracionBingoCliente?.id]);
+  }, [configuracionBingoPromo?.id]);
 
   async function abrirMiBingo() {
     if (!clienteIdentificado?.id || !clienteToken || !configuracionBingoCliente) return;
