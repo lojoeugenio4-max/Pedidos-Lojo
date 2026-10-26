@@ -930,6 +930,8 @@ const CASTIGOS = {
   melon: [{ casillas: 3, prob: 60 }, { casillas: 6, prob: 30 }, { casillas: 10, prob: 10 }],
   jubilado: [{ casillas: 3, prob: 60 }, { casillas: 6, prob: 30 }, { casillas: 10, prob: 10 }],
 };
+let castigoForzado = null, saltarEfecto = false, forzarSinAmigo = false, tiradaRealActual = null;
+function tomarCastigo(lista) { const v = castigoForzado; castigoForzado = null; return v ?? elegirCastigo(lista); }
 function elegirCastigo(lista) {
   const total = lista.reduce((t, c) => t + c.prob, 0); let r = Math.random() * total;
   for (const c of lista) { if ((r -= c.prob) < 0) return c.casillas; }
@@ -1175,7 +1177,7 @@ async function turno(c) {
     const v = await tirarDado(); msg(`¡Ha sacado un ${v}!`); await espera(400);
     const sobra = c.pos + v - META;
     if (sobra > 0) { await moverPasos(c, META - c.pos); msg('¡Te pasaste! Rebotas…'); await moverPasos(c, -sobra); } else await moverPasos(c, v);
-    otraVez = await efecto(c);
+    otraVez = await efecto(c); if (tiradaRealActual) otraVez = false;
     if (c.pos === META) break;
   }
   await terminar(c);
@@ -1464,12 +1466,13 @@ async function lojoFinal(c, f, L, sube, esc) {
 }
 
 async function efecto(c) {
+  if (saltarEfecto) { saltarEfecto = false; return false; }
   const e = ESPECIALES[c.pos]; if (!e) return false;
   switch (e.tipo) {
     case 'lojo': return await escenaLojo(c);
     case 'palet': return await escenaPalet(c, e);
-    case 'villano': await escenaMelon(c, elegirCastigo(CASTIGOS.melon)); return false;
-    case 'jubilado': await escenaJubilado(c, elegirCastigo(CASTIGOS.jubilado)); return false;
+    case 'villano': await escenaMelon(c, tomarCastigo(CASTIGOS.melon)); return false;
+    case 'jubilado': await escenaJubilado(c, tomarCastigo(CASTIGOS.jubilado)); return false;
     case 'vieja': await escenaVieja(c); return false;
     case 'regalo': { const p = PREMIOS[c.pos]; p.quedan--; pintarPremios(); sonido.regalo();
       await cartel(`<div class="grande">🎁</div><h2>¡PREMIO!</h2><p>${c.nombre} se lleva<br><b>${p.nombre}</b><br><small>${p.quedan > 0 ? `Quedan ${p.quedan} en esta casilla` : 'Era el último: esta casilla queda agotada'}</small></p>`, '', 3000); return false; }
@@ -1803,7 +1806,7 @@ async function turno(c) {
   $('quien').innerHTML = `${c.nombre}<small>Puesto ${puesto} · casilla ${c.pos}</small>`;
   pintar(); cine(true); camaraGeneral(800);
   arrancarPublico(); nivelPublico(.035); speechSynthesis?.cancel?.();
-  await presentar(c, puesto);
+  if (!tiradaRealActual?.extra) await presentar(c, puesto);
   camaraCasilla(c.pos, 2.2, 1300); await espera(1300);
   let otraVez = true;
   while (otraVez) {
@@ -1818,7 +1821,7 @@ async function turno(c) {
     const tipoE = ESPECIALES[c.pos]?.tipo;
     if (esVillano(tipoE)) abucheo(); else if (tipoE && tipoE !== 'salida') ovacion(tipoE === 'meta' ? 2 : 1.2);
     await preEfecto(c);
-    otraVez = await efecto(c);
+    otraVez = await efecto(c); if (tiradaRealActual) otraVez = false;
     if (c.pos === META) break;
   }
   await adelantamientos(c, antes);
@@ -2338,7 +2341,7 @@ let forzarAmigo = false;      // para las pruebas
 let forzarAmigoId = null;     // para probar un amigo concreto
 const AMIGOS = [{ id: 'joseluis', nombre: 'JOSÉ LUIS' }, { id: 'rafa', nombre: 'RAFA' }];
 const pjA = $('pjA');
-function tocaAmigo() { if (forzarAmigo) { forzarAmigo = false; return true; } return Math.random() * 100 < PROB_AMIGO; }
+function tocaAmigo() { if (forzarSinAmigo) { forzarSinAmigo = false; return false; } if (forzarAmigo) { forzarAmigo = false; return true; } return Math.random() * 100 < PROB_AMIGO; }
 function fanfarria() { [523, 659, 784, 1046, 784, 1046, 1318].forEach((f, i) => { tono(f, f, i > 4 ? .5 : .16, 'square', .09, i * .13); tono(f / 2, f / 2, .16, 'triangle', .07, i * .13); }); }
 let fuenteVillano = null;  // grabación del villano en curso (para cortarla si llega el amigo)
 // villanoEl: el elemento del villano; base: su transformación; datos de posición de la escena
@@ -2999,7 +3002,7 @@ let silenciado = false;
 let ultimoGesto = -1e9;
 const VIDA_SONIDO = 45000;   // 45 s sin tocar nada → silencio total
 ['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach(ev => window.addEventListener(ev, () => { ultimoGesto = performance.now(); }, { capture: true, passive: true }));
-function enPrimerPlano() { return !document.hidden && performance.now() - ultimoGesto < VIDA_SONIDO; }
+function enPrimerPlano() { return !document.hidden && (MODO_TV || performance.now() - ultimoGesto < VIDA_SONIDO); }
 function apagarAudio() {
   try { speechSynthesis.cancel(); } catch { }
   try { fuenteVillano?.stop(); } catch { }
@@ -3037,6 +3040,61 @@ function cargarJugadoresReales(lista) {
   pintar(); rellenarSel();
 }
 let datosPendientes = null;
+// Tirada real (resultado de carrera_tirar_qr): el dado, el castigo, si sale
+// José Luis o Rafa y la casilla final los decide el servidor; aquí solo se
+// reproduce la película. Al acabar se avisa a la app para que siga.
+const tiradasVistas = new Set(), colaTiradas = [];
+function jugarTiradaReal(t) {
+  if (!t || !t.token || tiradasVistas.has(t.token)) return;
+  tiradasVistas.add(t.token); colaTiradas.push(t);
+  if (colaTiradas.length === 1) siguienteTiradaReal();
+}
+async function siguienteTiradaReal() {
+  while (colaTiradas.length) {
+    const t = colaTiradas[0];
+    try { await reproducirTirada(t); } catch (err) { console.error('Loca Carrera: error en la tirada', err); }
+    colaTiradas.shift();
+    try { window.parent !== window && window.parent.postMessage({ tipo: 'lojo-carrera-tirada-fin', token: t.token }, location.origin); } catch { }
+  }
+}
+async function reproducirTirada(t) {
+  while (ocupado) await espera(300);
+  const id = String(t.cliente_id);
+  let c = clientes.find(x => x.id === id);
+  if (!c) {
+    c = { id, nombre: t.cliente_nombre || 'Cliente', pos: 1, pierde: 0, ultimaTirada: 1e12, color: COLORES[clientes.length % COLORES.length] };
+    clientes.push(c);
+    const f = document.createElement('div'); f.className = 'ficha oculta'; f.style.background = c.color; f.textContent = iniciales(c.nombre); capa.appendChild(f); fichas[id] = f;
+  }
+  if (t.cliente_nombre) c.nombre = t.cliente_nombre;
+  c.pos = Math.min(META, Math.max(1, +t.desde || 1)); pintar();
+  const ev = (t.eventos || []).find(e => e.tipo === 'villano');
+  forzarAmigo = false; forzarSinAmigo = false; forzarAmigoId = null; forzarMelonGana = forzarJubGana = forzarLucasGana = null;
+  if (ev) {
+    if (ev.anulado) {
+      // un amigo le salva
+      forzarAmigo = true; forzarAmigoId = ev.amigo === 'jose_luis' ? 'joseluis' : 'rafa';
+      forzarMelonGana = forzarJubGana = forzarLucasGana = false;
+    } else if (Math.random() * 100 < PROB_AMIGO_PIERDE) {
+      // sale un amigo… y pierde (el castigo se cumple igual)
+      forzarAmigo = true; forzarMelonGana = forzarJubGana = forzarLucasGana = true;
+    } else forzarSinAmigo = true;
+    castigoForzado = ev.castigo || null;
+  }
+  // caso raro: el servidor dejó la casilla sin efecto
+  saltarEfecto = t.tipo_casilla === 'normal' && !!ESPECIALES[t.casilla_dado];
+  dadoForzado = +t.dado;
+  tiradaRealActual = t; ocupado = true;
+  try { pararTrailer(); audio(); await turno(c); }
+  finally {
+    ocupado = false; tiradaRealActual = null; castigoForzado = null; saltarEfecto = false;
+    forzarAmigo = false; forzarSinAmigo = false; forzarAmigoId = null; forzarMelonGana = forzarJubGana = forzarLucasGana = null;
+    c.pos = Math.min(META, Math.max(1, +t.hasta || c.pos)); c.ultimaTirada = Date.now(); pintar();
+  }
+}
+// Cuando el villano gana, a veces sale igualmente un amigo y pierde (solo es
+// la película: el castigo es el que ha decidido el servidor).
+const PROB_AMIGO_PIERDE = 30;
 function aplicarDatos(d) {
   if (ocupado) { datosPendientes = d; return; }
   if (d.premioFinal) PREMIO_FINAL = d.premioFinal;
@@ -3051,6 +3109,7 @@ window.addEventListener('message', e => {
   if (e.origin !== location.origin) return;
   const d = e.data;
   if (d && d.tipo === 'lojo-carrera-datos') aplicarDatos(d);
+  if (d && d.tipo === 'lojo-carrera-tirada') jugarTiradaReal(d.tirada);
 });
 if (MODO_TV) {
   document.body.classList.add('modoTV');

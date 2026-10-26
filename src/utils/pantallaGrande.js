@@ -109,7 +109,7 @@ const AVISO_MONITOR = {
 // del TPV).
 // La TV escribe la hora cada 2 s en localStorage (ver DisplayPage.jsx).
 const CLAVE_TV_VIVA = "lojo-tv-viva";
-function tvYaAbierta() {
+export function tvYaAbierta() {
   try {
     const ultima = Number(localStorage.getItem(CLAVE_TV_VIVA) || 0);
     return Date.now() - ultima < 5000;

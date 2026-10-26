@@ -306,6 +306,8 @@ function DisplayPageContenido() {
   const [sorteoNumeros, setSorteoNumeros] = useState([]);
   // LojoPoly: tablero del cliente del QR y última tirada recibida del TPV.
   const [lojopoly, setLojopoly] = useState(null);
+  // LA LOCA CARRERA: última tirada recibida del TPV (se reproduce en el tablero).
+  const [carreraTirada, setCarreraTirada] = useState(null);
   const [sorteoGrids, setSorteoGrids] = useState([]);
   // undefined = cargando; null = no hay Sorteo configurado.
   const [sorteoReposoGrid, setSorteoReposoGrid] = useState(undefined);
@@ -804,6 +806,17 @@ function DisplayPageContenido() {
       return;
     }
 
+    // LA LOCA CARRERA: el TPV abre la carrera de un cliente ("carrera") y
+    // manda cada tirada ("carrera-tirada", con un token nuevo). El tablero la
+    // reproduce y avisa al TPV al terminar. Al recargar la TV no se repite
+    // una tirada antigua.
+    if (event.type === "carrera" || event.type === "carrera-tirada") {
+      setEstado("carrera");
+      const reciente = Date.now() - (Number(event.createdAt) || 0) < 15000;
+      if (event.type === "carrera-tirada" && reciente && payload.tirada?.token) setCarreraTirada(payload.tirada);
+      return;
+    }
+
     if (event.type === "sorteo") {
       setEstado("sorteo");
       setSorteoEntrada(payload.entrada || null);
@@ -961,8 +974,10 @@ function DisplayPageContenido() {
 
   // LA LOCA CARRERA: tablero con el Top 10 (botón «🏁 Loca Carrera» de
   // "Pedidos recibidos").
-  if (estado === "carrera-reposo") {
-    return <CarreraTableroTV />;
+  // Mismo componente en reposo y jugando: el tablero no se recarga al pasar
+  // de uno a otro.
+  if (estado === "carrera-reposo" || estado === "carrera") {
+    return <CarreraTableroTV tirada={estado === "carrera" ? carreraTirada : null} />;
   }
 
   if (estado === "sorteo-reposo") {

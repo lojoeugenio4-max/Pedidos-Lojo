@@ -11,9 +11,13 @@
 //     una con su %). Si se cambian en el Admin, el tablero se recarga solo.
 //   · por mensaje, cada 15 s: clientes (Top 10 y fichas de los 5 primeros),
 //     premios de las casillas (los agotados salen tachados) y premio final.
+//   · `tirada`: la tirada que acaba de hacer un cliente en caja (resultado de
+//     carrera_tirar_qr). El tablero la reproduce tal cual y, al acabar, se
+//     avisa al TPV (utils/carreraCanal.js) para que siga con la siguiente.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../supabaseClient";
 import { parametroVillanos } from "../../utils/carreraTablero";
+import { avisarFinTiradaCarrera } from "../../utils/carreraCanal";
 
 const REFRESCO_MS = 15000;
 const RUTA_TABLERO = "/loca-carrera/tablero.html";
@@ -59,11 +63,34 @@ async function cargarDatosCarrera() {
   return { edicion, jugadores, premios };
 }
 
-export default function CarreraTableroTV() {
+export default function CarreraTableroTV({ tirada = null }) {
   const iframeRef = useRef(null);
   const datosRef = useRef(null);
   const [villanos, setVillanos] = useState(null);
   const [aviso, setAviso] = useState("");
+  // Tiradas que aún no se han podido mandar al tablero (todavía cargando).
+  const tiradasPendientesRef = useRef([]);
+  const listoRef = useRef(false);
+
+  const mandarTiradas = useCallback(() => {
+    const ventana = iframeRef.current?.contentWindow;
+    if (!ventana || !listoRef.current) return;
+    tiradasPendientesRef.current.splice(0).forEach((t) =>
+      ventana.postMessage({ tipo: "lojo-carrera-tirada", tirada: t }, window.location.origin)
+    );
+  }, []);
+
+  // Tablero nuevo (cambiaron las casillas de los villanos): hasta que avise
+  // de que está listo, las tiradas esperan.
+  useEffect(() => {
+    listoRef.current = false;
+  }, [villanos]);
+
+  useEffect(() => {
+    if (!tirada?.token) return;
+    tiradasPendientesRef.current.push(tirada);
+    mandarTiradas();
+  }, [tirada, mandarTiradas]);
 
   const enviar = useCallback(() => {
     const d = datosRef.current;
@@ -97,9 +124,16 @@ export default function CarreraTableroTV() {
     }
     refrescar();
     const intervalo = window.setInterval(refrescar, REFRESCO_MS);
-    // El tablero avisa cuando ha terminado de cargar: se le mandan los datos ya.
+    // El tablero avisa cuando ha terminado de cargar (se le mandan los datos
+    // y las tiradas que esperaban) y cuando acaba de reproducir una tirada.
     function alMensaje(e) {
-      if (e.origin === window.location.origin && e.data?.tipo === "lojo-carrera-listo") enviar();
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.tipo === "lojo-carrera-listo") {
+        listoRef.current = true;
+        enviar();
+        mandarTiradas();
+      }
+      if (e.data?.tipo === "lojo-carrera-tirada-fin") avisarFinTiradaCarrera(e.data.token);
     }
     window.addEventListener("message", alMensaje);
     return () => {
@@ -107,7 +141,7 @@ export default function CarreraTableroTV() {
       window.clearInterval(intervalo);
       window.removeEventListener("message", alMensaje);
     };
-  }, [enviar]);
+  }, [enviar, mandarTiradas]);
 
   return (
     <main style={estilos.pagina}>

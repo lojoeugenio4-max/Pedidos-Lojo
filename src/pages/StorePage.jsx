@@ -6,7 +6,8 @@ import BingoDrumStage from "../components/BingoDrumStage";
 import { calcularPremiosConseguidos } from "../utils/bingoWinLogic";
 import { notificarQrLeido } from "../utils/qrPendientesEvento";
 import { notificarPremioBingo } from "../utils/premiosBingoEvento";
-import { abrirPantallaGrande } from "../utils/pantallaGrande";
+import { abrirPantallaGrande, tvYaAbierta } from "../utils/pantallaGrande";
+import { escucharFinTiradaCarrera } from "../utils/carreraCanal";
 import PedidosExportar from "../admin/PedidosExportar";
 import { prepararVueltaTrasJugar } from "../admin/QrPendientes";
 import { prepararRegalosTrasJugar, guardarArticulosRegalosBingo } from "../admin/Regalos";
@@ -384,6 +385,31 @@ export default function StorePage() {
     lojopolyRodandoRef.current = false;
     lojopolyCodigoRef.current = "";
   }
+  // LA LOCA CARRERA: tiradas automáticas. El TPV tira (carrera_tirar_qr), la
+  // TV reproduce la tirada en el tablero y avisa al terminar; entonces se
+  // tira la siguiente. Si la TV no está abierta o no avisa, se sigue igual.
+  const [carreraRodando, setCarreraRodando] = useState(false);
+  const [carreraLineas, setCarreraLineas] = useState([]);
+  const [carreraPremios, setCarreraPremios] = useState([]);
+  const carreraCodigoRef = useRef("");
+  const carreraRodandoRef = useRef(false);
+  const carreraTimerRef = useRef(null);
+  const carreraEsperaRef = useRef(null); // { token, tirada, timer }
+  function programarTiradaCarrera(ms) {
+    if (carreraTimerRef.current) window.clearTimeout(carreraTimerRef.current);
+    carreraTimerRef.current = window.setTimeout(() => {
+      carreraTimerRef.current = null;
+      tirarCarrera();
+    }, ms);
+  }
+  function cancelarTiradasCarrera() {
+    if (carreraTimerRef.current) window.clearTimeout(carreraTimerRef.current);
+    carreraTimerRef.current = null;
+    if (carreraEsperaRef.current?.timer) window.clearTimeout(carreraEsperaRef.current.timer);
+    carreraEsperaRef.current = null;
+    carreraRodandoRef.current = false;
+    carreraCodigoRef.current = "";
+  }
   const [bomboGirando, setBomboGirando] = useState(false);
   // Además del estado (que solo sirve para pintar la UI), guardamos el
   // mismo valor en una ref. El estado, al leerse dentro de una función
@@ -524,7 +550,7 @@ export default function StorePage() {
       }
 
       setMensaje(`Bola ${message.ball_number} registrada correctamente.`);
-      setEstado((entitlement?.roulette_available || entitlement?.sorteo_available || entitlement?.lojopoly_available) ? "game-choice" : "bingo-result");
+      setEstado((entitlement?.roulette_available || entitlement?.sorteo_available || entitlement?.lojopoly_available || entitlement?.carrera_available) ? "game-choice" : "bingo-result");
     }
 
     let channel;
@@ -544,15 +570,34 @@ export default function StorePage() {
       channel?.close?.();
       window.removeEventListener("storage", handleStorage);
     };
-  }, [codigo, entitlement?.code, entitlement?.roulette_available, entitlement?.sorteo_available, entitlement?.lojopoly_available]);
+  }, [codigo, entitlement?.code, entitlement?.roulette_available, entitlement?.sorteo_available, entitlement?.lojopoly_available, entitlement?.carrera_available]);
 
   // Si a este QR solo le queda LojoPoly, se abre solo y empiezan las tiradas.
   useEffect(() => {
     if (estado !== "lojopoly-ready" || !entitlement?.lojopoly_available) return;
-    const otros = entitlement.bingo_available || entitlement.roulette_available || entitlement.sorteo_available;
+    const otros = entitlement.bingo_available || entitlement.roulette_available || entitlement.sorteo_available || entitlement.carrera_available;
     if (!otros) abrirLojoPoly();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estado, entitlement?.code]);
+
+  // Si a este QR solo le queda La Loca Carrera, se abre sola y empiezan las tiradas.
+  useEffect(() => {
+    if (estado !== "carrera-ready" || !entitlement?.carrera_available) return;
+    const otros = entitlement.bingo_available || entitlement.roulette_available || entitlement.sorteo_available || entitlement.lojopoly_available;
+    if (!otros) abrirCarrera();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estado, entitlement?.code]);
+
+  // La TV avisa de que ha terminado de reproducir una tirada de la carrera.
+  useEffect(
+    () =>
+      escucharFinTiradaCarrera((token) => {
+        const espera = carreraEsperaRef.current;
+        if (espera && espera.token === token) terminarTiradaCarrera(espera.tirada);
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   useEffect(() => {
     const codeFromUrl = extraerCodigoQr(
@@ -671,21 +716,34 @@ export default function StorePage() {
       };
     }
 
-    // QR al que solo le quedan tiradas de LojoPoly (validate_game_qr lo da
-    // por usado porque no conoce LojoPoly): se abre igualmente.
-    if (estadoLojoPoly && !(!unifiedError && unified?.ok)) {
-      const soloLojoPoly = {
+    // La Loca Carrera también va en su propia tabla (carrera_pedidos).
+    const estadoCarrera = await consultarCarrera(code);
+    if (!unifiedError && unified?.ok && estadoCarrera) {
+      unified = {
+        ...unified,
+        carrera_available: true,
+        carrera_pendientes: estadoCarrera.pendientes,
+      };
+    }
+
+    // QR al que solo le quedan tiradas de LojoPoly o de La Loca Carrera
+    // (validate_game_qr lo da por usado porque no los conoce): se abre igualmente.
+    if ((estadoLojoPoly || estadoCarrera) && !(!unifiedError && unified?.ok)) {
+      const base = estadoLojoPoly || estadoCarrera;
+      const soloTablero = {
         ok: true,
         code,
-        order_id: estadoLojoPoly.order_id,
-        customer_name: estadoLojoPoly.cliente_nombre,
-        lojopoly_available: true,
-        lojopoly_pendientes: estadoLojoPoly.pendientes,
+        order_id: base.order_id,
+        customer_name: base.cliente_nombre,
+        lojopoly_available: Boolean(estadoLojoPoly),
+        lojopoly_pendientes: estadoLojoPoly?.pendientes ?? 0,
+        carrera_available: Boolean(estadoCarrera),
+        carrera_pendientes: estadoCarrera?.pendientes ?? 0,
       };
       setCodigo(code);
-      setEntitlement(soloLojoPoly);
-      notificarQrLeido({ orderId: estadoLojoPoly.order_id, code });
-      setEstado("lojopoly-ready");
+      setEntitlement(soloTablero);
+      notificarQrLeido({ orderId: base.order_id, code });
+      setEstado(estadoLojoPoly && estadoCarrera ? "game-choice" : estadoLojoPoly ? "lojopoly-ready" : "carrera-ready");
       return;
     }
 
@@ -768,6 +826,7 @@ export default function StorePage() {
         unified.bingo_available,
         unified.sorteo_available,
         unified.lojopoly_available,
+        unified.carrera_available,
       ].filter(Boolean).length;
 
       // Pedido que solo traía Cliente del mes: no hay nada más que jugar.
@@ -785,7 +844,9 @@ export default function StorePage() {
               ? "sorteo-ready"
               : unified.lojopoly_available
                 ? "lojopoly-ready"
-                : "ready",
+                : unified.carrera_available
+                  ? "carrera-ready"
+                  : "ready",
         resultadoClienteMes
       );
       return;
@@ -1157,7 +1218,7 @@ export default function StorePage() {
       // Si queda Ruleta o Sorteo por jugar, se ofrece "ELEGIR SIGUIENTE
       // JUEGO" (antes solo se miraba la Ruleta y el Sorteo se perdía).
       setEstado(
-        entitlement?.roulette_available || entitlement?.sorteo_available || entitlement?.lojopoly_available
+        entitlement?.roulette_available || entitlement?.sorteo_available || entitlement?.lojopoly_available || entitlement?.carrera_available
           ? "bingo-result-with-roulette"
           : "bingo-result"
       );
@@ -1283,12 +1344,13 @@ export default function StorePage() {
     setPremioObjetivo(null);
     setMensaje("");
 
-    if (entitlement?.bingo_available || entitlement?.sorteo_available || entitlement?.lojopoly_available) {
+    if (entitlement?.bingo_available || entitlement?.sorteo_available || entitlement?.lojopoly_available || entitlement?.carrera_available) {
       const juegosDisponibles = [
         entitlement?.roulette_available,
         entitlement?.bingo_available,
         entitlement?.sorteo_available,
         entitlement?.lojopoly_available,
+        entitlement?.carrera_available,
       ].filter(Boolean).length;
 
       setEstado(
@@ -1298,7 +1360,9 @@ export default function StorePage() {
             ? "bingo-ready"
             : entitlement?.sorteo_available
               ? "sorteo-ready"
-              : "lojopoly-ready"
+              : entitlement?.lojopoly_available
+                ? "lojopoly-ready"
+                : "carrera-ready"
       );
       return;
     }
@@ -1464,6 +1528,103 @@ export default function StorePage() {
     setLojopolyResultado(`Dado: ${tirada.dado}. ${textos[tirada.resultado] || ""}${extra}`);
   }
 
+  // ---------------- La Loca Carrera ----------------
+  async function consultarCarrera(code) {
+    try {
+      const { data, error } = await supabase.rpc("carrera_estado_qr", { p_code: code });
+      if (error) throw error;
+      return data?.ok && Number(data.pendientes) > 0 ? data : null;
+    } catch (err) {
+      console.warn("No se pudo comprobar La Loca Carrera para este QR:", err);
+      return null;
+    }
+  }
+
+  function abrirCarrera() {
+    if (!entitlement?.code) return;
+    setMensaje("");
+    setCarreraLineas([]);
+    setCarreraPremios([]);
+    carreraCodigoRef.current = entitlement.code;
+    setEstado("carrera");
+    enviarEventoDisplay("carrera", { clienteNombre: entitlement.customer_name || "" });
+    // Primera tirada tras dejar que la TV muestre el tablero.
+    if (Number(entitlement.carrera_pendientes) > 0) programarTiradaCarrera(tvYaAbierta() ? 3000 : 300);
+  }
+
+  async function tirarCarrera() {
+    const codigoQr = carreraCodigoRef.current;
+    if (!codigoQr || carreraRodandoRef.current) return;
+    carreraRodandoRef.current = true;
+    setCarreraRodando(true);
+    try {
+      const { data, error } = await supabase.rpc("carrera_tirar_qr", { p_code: codigoQr });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.mensaje || "No se pudo tirar el dado.");
+
+      const tirada = { ...data, token: `${Date.now()}-${Math.random()}` };
+      const pendientes = Number(data.pendientes) || 0;
+      setEntitlement((actual) =>
+        actual ? { ...actual, carrera_pendientes: pendientes, carrera_available: pendientes > 0 } : actual
+      );
+      enviarEventoDisplay("carrera-tirada", { tirada });
+      // Se espera a que la TV termine la película de la tirada (avisa por
+      // utils/carreraCanal.js). Por si no avisa: máximo 90 s, o casi nada
+      // si la TV no está abierta.
+      const timer = window.setTimeout(() => terminarTiradaCarrera(tirada), tvYaAbierta() ? 90000 : 800);
+      carreraEsperaRef.current = { token: tirada.token, tirada, timer };
+    } catch (err) {
+      console.error("Error en la tirada de La Loca Carrera:", err);
+      carreraRodandoRef.current = false;
+      setCarreraRodando(false);
+      setCarreraLineas((actual) => [...actual, `⚠️ ${err?.message || "No se pudo tirar el dado."}`]);
+    }
+  }
+
+  function textoTiradaCarrera(t) {
+    const nombresVillano = { melon: "el Melón Cabezón", jubilado: "el Jubilado", vieja: "Lucas" };
+    const nombresAmigo = { jose_luis: "José Luis", rafa: "Rafa" };
+    const partes = [`Dado ${t.dado}: casilla ${t.casilla_dado}.`];
+    (t.eventos || []).forEach((e) => {
+      if (e.tipo === "rebote") partes.push(`Se pasa de la meta y rebota a la ${e.vuelve_a}.`);
+      if (e.tipo === "palet" || e.tipo === "lojo") partes.push(`${e.tipo === "palet" ? "¡Palet!" : "¡Lojo!"} Salta a la ${e.a} y tira otra vez.`);
+      if (e.tipo === "villano") {
+        const v = nombresVillano[e.villano] || "un villano";
+        partes.push(
+          e.anulado
+            ? `Le atrapa ${v}, pero ${nombresAmigo[e.amigo] || "un amigo"} le salva.`
+            : e.villano === "vieja"
+              ? `Le atrapa ${v}: vuelve a la salida.`
+              : `Le atrapa ${v}: retrocede a la ${e.a}.`
+        );
+      }
+      if (e.tipo === "premio") partes.push(`🎁 ¡PREMIO! ${e.premio?.texto || e.premio?.articulo?.nombre || ""}`.trim());
+      if (e.tipo === "meta") partes.push("🏆 ¡HA GANADO LA CARRERA!");
+    });
+    if (!(t.eventos || []).some((e) => e.tipo === "palet" || e.tipo === "lojo" || e.tipo === "rebote" || e.tipo === "villano"))
+      partes.push(`Queda en la ${t.hasta}.`);
+    return partes.join(" ");
+  }
+
+  function terminarTiradaCarrera(tirada) {
+    const espera = carreraEsperaRef.current;
+    if (!espera || espera.token !== tirada.token) return;
+    window.clearTimeout(espera.timer);
+    carreraEsperaRef.current = null;
+    carreraRodandoRef.current = false;
+    setCarreraRodando(false);
+    setCarreraLineas((actual) => [...actual, textoTiradaCarrera(tirada)]);
+    (tirada.eventos || []).forEach((e) => {
+      if (e.tipo === "premio" || e.tipo === "meta") {
+        const p = e.premio || {};
+        const articulo = p.articulo?.nombre ? `${p.cantidad || 1} ${p.formato || ""} de ${p.articulo.nombre}`.replace(/\s+/g, " ") : "";
+        const texto = [p.texto, articulo].filter(Boolean).join(" · ") || "Premio";
+        setCarreraPremios((actual) => [...actual, e.tipo === "meta" ? `🏆 PREMIO FINAL: ${texto}` : `Casilla ${e.casilla}: ${texto}`]);
+      }
+    });
+    if (carreraCodigoRef.current && Number(tirada.pendientes) > 0 && !tirada.terminada) programarTiradaCarrera(1500);
+  }
+
   // Pasa a "siguiente" ya, o tras la celebración de la TV si el cliente
   // acaba de sumar puntos en Cliente del mes.
   function seguirTrasCelebracion(siguiente, resultadoClienteMes) {
@@ -1534,6 +1695,10 @@ export default function StorePage() {
   function reset() {
     cancelarEsperaCelebracion(true);
     cancelarTiradasLojoPoly();
+    cancelarTiradasCarrera();
+    setCarreraRodando(false);
+    setCarreraLineas([]);
+    setCarreraPremios([]);
     setLojopolyPremios([]);
     setLojopolyTablero(null);
     setLojopolyTirada(null);
@@ -1623,7 +1788,8 @@ export default function StorePage() {
       entitlement.bingo_available ||
         entitlement.roulette_available ||
         entitlement.sorteo_available ||
-        entitlement.lojopoly_available
+        entitlement.lojopoly_available ||
+        entitlement.carrera_available
     );
     if (quedanJuegos) {
       reset();
@@ -1855,13 +2021,13 @@ export default function StorePage() {
         </section>
       )}
 
-      {(estado === "game-choice" || estado === "bingo-ready" || estado === "sorteo-ready" || estado === "lojopoly-ready" || estado === "bingo-result" || estado === "bingo-result-with-roulette" || estado === "sorteo-result") && entitlement && (
+      {(estado === "game-choice" || estado === "bingo-ready" || estado === "sorteo-ready" || estado === "lojopoly-ready" || estado === "carrera-ready" || estado === "bingo-result" || estado === "bingo-result-with-roulette" || estado === "sorteo-result") && entitlement && (
         <section style={styles.card}>
           <h2 style={styles.cardTitle}>QR válido · Pedido identificado</h2>
           <p style={styles.info}>Cliente: <strong>{entitlement.customer_name || "sin nombre"}</strong></p>
           <p style={styles.info}>Pedido: <strong>{entitlement.order_id || "sin referencia"}</strong></p>
 
-          {(estado === "game-choice" || estado === "bingo-ready" || estado === "sorteo-ready" || estado === "lojopoly-ready") && (
+          {(estado === "game-choice" || estado === "bingo-ready" || estado === "sorteo-ready" || estado === "lojopoly-ready" || estado === "carrera-ready") && (
             <div style={styles.gameChoiceGrid}>
               {entitlement.bingo_available && (
                 <button type="button" onClick={consumirBingo} disabled={procesandoBingo} style={styles.bingoActionButton}>
@@ -1894,6 +2060,11 @@ export default function StorePage() {
               {entitlement.lojopoly_available && (
                 <button type="button" onClick={abrirLojoPoly} style={styles.lojopolyActionButton}>
                   🎲 LOJOPOLY ({entitlement.lojopoly_pendientes} {Number(entitlement.lojopoly_pendientes) === 1 ? "tirada" : "tiradas"})
+                </button>
+              )}
+              {entitlement.carrera_available && (
+                <button type="button" onClick={abrirCarrera} style={styles.carreraActionButton}>
+                  🏁 LOCA CARRERA ({entitlement.carrera_pendientes} {Number(entitlement.carrera_pendientes) === 1 ? "tirada" : "tiradas"})
                 </button>
               )}
             </div>
@@ -1933,7 +2104,7 @@ export default function StorePage() {
               >
                 📺 Volver a Cliente del mes en pantalla grande
               </button>
-              {(entitlement.roulette_available || entitlement.bingo_available || entitlement.lojopoly_available) ? (
+              {(entitlement.roulette_available || entitlement.bingo_available || entitlement.lojopoly_available || entitlement.carrera_available) ? (
                 <button type="button" onClick={() => setEstado("game-choice")} style={styles.rouletteActionButton}>ELEGIR SIGUIENTE JUEGO ›</button>
               ) : (
                 <button type="button" onClick={finalizarPartida} style={styles.nextButton}>FINALIZAR ›</button>
@@ -1970,7 +2141,43 @@ export default function StorePage() {
                   ? `quedan ${entitlement.lojopoly_pendientes} ${Number(entitlement.lojopoly_pendientes) === 1 ? "tirada" : "tiradas"}`
                   : "última tirada"}
               </div>
-            ) : entitlement.roulette_available || entitlement.bingo_available || entitlement.sorteo_available ? (
+            ) : entitlement.roulette_available || entitlement.bingo_available || entitlement.sorteo_available || entitlement.carrera_available ? (
+              <button type="button" onClick={() => setEstado("game-choice")} style={styles.rouletteActionButton}>ELEGIR SIGUIENTE JUEGO ›</button>
+            ) : (
+              <button type="button" onClick={finalizarPartida} style={styles.nextButton}>FINALIZAR ›</button>
+            )}
+          </div>
+        </section>
+      )}
+
+      {estado === "carrera" && entitlement && (
+        <section style={styles.card}>
+          <h2 style={styles.cardTitle}>🏁 La Loca Carrera · {entitlement.customer_name || "Cliente"}</h2>
+          <p style={styles.info}>Las tiradas se ven en la pantalla grande.</p>
+          {carreraLineas.length > 0 && (
+            <div style={styles.lojopolyResultado}>
+              {carreraLineas.map((linea, i) => (
+                <div key={i}>{i + 1}. {linea}</div>
+              ))}
+            </div>
+          )}
+          {carreraPremios.length > 0 && (
+            <div style={styles.lojopolyPremios}>
+              <strong>🎁 Premios a entregar en caja:</strong>
+              {carreraPremios.map((texto, i) => (
+                <div key={i}>• {texto}</div>
+              ))}
+            </div>
+          )}
+          <div style={styles.gameChoiceGrid}>
+            {Number(entitlement.carrera_pendientes) > 0 || carreraRodando ? (
+              <div style={styles.carreraAuto}>
+                🎲 Tirando automáticamente…{" "}
+                {Number(entitlement.carrera_pendientes) > 0
+                  ? `quedan ${entitlement.carrera_pendientes} ${Number(entitlement.carrera_pendientes) === 1 ? "tirada" : "tiradas"}`
+                  : "última tirada"}
+              </div>
+            ) : entitlement.roulette_available || entitlement.bingo_available || entitlement.sorteo_available || entitlement.lojopoly_available ? (
               <button type="button" onClick={() => setEstado("game-choice")} style={styles.rouletteActionButton}>ELEGIR SIGUIENTE JUEGO ›</button>
             ) : (
               <button type="button" onClick={finalizarPartida} style={styles.nextButton}>FINALIZAR ›</button>
@@ -2217,6 +2424,27 @@ const styles = {
     letterSpacing: "0.03em",
     cursor: "pointer",
     boxShadow: "0 5px 0 #0b1140",
+  },
+  carreraActionButton: {
+    border: "3px solid #1a0a24",
+    borderRadius: "16px",
+    padding: "18px 20px",
+    background: "linear-gradient(180deg, #ff8c1a, #e8620c)",
+    color: "#fff",
+    fontSize: "22px",
+    fontWeight: 900,
+    letterSpacing: "0.03em",
+    cursor: "pointer",
+    boxShadow: "0 5px 0 #1a0a24",
+  },
+  carreraAuto: {
+    padding: "16px 18px",
+    borderRadius: "16px",
+    background: "#2a1340",
+    color: "#ffb84d",
+    fontSize: "20px",
+    fontWeight: 900,
+    textAlign: "center",
   },
   lojopolyAuto: {
     padding: "16px 18px",
