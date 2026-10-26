@@ -70,6 +70,16 @@ function construirBloqueParticipacion({
   // Regla de 12 horas (igual que Cliente del mes): este pedido daba tiradas,
   // pero el cliente ya las consiguió con otro hace menos de 12 horas.
   const carreraYa12h = !carreraConseguida && Boolean(participacionCarrera?.bloqueado_12h);
+  // La carrera está en juego para este cliente pero el pedido no llega a las
+  // cajas de artículos distintos que dan 1 tirada: se le dice cuántas le faltan.
+  const carreraVariedad = Math.max(0, Number(participacionCarrera?.articulos_distintos ?? 0));
+  const carreraMinimo = Math.max(0, Number(participacionCarrera?.variedad_minima ?? 0));
+  const carreraFaltan =
+    participacionCarrera && !participacionCarrera.motivo && !carreraConseguida && !carreraYa12h &&
+    !participacionCarrera.limite_dia_alcanzado && carreraMinimo > carreraVariedad
+      ? carreraMinimo - carreraVariedad
+      : 0;
+  const carreraLimiteDia = !carreraConseguida && !carreraYa12h && Boolean(participacionCarrera?.limite_dia_alcanzado);
 
   const participacionJuegosNormalizada = normalizarRespuestaJuego(participacionJuegos);
   const participacionBingoNormalizada = normalizarRespuestaJuego(participacionBingo);
@@ -146,9 +156,21 @@ function construirBloqueParticipacion({
     );
 
     const bannerLineas = [];
+    // El título nombra solo los juegos que ha conseguido ESTE pedido.
+    const juegosConseguidos = [
+      numeroTiradas > 0 && "RULETA",
+      bingoConseguido && "BINGO",
+      sorteoConseguido && "SORTEO",
+      lojopolyConseguido && "LOJOPOLY",
+      carreraConseguida && "LA LOCA CARRERA DE LOJO",
+    ].filter(Boolean);
+    const listaJuegos =
+      juegosConseguidos.length > 1
+        ? `${juegosConseguidos.slice(0, -1).join(", ")} Y ${juegosConseguidos[juegosConseguidos.length - 1]}`
+        : juegosConseguidos[0];
     bannerLineas.push(
-      numeroTiradas > 0 || bingoConseguido || sorteoConseguido || lojopolyConseguido || carreraConseguida
-        ? "🎉 *¡TIENES PARTICIPACIÓN EN RULETA/BINGO/SORTEO/LOJOPOLY!* 🎉"
+      juegosConseguidos.length
+        ? `🎉 *¡TIENES PARTICIPACIÓN EN ${listaJuegos}!* 🎉`
         : "🏆 *¡ESTE PEDIDO SUMA EN CLIENTE DEL MES!* 🏆"
     );
     if (numeroTiradas > 0) bannerLineas.push(`🎡 Ruleta: *${numeroTiradas} tirada${numeroTiradas === 1 ? "" : "s"}*`);
@@ -189,6 +211,12 @@ function construirBloqueParticipacion({
 
     if (carreraYa12h) {
       bannerLineas.push("🏁 La Loca Carrera: tiradas ya conseguidas con otro pedido hace menos de 12 horas.");
+    } else if (carreraLimiteDia) {
+      bannerLineas.push("🏁 La Loca Carrera: hoy ya has conseguido el máximo de tiradas.");
+    } else if (carreraFaltan > 0) {
+      bannerLineas.push(
+        `🏁 La Loca Carrera: con *${carreraFaltan} ${carreraFaltan === 1 ? "artículo distinto" : "artículos distintos"} más* (en cajas) habrías conseguido 1 tirada.`
+      );
     }
 
     lines.push(...bannerLineas);
