@@ -1074,9 +1074,9 @@ for (let i = 0; i < N; i++) {
 
 function pintarPremios() {
   Object.keys(PREMIOS).forEach(n => {
-    const g = casillas[n], p = PREMIOS[n], pronto = p.quedan > 0 && p.desde && p.desde > HOY;
-    g.classList.toggle('agotada', !premioDisponible(n)); g.classList.toggle('pronto', !!pronto);
-    const sello = g.querySelector('.sello'); if (sello) sello.textContent = pronto ? 'PRONTO' : 'AGOTADO';
+    const g = casillas[n], p = PREMIOS[n], agotado = !(p.quedan > 0);
+    g.classList.toggle('agotada', agotado); g.classList.toggle('pronto', !agotado);
+    const sello = g.querySelector('.sello'); if (sello) sello.textContent = agotado ? 'AGOTADO' : 'REGALO';
   });
 }
 pintarPremios();
