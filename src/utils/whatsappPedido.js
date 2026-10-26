@@ -67,6 +67,9 @@ function construirBloqueParticipacion({
   // La Loca Carrera: participacionCarrera es el resultado de registrar_pedido_carrera.
   const tiradasCarrera = Math.max(0, Number(participacionCarrera?.tiradas ?? 0));
   const carreraConseguida = Boolean(participacionCarrera?.eligible) && tiradasCarrera > 0;
+  // Regla de 12 horas (igual que Cliente del mes): este pedido daba tiradas,
+  // pero el cliente ya las consiguió con otro hace menos de 12 horas.
+  const carreraYa12h = !carreraConseguida && Boolean(participacionCarrera?.bloqueado_12h);
 
   const participacionJuegosNormalizada = normalizarRespuestaJuego(participacionJuegos);
   const participacionBingoNormalizada = normalizarRespuestaJuego(participacionBingo);
@@ -184,6 +187,10 @@ function construirBloqueParticipacion({
       bannerLineas.push("🏆 Cliente del mes ya conseguido con otro pedido hace menos de 12 horas.");
     }
 
+    if (carreraYa12h) {
+      bannerLineas.push("🏁 La Loca Carrera: tiradas ya conseguidas con otro pedido hace menos de 12 horas.");
+    }
+
     lines.push(...bannerLineas);
     lines.push("");
     lines.push("📷 *Muestra este QR en caja:*");
@@ -202,6 +209,11 @@ function construirBloqueParticipacion({
 
   if (clienteMesYaHoy) {
     lines.push("🏆 Cliente del mes ya conseguido con otro pedido hace menos de 12 horas: este pedido no suma puntos.");
+    lines.push("");
+  }
+
+  if (carreraYa12h) {
+    lines.push("🏁 La Loca Carrera: tiradas ya conseguidas con otro pedido hace menos de 12 horas: este pedido no da tiradas.");
     lines.push("");
   }
 

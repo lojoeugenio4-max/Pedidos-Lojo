@@ -213,8 +213,10 @@ export default function CarreraConfiguracion({ edicion, onGuardado }) {
       <p style={ayuda}>
         Igual que el Sorteo: solo cuentan las cajas, nunca las unidades sueltas. Ejemplo: con {ejemplo} cajas de artículos
         distintos el cliente gana 1 tirada; con {ejemplo * 2}, 2 tiradas. Nunca más del máximo por pedido ni del máximo
-        diario, aunque haga varios pedidos el mismo día. Las tiradas de palet y de Lojo («tiro otra vez») son aparte y no
-        cuentan para estos máximos.
+        diario, aunque haga varios pedidos el mismo día. Además, igual que en Cliente del mes, solo da tiradas{" "}
+        <strong>un pedido por cliente cada 12 horas</strong>: si ya consiguió tiradas con otro pedido hace menos de 12
+        horas, el nuevo no da. Las tiradas de palet y de Lojo («tiro otra vez») son aparte y no cuentan para estos
+        máximos.
       </p>
 
       <div style={campo}>
