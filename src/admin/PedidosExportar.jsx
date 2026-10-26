@@ -666,7 +666,8 @@ export default function PedidosExportar() {
     }
   }
 
-  // Abre la TV grande (o la trae al frente) con el Bombo de Bingo o el Sorteo,
+  // Abre la TV grande (o la trae al frente) con el Bombo de Bingo, el Sorteo,
+  // Cliente del mes o el tablero de La Loca Carrera,
   // sin necesidad de haber escaneado antes ningún QR de cliente.
   function manejarAbrirPantallaGrande(evento, vista) {
     // Se quita el foco del botón: el lector de QR termina cada lectura con un
@@ -746,6 +747,13 @@ export default function PedidosExportar() {
           onClick={(evento) => manejarAbrirPantallaGrande(evento, "clasificacion")}
         >
           🏆 Cliente del mes
+        </button>
+        <button
+          type="button"
+          style={botonPantallaGrande(vistaTV === "carrera", "#ea580c")}
+          onClick={(evento) => manejarAbrirPantallaGrande(evento, "carrera")}
+        >
+          🏁 Loca Carrera
         </button>
         <button
           type="button"

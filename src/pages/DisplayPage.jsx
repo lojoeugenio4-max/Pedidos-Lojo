@@ -13,6 +13,7 @@ import {
 } from "../utils/sorteoSound";
 import { leerVistaReposo } from "../utils/pantallaGrande";
 import CarreraClienteMes from "../components/clienteMes/CarreraClienteMes";
+import CarreraTableroTV from "../components/carrera/CarreraTableroTV";
 import CeremoniaPodio from "../components/clienteMes/CeremoniaPodio";
 import CelebracionPuntosTV from "../components/clienteMes/CelebracionPuntosTV";
 import BromaLiderTV from "../components/clienteMes/BromaLiderTV";
@@ -66,6 +67,7 @@ function getPrizeImageUrl(premio) {
 function estadoDeReposo(vista = leerVistaReposo()) {
   if (vista === "sorteo") return "sorteo-reposo";
   if (vista === "clasificacion") return "clasificacion-reposo";
+  if (vista === "carrera") return "carrera-reposo";
   return "bingo-waiting";
 }
 
@@ -955,6 +957,12 @@ function DisplayPageContenido() {
         broma={bromaLider.activa && bromaHecha && !bromaLider.revelar}
       />
     );
+  }
+
+  // LA LOCA CARRERA: tablero con el Top 10 (botón «🏁 Loca Carrera» de
+  // "Pedidos recibidos").
+  if (estado === "carrera-reposo") {
+    return <CarreraTableroTV />;
   }
 
   if (estado === "sorteo-reposo") {

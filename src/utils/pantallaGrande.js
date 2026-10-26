@@ -17,7 +17,7 @@ const NOMBRE_VENTANA_TV = "lojo-tv-grande";
 
 // Vistas que se pueden dejar en la pantalla grande mientras no hay ningún
 // cliente jugando.
-export const VISTAS_REPOSO = ["bingo", "sorteo", "clasificacion"];
+export const VISTAS_REPOSO = ["bingo", "sorteo", "clasificacion", "carrera"];
 
 // Qué se muestra en la TV entre cliente y cliente. Por defecto el Bombo de
 // Bingo (como siempre); si en "Pedidos recibidos" se elige el Sorteo, se
@@ -98,7 +98,8 @@ const AVISO_MONITOR = {
 };
 
 // Abre la TV grande (o la trae al frente) y, si se indica `vista`, la deja
-// mostrando el Bombo de Bingo ("bingo") o el Sorteo ("sorteo"). Debe llamarse
+// mostrando el Bombo de Bingo ("bingo"), el Sorteo ("sorteo"), Cliente del
+// mes ("clasificacion") o el tablero de La Loca Carrera ("carrera"). Debe llamarse
 // desde un clic para que el navegador no bloquee la ventana. Devuelve false si
 // el navegador la bloqueó. `onAviso(texto)` se llama si no se ha podido
 // colocar la ventana en el monitor de la TV.
