@@ -1584,7 +1584,7 @@ export default function StorePage() {
   function textoTiradaCarrera(t) {
     const nombresVillano = { melon: "el Melón Cabezón", jubilado: "el Jubilado", vieja: "Lucas" };
     const nombresAmigo = { jose_luis: "José Luis", rafa: "Rafa" };
-    const partes = [`Dado ${t.dado}: casilla ${t.casilla_dado}.`];
+    const partes = [`${Number(t.desde) <= 1 ? "Desde la salida, dado" : "Dado"} ${t.dado}: casilla ${t.casilla_dado}.`];
     (t.eventos || []).forEach((e) => {
       if (e.tipo === "rebote") partes.push(`Se pasa de la meta y rebota a la ${e.vuelve_a}.`);
       if (e.tipo === "palet" || e.tipo === "lojo") partes.push(`${e.tipo === "palet" ? "¡Palet!" : "¡Lojo!"} Salta a la ${e.a} y tira otra vez.`);
@@ -1598,7 +1598,9 @@ export default function StorePage() {
               : `Le atrapa ${v}: retrocede a la ${e.a}.`
         );
       }
+      if (e.tipo === "comodin") partes.push("🃏 Tirada extra de comodín.");
       if (e.tipo === "premio") partes.push(`🎁 ¡PREMIO! ${e.premio?.texto || e.premio?.articulo?.nombre || ""}`.trim());
+      if (e.tipo === "mitad") partes.push(`🚩 ¡Ha pasado la mitad! PREMIO: ${e.premio?.texto || e.premio?.articulo?.nombre || ""}`.trim());
       if (e.tipo === "meta") partes.push("🏆 ¡HA GANADO LA CARRERA!");
     });
     if (!(t.eventos || []).some((e) => e.tipo === "palet" || e.tipo === "lojo" || e.tipo === "rebote" || e.tipo === "villano"))
@@ -1615,11 +1617,14 @@ export default function StorePage() {
     setCarreraRodando(false);
     setCarreraLineas((actual) => [...actual, textoTiradaCarrera(tirada)]);
     (tirada.eventos || []).forEach((e) => {
-      if (e.tipo === "premio" || e.tipo === "meta") {
+      if (e.tipo === "premio" || e.tipo === "meta" || e.tipo === "mitad") {
         const p = e.premio || {};
         const articulo = p.articulo?.nombre ? `${p.cantidad || 1} ${p.formato || ""} de ${p.articulo.nombre}`.replace(/\s+/g, " ") : "";
         const texto = [p.texto, articulo].filter(Boolean).join(" · ") || "Premio";
-        setCarreraPremios((actual) => [...actual, e.tipo === "meta" ? `🏆 PREMIO FINAL: ${texto}` : `Casilla ${e.casilla}: ${texto}`]);
+        setCarreraPremios((actual) => [
+          ...actual,
+          e.tipo === "meta" ? `🏆 PREMIO FINAL: ${texto}` : e.tipo === "mitad" ? `🚩 Premio de la mitad: ${texto}` : `Casilla ${e.casilla}: ${texto}`,
+        ]);
       }
     });
     if (carreraCodigoRef.current && Number(tirada.pendientes) > 0 && !tirada.terminada) programarTiradaCarrera(1500);

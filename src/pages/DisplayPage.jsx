@@ -812,6 +812,9 @@ function DisplayPageContenido() {
     // una tirada antigua.
     if (event.type === "carrera" || event.type === "carrera-tirada") {
       setEstado("carrera");
+      // Nuevo cliente: se olvida la última tirada del anterior (si no, al
+      // volver a abrirse el tablero se repetía).
+      if (event.type === "carrera") setCarreraTirada(null);
       const reciente = Date.now() - (Number(event.createdAt) || 0) < 15000;
       if (event.type === "carrera-tirada" && reciente && payload.tirada?.token) setCarreraTirada(payload.tirada);
       return;

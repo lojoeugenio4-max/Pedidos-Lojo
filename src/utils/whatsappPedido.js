@@ -197,6 +197,9 @@ function construirBloqueParticipacion({
       bannerLineas.push(
         `🏁 La Loca Carrera de Lojo: al pasar el QR tirarás el dado *${tiradasCarrera} ${tiradasCarrera === 1 ? "vez" : "veces"}*`
       );
+      if (Number(participacionCarrera?.comodin_tiradas) > 0) {
+        bannerLineas.push("🃏 ¡Incluye 1 tirada extra de comodín por los artículos que has comprado!");
+      }
     }
 
     if (clienteMesSuma) {

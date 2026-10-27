@@ -141,6 +141,22 @@ select{box-shadow:none;max-width:100%}
   .evento .grande{font-size:calc(12 * var(--u))}.evento h2{font-size:calc(6 * var(--u))}.evento p{font-size:calc(3.4 * var(--u))}.evento.villano .carta > svg{width:calc(24 * var(--u))}.evento.villano .grito{font-size:calc(4.6 * var(--u))}
 }
 body.modoTV .abrirPruebas,body.modoTV .controles{display:none!important}
+/* casilla 32: premio de la mitad */
+.cas .decoMitad{display:none}.cas.mitadOn .decoMitad{display:inline}.cas.mitadOn text.icoNormal{display:none}
+.auraMitad{animation:auraMitad 1.4s ease-in-out infinite;transform-box:fill-box;transform-origin:center;filter:drop-shadow(0 0 10px #ffd23f)}
+@keyframes auraMitad{0%,100%{opacity:.55;transform:scale(.92)}50%{opacity:1;transform:scale(1.06)}}
+.evento.mitad .carta{background:linear-gradient(135deg,#fff7c2,#ffd23f);border-color:#e8141c}
+.relampago.oro{background:#ffe27a}
+/* tormenta cada 2 minutos */
+.tv.noche .zona{filter:brightness(.55) saturate(.8);transition:filter .4s}
+.zona{transition:filter .8s}
+.caraCielo{position:absolute;left:58%;top:6%;width:calc(30 * var(--u));transform:translateX(-50%) scale(.4);opacity:0;z-index:19;pointer-events:none;
+  animation:caraAparece 1.1s cubic-bezier(.2,1.4,.4,1) forwards;filter:drop-shadow(0 0 calc(2.5 * var(--u)) rgba(255,40,0,.95)) drop-shadow(0 0 calc(6 * var(--u)) rgba(140,0,255,.6))}
+.caraCielo img{width:100%;display:block;animation:caraRie .16s ease-in-out infinite alternate}
+.caraCielo.fuera{animation:caraFuera .9s ease-in forwards}
+@keyframes caraAparece{to{opacity:.96;transform:translateX(-50%) scale(1)}}
+@keyframes caraRie{from{transform:rotate(-3deg) translateY(0)}to{transform:rotate(3deg) translateY(-1.5%)}}
+@keyframes caraFuera{from{opacity:.96;transform:translateX(-50%) scale(1)}to{opacity:0;transform:translateX(-50%) scale(1.5);filter:blur(8px)}}
 /* ===== MODO PELÍCULA ===== */
 .zona{overflow:hidden}
 .camara{position:absolute;inset:0;transform-origin:0 0;will-change:transform}
@@ -939,7 +955,7 @@ function elegirCastigo(lista) {
 }
 // al retroceder nunca se cae en una casilla especial
 function retroceso(pos, n) { let d = Math.max(1, pos - n); while (d > 1 && ESPECIALES[d]) d--; return d; }
-const destinoDado = (pos, v) => { const t = pos + v; return t > META ? 2 * META - t : t; };
+const destinoDado = (pos, v) => { const t = (pos <= 1 ? 0 : pos) + v; return t > META ? 2 * META - t : t; };
 // El dado lo decide el sistema: nunca lleva a un premio agotado o sin activar,
 // y a la casilla de un villano solo con su % de caída. Si no, saca otro número.
 function elegirDado(c) {
@@ -1175,9 +1191,9 @@ async function turno(c) {
   while (otraVez) {
     otraVez = false; msg('¡Agitando el dado!');
     const v = await tirarDado(); msg(`¡Ha sacado un ${v}!`); await espera(400);
-    const sobra = c.pos + v - META;
-    if (sobra > 0) { await moverPasos(c, META - c.pos); msg('¡Te pasaste! Rebotas…'); await moverPasos(c, -sobra); } else await moverPasos(c, v);
-    otraVez = await efecto(c); if (tiradaRealActual) otraVez = false;
+    const ini = c.pos <= 1 ? 0 : c.pos, sobra = ini + v - META;
+    if (sobra > 0) { await moverPasos(c, META - c.pos); msg('¡Te pasaste! Rebotas…'); await moverPasos(c, -sobra); } else await moverPasos(c, ini + v - c.pos);
+    otraVez = await efecto(c); if (tiradaRealActual) { otraVez = false; await escenasDespuesReal(c, tiradaRealActual); }
     if (c.pos === META) break;
   }
   await terminar(c);
@@ -1555,7 +1571,7 @@ const camara = $('camara'), tv = $('tv'), zona = $('zona');
 
 // ---------- cámara ----------
 function camaraA(x, y, z, ms = 900, curva = 'cubic-bezier(.45,0,.2,1)') {
-  z = Math.max(1, z);
+  z = Math.max(1, Math.min(ZOOM_MAX, z));
   const tx = Math.min(0, Math.max(1 - z, .5 - x * z)), ty = Math.min(0, Math.max(1 - z, .5 - y * z));
   camara.style.transition = `transform ${ms}ms ${curva}`;
   camara.style.transform = `translate(${(tx * 100).toFixed(3)}%, ${(ty * 100).toFixed(3)}%) scale(${z})`;
@@ -1564,7 +1580,9 @@ const camaraCasilla = (n, z = 2.3, ms = 450, curva) => camaraA(PT[n].x / W, PT[n
 const camaraGeneral = (ms = 1400) => camaraA(.5, .5, 1, ms);
 
 // ---------- bandas de cine, rótulos y efectos de pantalla ----------
-const cine = on => zona.classList.toggle('cine', on);
+// Tablero fijo: se ve siempre completo. Con ZOOM_MAX > 1 vuelve a acercarse la cámara.
+const ZOOM_MAX = 1;
+const cine = on => zona.classList.toggle('cine', on && ZOOM_MAX > 1);
 async function presentar(c, puesto) {
   const t = $('tituloCine');
   t.innerHTML = `<small>TURNO DE</small><b>${c.nombre}</b><span>${puesto}º en la carrera · casilla ${c.pos}</span>`;
@@ -1808,6 +1826,7 @@ async function turno(c) {
   arrancarPublico(); nivelPublico(.035); speechSynthesis?.cancel?.();
   if (!tiradaRealActual?.extra) await presentar(c, puesto);
   camaraCasilla(c.pos, 2.2, 1300); await espera(1300);
+  if (tiradaRealActual) await escenasAntesReal(c, tiradaRealActual);
   let otraVez = true;
   while (otraVez) {
     otraVez = false; msg('¡Agitando el dado!');
@@ -1816,12 +1835,12 @@ async function turno(c) {
     const v = await tirarDado(); msg(`¡Ha sacado un ${v}!`);
     v === 6 ? ovacion(1.4) : nivelPublico(.035);
     camaraCasilla(c.pos, 2.4, 500); await espera(450);
-    const sobra = c.pos + v - META;
-    if (sobra > 0) { await moverPasos(c, META - c.pos); msg('¡Te pasaste! Rebotas…'); sacudir(6, 300); await moverPasos(c, -sobra); } else await moverPasos(c, v);
+    const ini = c.pos <= 1 ? 0 : c.pos, sobra = ini + v - META;
+    if (sobra > 0) { await moverPasos(c, META - c.pos); msg('¡Te pasaste! Rebotas…'); sacudir(6, 300); await moverPasos(c, -sobra); } else await moverPasos(c, ini + v - c.pos);
     const tipoE = ESPECIALES[c.pos]?.tipo;
     if (esVillano(tipoE)) abucheo(); else if (tipoE && tipoE !== 'salida') ovacion(tipoE === 'meta' ? 2 : 1.2);
     await preEfecto(c);
-    otraVez = await efecto(c); if (tiradaRealActual) otraVez = false;
+    otraVez = await efecto(c); if (tiradaRealActual) { otraVez = false; await escenasDespuesReal(c, tiradaRealActual); }
     if (c.pos === META) break;
   }
   await adelantamientos(c, antes);
@@ -1836,21 +1855,29 @@ async function turno(c) {
 let trailerT = null, trailerVivo = false, trailerVueltas = 0;
 function pararTrailer() { if (trailerVivo) speechSynthesis?.cancel?.(); trailerVivo = false; clearTimeout(trailerT); $('rotulo').classList.remove('ver'); }
 function programarTrailer(ms = 6000) { clearTimeout(trailerT); trailerT = setTimeout(trailer, ms); }
+// Señala una casilla: parpadea 3 veces (con la cámara fija no se acerca).
+function senalaCasilla(n, ...resto) {
+  camaraCasilla(n, ...resto);
+  const g = casillas[n]; if (!g) return;
+  [0, 1100, 2200].forEach(ms => setTimeout(() => { g.classList.remove('flash'); void g.getBBox(); g.classList.add('flash'); }, ms));
+}
 async function trailer() {
   if (ocupado || !enPrimerPlano()) return programarTrailer();
   trailerVivo = true; cine(true); trailerVueltas++;
   const lider = ranking()[0] || { nombre: '¡Puedes ser tú!', pos: 1 }, seg = ranking()[1] || lider;
   const N = () => { }; // sin narrador: el tráiler solo lleva rótulos
   const tomas = [
-    () => { camaraCasilla(lider.pos, 2.6, 3600, 'ease-in-out'); rotulo(`<small>🏆 LÍDER DE LA CARRERA</small><b>${lider.nombre}</b><span>casilla ${lider.pos} de ${META}</span>`); },
-    () => { camaraCasilla(seg.pos, 2.4, 3600, 'ease-in-out'); rotulo(`<small>🥈 LE PISA LOS TALONES</small><b>${seg.nombre}</b><span>casilla ${seg.pos}</span>`); },
-    () => { const n = casillasDe('villano'); camaraCasilla(alAzar(n), 3, 3600, 'ease-in-out'); rotulo(`<small>😡 ¡CUIDADO EN LA ${n.join(' Y EN LA ')}!</small><b>El Melón Cabezón</b><span>¡te manda para atrás de un barrigazo!</span>`); },
-    () => { const n = casillasDe('jubilado'); camaraCasilla(alAzar(n), 3, 3600, 'ease-in-out'); rotulo(`<small>👴 Y EN LA ${n.join(' Y EN LA ')}…</small><b>El Jubilado</b><span>¡bastonazo y para atrás!</span>`); },
-    () => { const n = casillasDe('vieja'); camaraCasilla(alAzar(n), 3, 3600, 'ease-in-out'); rotulo(`<small>🥋 EN LA ${n.join(' Y EN LA ')}…</small><b>Lucas</b><span>¡kung fu y de vuelta a la salida!</span>`); },
-    () => { const n = LOJOS[Math.floor(Math.random() * LOJOS.length)]; camaraCasilla(n, 2.8, 3600, 'ease-in-out'); rotulo(`<small>CASILLAS LOJO</small><b>¡De Lojo a Lojo…</b><span>…y tiro mientras mi pedido recojo!</span>`); },
-    () => { camaraCasilla(6, 2.8, 3600, 'ease-in-out'); rotulo(`<small>📦 PALETS</small><b>¡Compro un palet…</b><span>…y tiro otra vez!</span>`); },
-    () => { const k = Object.keys(PREMIOS).find(k => premioDisponible(k)); if (!k) return; const n = +k; camaraCasilla(n, 2.8, 3600, 'ease-in-out'); rotulo(`<small>🎁 CASILLA ${n}</small><b>${PREMIOS[n].nombre}</b><span>¡quedan ${PREMIOS[n].quedan}!</span>`); },
-    () => { camaraCasilla(META, 2.5, 3600, 'ease-in-out'); rotulo(`<small>💰 LA META</small><b>GRAN PREMIO</b><span>${PREMIO_FINAL}</span>`); },
+    () => { senalaCasilla(lider.pos, 2.6, 3600, 'ease-in-out'); rotulo(`<small>🏆 LÍDER DE LA CARRERA</small><b>${lider.nombre}</b><span>casilla ${lider.pos} de ${META}</span>`); },
+    () => { senalaCasilla(seg.pos, 2.4, 3600, 'ease-in-out'); rotulo(`<small>🥈 LE PISA LOS TALONES</small><b>${seg.nombre}</b><span>casilla ${seg.pos}</span>`); },
+    () => { const n = casillasDe('villano'); senalaCasilla(alAzar(n), 3, 3600, 'ease-in-out'); rotulo(`<small>😡 ¡CUIDADO EN LA ${n.join(' Y EN LA ')}!</small><b>El Melón Cabezón</b><span>¡te manda para atrás de un barrigazo!</span>`); },
+    () => { const n = casillasDe('jubilado'); senalaCasilla(alAzar(n), 3, 3600, 'ease-in-out'); rotulo(`<small>👴 Y EN LA ${n.join(' Y EN LA ')}…</small><b>El Jubilado</b><span>¡bastonazo y para atrás!</span>`); },
+    () => { const n = casillasDe('vieja'); senalaCasilla(alAzar(n), 3, 3600, 'ease-in-out'); rotulo(`<small>🥋 EN LA ${n.join(' Y EN LA ')}…</small><b>Lucas</b><span>¡kung fu y de vuelta a la salida!</span>`); },
+    () => { const n = LOJOS[Math.floor(Math.random() * LOJOS.length)]; senalaCasilla(n, 2.8, 3600, 'ease-in-out'); rotulo(`<small>CASILLAS LOJO</small><b>¡De Lojo a Lojo…</b><span>…y tiro mientras mi pedido recojo!</span>`); },
+    () => { senalaCasilla(6, 2.8, 3600, 'ease-in-out'); rotulo(`<small>📦 PALETS</small><b>¡Compro un palet…</b><span>…y tiro otra vez!</span>`); },
+    () => { const k = Object.keys(PREMIOS).find(k => premioDisponible(k)); if (!k) return; const n = +k; senalaCasilla(n, 2.8, 3600, 'ease-in-out'); rotulo(`<small>🎁 CASILLA ${n}</small><b>${PREMIOS[n].nombre}</b><span>¡quedan ${PREMIOS[n].quedan}!</span>`); },
+    () => { senalaCasilla(META, 2.5, 3600, 'ease-in-out'); rotulo(`<small>💰 LA META</small><b>GRAN PREMIO</b><span>${PREMIO_FINAL}</span>`); },
+    () => { if (!PREMIO_MITAD) return; senalaCasilla(CASILLA_MITAD, 2.8, 3600, 'ease-in-out'); rotulo(`<small>🚩 CASILLA ${CASILLA_MITAD} · MITAD DEL CAMINO</small><b>${escaparHTML(PREMIO_MITAD)}</b><span>¡para el que pase de la ${CASILLA_MITAD}!</span>`); },
+    () => { if (!COMODIN) return; rotulo(`<small>🃏 TIRADA EXTRA DE COMODÍN</small><b>Compra ${COMODIN.cajas} artículos distintos de ${escaparHTML(COMODIN.nombres)}</b><span>¡y José Luis o Rafa te regalan una tirada!</span>`); },
     () => { camaraGeneral(3000); rotulo(`<small>¿A QUÉ ESPERAS?</small><b>Pasa el QR de tu pedido</b><span>y ¡tira el dado!</span>`, 3800); },
   ];
   for (const toma of tomas) {
@@ -3058,9 +3085,9 @@ async function siguienteTiradaReal() {
   }
 }
 async function reproducirTirada(t) {
-  while (ocupado) await espera(300);
+  while (ocupado || tormentaEnCurso) await espera(300);
   const id = String(t.cliente_id);
-  let c = clientes.find(x => x.id === id);
+  let c = clientes.find(x => String(x.id) === id);
   if (!c) {
     c = { id, nombre: t.cliente_nombre || 'Cliente', pos: 1, pierde: 0, ultimaTirada: 1e12, color: COLORES[clientes.length % COLORES.length] };
     clientes.push(c);
@@ -3095,9 +3122,170 @@ async function reproducirTirada(t) {
 // Cuando el villano gana, a veces sale igualmente un amigo y pierde (solo es
 // la película: el castigo es el que ha decidido el servidor).
 const PROB_AMIGO_PIERDE = 30;
+
+const escaparHTML = t => String(t ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+const FOTOS_PRODUCTOS = 'https://bohlxagrtpjvqrgkonlo.supabase.co/storage/v1/object/public/productos/';
+const fotoPremio = p => { const f = p?.articulo?.foto; if (!f) return ''; return /^(https?:|data:)/.test(f) ? f : FOTOS_PRODUCTOS + String(f).replace(/^\/+/, ''); };
+
+async function escenasAntesReal(c, t) {
+  const com = (t.eventos || []).find(e => e.tipo === 'comodin');
+  if (com) await escenaComodin(c, com.frase);
+}
+async function escenasDespuesReal(c, t) {
+  const mit = (t.eventos || []).find(e => e.tipo === 'mitad');
+  if (mit) await escenaMitad(c, mit.premio || {});
+}
+
+// ===================== PREMIO DE LA MITAD (casilla 32) =====================
+const CASILLA_MITAD = 32;
+let PREMIO_MITAD = MODO_TV ? '' : '1 caja de Cruzcampo';
+function ponerPremioMitad(texto) {
+  PREMIO_MITAD = texto;
+  const g = casillas[CASILLA_MITAD]; if (!g) return;
+  g.classList.toggle('mitadOn', !!texto);
+}
+(function decorarMitad() {
+  const g = casillas[CASILLA_MITAD], p = PT[CASILLA_MITAD]; if (!g || !p) return;
+  const ico = g.querySelector('text.ico'); if (ico) ico.classList.add('icoNormal');
+  const d = el('g', { class: 'decoMitad' }, g);
+  el('circle', { class: 'auraMitad', cx: p.x, cy: p.y, r: 58, fill: 'none', stroke: '#ffd23f', 'stroke-width': 9 }, d);
+  const t = el('text', { x: p.x, y: p.y + 4, 'font-size': 50, 'text-anchor': 'middle', 'dominant-baseline': 'middle' }, d); t.textContent = '🚩';
+  const cinta = el('g', { transform: `translate(${p.x} ${p.y - 58})` }, d);
+  el('rect', { x: -62, y: -17, width: 124, height: 32, rx: 9, fill: '#e8141c', stroke: '#ffd23f', 'stroke-width': 3.5 }, cinta);
+  const tt = el('text', { x: 0, y: 1, 'font-size': 19, fill: '#fff', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': "'Bowlby One',Impact,sans-serif" }, cinta); tt.textContent = '🎁 MITAD';
+  ponerPremioMitad(PREMIO_MITAD);
+})();
+async function escenaMitad(c, premio) {
+  const f = fichas[c.id], [x, y] = posDe(f);
+  const nombre = premio.texto || premio.articulo?.nombre || PREMIO_MITAD || 'Premio sorpresa';
+  pararTrailer();
+  // ¡explosión dorada!
+  relampagoOro(); sacudir(18, 700); vineta('oro'); fanfarria(); ovacion(2.2);
+  emitir(x, y, 220, 'confeti'); emitir(x, y, 60, 'chispa');
+  fuegosArtificiales(7000); confeti();
+  const tc = $('tituloCine');
+  tc.innerHTML = `<small>🚩 ¡MITAD DEL CAMINO! 🚩</small><b>${escaparHTML(c.nombre)}</b><span>ha pasado la casilla ${CASILLA_MITAD}</span>`;
+  tc.classList.remove('ver'); void tc.offsetWidth; tc.classList.add('ver');
+  await espera(2300);
+  const foto = fotoPremio(premio);
+  sonido.regalo(); tintineo(14); monedasLluvia();
+  await cartel(`<div class="grande">${foto ? `<img src="${foto}" alt="" style="height:calc(9 * var(--u));max-width:calc(16 * var(--u));object-fit:contain">` : '🎁'}</div><h2>¡PREMIO DE LA MITAD!</h2><p>${escaparHTML(c.nombre)} se lleva<br><b>${escaparHTML(nombre)}</b></p>`, 'meta mitad', 4200);
+  await bandera(`<small>¡ENHORABUENA!</small><b>${escaparHTML(c.nombre)}</b><span>Recoge tu premio en caja · ¡ahora a por la meta!</span>`, 2600);
+}
+function relampagoOro() { const r = $('relampago'); r.classList.add('oro'); relampago(); setTimeout(() => r.classList.remove('oro'), 900); }
+function monedasLluvia() { const zr = tv.getBoundingClientRect(); for (let i = 0; i < 6; i++) setTimeout(() => { try { monedas(zr.width * (.15 + Math.random() * .7), zr.height * .1, 10, 1, 'arriba'); } catch { } }, i * 220); }
+
+// ===================== COMODÍN: tirada extra regalada por José Luis o Rafa =====================
+let COMODIN = MODO_TV ? null : { nombres: 'charcutería', cajas: 3 };
+async function escenaComodin(c, frase) {
+  const am = alAzar(AMIGOS), A = SA[am.id], r = $('rescate');
+  const zr = zona.getBoundingClientRect(), k = zr.height * .56 / 420;
+  const piso = zr.height * .9, pyA = piso - 420, xA = zr.width * .62;
+  const cabeza = () => A.el.querySelector('.cabezaH');
+  pararTrailer();
+  abrirEscenario(xA);
+  const finTromp = trompetas();
+  // entra corriendo por la derecha
+  pjA.dataset.quien = am.id; pjA.style.transition = 'none';
+  pjA.style.left = (zr.width + 200 * k - 130) + 'px'; pjA.style.top = pyA + 'px';
+  pjA.style.setProperty('--base', `scale(${-k}, ${k})`);
+  pjA.className = 'pjA pose'; saCorrer(A, false); void pjA.offsetWidth;
+  await correrHasta(xA, 750, k);
+  saFrena(A); sonido.golpe(); sacudir(6, 250); await espera(150);
+  // de frente, su nombre y ¡COMODÍN!
+  saFrente(A, true); await espera(250); saltito(A);
+  ponerNombre(am.nombre, cabeza());
+  r.textContent = '🃏 ¡COMODÍN! 🃏'; r.classList.add('ver');
+  await finTromp;
+  quitarNombre();
+  // su frase
+  bocadillo(escaparHTML(frase || '¡Te regalo una tirada extra!').replace(/tirada extra/i, m => `<b>${m}</b>`), cabeza(), -1);
+  magia(1.2); saltito(A);
+  await espera(3800);
+  quitarBocadillo();
+  // ¡+1 TIRADA!
+  const t = tv.getBoundingClientRect();
+  onomaEn('+1 🎲', xA - 260 * k, zr.height * .38);
+  emitir(zr.left - t.left + xA, zr.top - t.top + zr.height * .4, 140, 'confeti'); tintineo(10); sonido.bien?.();
+  await espera(1400);
+  r.classList.remove('ver');
+  // se va corriendo
+  pjA.style.setProperty('--base', `scale(${k}, ${k})`);
+  saCorrer(A, true); await espera(220);
+  await correrHasta(zr.width + 220 * k, 900, k);
+  saParar(A); pjA.className = 'pjA'; pjA.style.transition = ''; A.el.classList.remove('perfil');
+  cerrarEscenario(); await espera(500);
+}
+
+// ===================== CADA 2 MINUTOS: TORMENTA Y CARCAJADA TERRORÍFICA =====================
+const CADA_TORMENTA_MS = 2 * 60 * 1000;
+async function risaConEco(id) {
+  if (silenciado || !enPrimerPlano()) return 3000;
+  let buf; try { const a0 = audio(); if (a0.state !== 'running') await a0.resume(); buf = await cargarRisa(id); } catch { return 3000; }
+  const a = audio(), vel = .8, t0 = a.currentTime + .05, veces = id === 'pjM' ? 2 : 1;
+  // eco que se repite y se apaga, más grave y oscuro
+  const entrada = a.createGain(); entrada.gain.value = 1;
+  const seco = a.createGain(); seco.gain.value = 1.35;
+  const retardo = a.createDelay(2); retardo.delayTime.value = .34;
+  const realim = a.createGain(); realim.gain.value = .55;
+  const oscuro = a.createBiquadFilter(); oscuro.type = 'lowpass'; oscuro.frequency.value = 1600;
+  const humedo = a.createGain(); humedo.gain.value = .85;
+  const lejos = a.createDelay(2); lejos.delayTime.value = .9; const gLejos = a.createGain(); gLejos.gain.value = .35;
+  entrada.connect(seco).connect(a.destination);
+  entrada.connect(retardo); retardo.connect(oscuro); oscuro.connect(realim); realim.connect(retardo); oscuro.connect(humedo).connect(a.destination);
+  entrada.connect(lejos).connect(gLejos).connect(a.destination);
+  let t = t0;
+  for (let i = 0; i < veces; i++) {
+    const src = a.createBufferSource(); src.buffer = buf; src.playbackRate.value = vel - i * .05;
+    src.connect(entrada); src.start(t); t += buf.duration / (vel - i * .05) * .92;
+  }
+  const total = (t - t0) + 3.2;
+  setTimeout(() => { try { entrada.disconnect(); retardo.disconnect(); oscuro.disconnect(); realim.disconnect(); lejos.disconnect(); } catch { } }, total * 1000 + 500);
+  return total * 1000;
+}
+let tormentaEnCurso = false;
+async function tormentaConRisa() {
+  if (tormentaEnCurso || ocupado || document.hidden) return;
+  tormentaEnCurso = true;
+  try {
+    const quien = Math.random() < .5 ? 'pjM' : 'pjJ';
+    const hw = typeof MODO_HALLOWEEN === 'undefined' || MODO_HALLOWEEN;
+    const cara = quien === 'pjM' ? (hw ? CARA_MELON_HW : CARA_MELON) : (hw ? CARA_JUB_HW : CARA_JUB);
+    tv.classList.add('noche');
+    for (let i = 0; i < 3; i++) {
+      rayo(); if (Math.random() < .6) rayo();
+      relampago(); sacudir(16 + i * 5, 550); trueno(1.1 + i * .2);
+      await espera(i === 2 ? 700 : 500 + Math.random() * 400);
+    }
+    const d = document.createElement('div'); d.className = 'caraCielo';
+    d.innerHTML = `<img src="${cara}" alt="">`; tv.appendChild(d);
+    const ms = await risaConEco(quien);
+    setTimeout(() => { rayo(); relampago(); trueno(.9); }, 1200);
+    await espera(Math.max(3600, Math.min(ms, 6500)));
+    d.classList.add('fuera'); await espera(900); d.remove();
+  } finally { tv.classList.remove('noche'); tormentaEnCurso = false; }
+}
+setInterval(tormentaConRisa, CADA_TORMENTA_MS);
+
+// ===================== BOTONES DE PRUEBA NUEVOS (no salen en la TV) =====================
+function tiradaDePrueba(pos, dado, eventos = [], hasta = null) {
+  const c = pruebaCliente(); c.pos = pos; pintar();
+  jugarTiradaReal({ token: 'prueba-' + Date.now() + Math.random(), cliente_id: c.id, cliente_nombre: c.nombre, dado, desde: pos,
+    casilla_dado: (pos <= 1 ? 0 : pos) + dado, hasta: hasta ?? ((pos <= 1 ? 0 : pos) + dado), tipo_casilla: 'normal', eventos, extra: false });
+}
+(function botonesNuevos() {
+  const cont = document.querySelector('.controles'); if (!cont) return;
+  const nuevo = (txt, fn) => { const b = document.createElement('button'); b.className = 'prin'; b.textContent = txt; b.onclick = () => { audio(); fn(); }; cont.prepend(b); };
+  nuevo('🃏 Simular: comodín (José Luis o Rafa regala tirada)', () => tiradaDePrueba(10, 3, [{ tipo: 'comodin', frase: 'Has comprado mucha charcutería… ¡te regalo una tirada extra!' }]));
+  nuevo('🚩 Simular: pasa la casilla 32 (premio de la mitad)', () => tiradaDePrueba(29, 4, [{ tipo: 'mitad', premio: { texto: '1 caja de Cruzcampo' } }]));
+  nuevo('🚦 Simular: sale de la casilla 1 y saca un 4', () => tiradaDePrueba(1, 4));
+  nuevo('⛈️ Simular: tormenta con carcajada (sale sola cada 2 min)', () => tormentaConRisa());
+})();
 function aplicarDatos(d) {
   if (ocupado) { datosPendientes = d; return; }
   if (d.premioFinal) PREMIO_FINAL = d.premioFinal;
+  if ('premioMitad' in d) ponerPremioMitad(d.premioMitad || '');
+  if ('comodin' in d) COMODIN = d.comodin || null;
   if (d.premios) {
     Object.keys(PREMIOS).forEach(n => { const p = d.premios[n]; if (p) PREMIOS[n] = { nombre: p.nombre || 'Premio', quedan: Math.max(0, +p.quedan || 0), desde: p.desde || undefined }; else PREMIOS[n].quedan = 0; });
     pintarPremios();

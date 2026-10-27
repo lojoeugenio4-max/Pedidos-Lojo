@@ -74,7 +74,7 @@ export default function CarreraClasificacion({ edicion }) {
                       <td style={td}>
                         <strong>{p.cliente_nombre || "Cliente"}</strong>
                       </td>
-                      <td style={td}>{p.tipo === "final" ? "🏆 Meta" : p.casilla}</td>
+                      <td style={td}>{p.tipo === "final" ? "🏆 Meta" : p.tipo === "mitad" ? "🚩 Mitad (32)" : p.casilla}</td>
                       <td style={td}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           {foto && <img src={foto} alt="" style={{ width: 32, height: 32, objectFit: "contain" }} />}

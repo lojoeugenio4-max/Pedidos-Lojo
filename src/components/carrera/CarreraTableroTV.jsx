@@ -20,6 +20,9 @@ import { parametroVillanos } from "../../utils/carreraTablero";
 import { avisarFinTiradaCarrera } from "../../utils/carreraCanal";
 
 const REFRESCO_MS = 15000;
+// Tiradas ya mandadas al tablero (aunque el tablero se cierre y se vuelva a
+// abrir): así nunca se repite la tirada del cliente anterior.
+const tiradasYaMandadas = new Set();
 const RUTA_TABLERO = "/loca-carrera/tablero.html";
 
 async function cargarDatosCarrera() {
@@ -60,7 +63,29 @@ async function cargarDatosCarrera() {
     };
   });
 
-  return { edicion, jugadores, premios };
+  // Premio de la mitad (casilla 32): solo si está activo y tiene premio.
+  const premioMitad =
+    edicion.premio_mitad_activo && (String(edicion.premio_mitad_texto || "").trim() || edicion.premio_mitad_articulo_id)
+      ? String(edicion.premio_mitad_texto || "").trim() || "Premio sorpresa"
+      : "";
+
+  // Comodín: para el rótulo del tráiler («Compra 3 artículos distintos de …»).
+  let comodin = null;
+  if (edicion.comodin_activo && Number(edicion.comodin_cajas) > 0) {
+    const deps = Array.isArray(edicion.comodin_departamentos) ? edicion.comodin_departamentos : [];
+    const arts = Array.isArray(edicion.comodin_articulos) ? edicion.comodin_articulos : [];
+    const [rd, ra] = await Promise.all([
+      deps.length ? supabase.from("departamentos").select("id,nombre").in("id", deps) : { data: [] },
+      arts.length ? supabase.from("articulos").select("id,nombre").in("id", arts) : { data: [] },
+    ]);
+    const nombres = [...(rd.data || []), ...(ra.data || [])].map((x) => String(x.nombre || "").toLowerCase()).filter(Boolean);
+    if (nombres.length) {
+      const lista = nombres.length > 1 ? `${nombres.slice(0, -1).join(", ")} o ${nombres[nombres.length - 1]}` : nombres[0];
+      comodin = { cajas: Number(edicion.comodin_cajas), nombres: lista };
+    }
+  }
+
+  return { edicion, jugadores, premios, premioMitad, comodin };
 }
 
 export default function CarreraTableroTV({ tirada = null }) {
@@ -75,9 +100,10 @@ export default function CarreraTableroTV({ tirada = null }) {
   const mandarTiradas = useCallback(() => {
     const ventana = iframeRef.current?.contentWindow;
     if (!ventana || !listoRef.current) return;
-    tiradasPendientesRef.current.splice(0).forEach((t) =>
-      ventana.postMessage({ tipo: "lojo-carrera-tirada", tirada: t }, window.location.origin)
-    );
+    tiradasPendientesRef.current.splice(0).forEach((t) => {
+      tiradasYaMandadas.add(t.token);
+      ventana.postMessage({ tipo: "lojo-carrera-tirada", tirada: t }, window.location.origin);
+    });
   }, []);
 
   // Tablero nuevo (cambiaron las casillas de los villanos): hasta que avise
@@ -87,7 +113,8 @@ export default function CarreraTableroTV({ tirada = null }) {
   }, [villanos]);
 
   useEffect(() => {
-    if (!tirada?.token) return;
+    if (!tirada?.token || tiradasYaMandadas.has(tirada.token)) return;
+    if (tiradasPendientesRef.current.some((t) => t.token === tirada.token)) return;
     tiradasPendientesRef.current.push(tirada);
     mandarTiradas();
   }, [tirada, mandarTiradas]);
@@ -102,6 +129,8 @@ export default function CarreraTableroTV({ tirada = null }) {
         jugadores: d.jugadores,
         premios: d.premios,
         premioFinal: d.edicion?.premio_final_texto || "",
+        premioMitad: d.premioMitad,
+        comodin: d.comodin,
       },
       window.location.origin
     );
