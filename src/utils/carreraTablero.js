@@ -6,7 +6,7 @@
 //   · 5 casillas de premio (se configuran en Admin → Casillas de premio).
 //   · 6 casillas Lojo («De Lojo a Lojo y tiro mientras mi pedido recojo»).
 //   · 2 casillas Palet («Compro un palet y tiro otra vez»).
-//   · Villanos: cada uno sale 2 veces y cada posición tiene su % de caída
+//   · Villanos: cada uno sale varias veces (5 por defecto) y cada casilla tiene su % de caída
 //     (Admin → Villanos y amigos). Se guardan en carrera_ediciones.villanos_casillas.
 
 export const TOTAL_CASILLAS = 63;
@@ -26,34 +26,32 @@ export const VILLANOS = {
 };
 export const ORDEN_VILLANOS = ["melon", "vieja", "jubilado"];
 
-// Posiciones por defecto (2 por villano). Las primeras son las de siempre
-// (24, 31 y 50) para que nada cambie para quien ya conoce el tablero.
+// Posiciones por defecto (5 por villano), repartidas por todo el tablero y
+// con más al principio para que haya emoción desde la primera tirada.
 export const POSICIONES_VILLANOS_DEFECTO = {
-  melon: [24, 44],
-  vieja: [31, 58],
-  jubilado: [50, 17],
+  melon: [4, 14, 24, 35, 44],
+  vieja: [8, 22, 31, 41, 58],
+  jubilado: [11, 17, 29, 50, 61],
 };
+export const MAX_CASILLAS_POR_VILLANO = 8;
 
 const PROB_DEFECTO = { melon: 30, vieja: 20, jubilado: 30 };
 const PROB_COLUMNA = { melon: "prob_caida_melon", vieja: "prob_vieja", jubilado: "prob_caida_jubilado" };
 
-// Devuelve siempre 6 posiciones [{ villano, casilla, prob }] (2 por villano,
-// en el orden de ORDEN_VILLANOS). Si la edición es antigua y aún no tiene
-// villanos_casillas, se montan con las casillas por defecto y el % que
-// tenía cada villano.
+// Devuelve las posiciones [{ villano, casilla, prob }] en el orden de
+// ORDEN_VILLANOS (las que tenga guardadas cada villano). Si un villano no tiene
+// ninguna, se usan las de por defecto con el % que tenía ese villano.
 export function normalizarVillanosCasillas(edicion) {
   const lista = Array.isArray(edicion?.villanos_casillas) ? edicion.villanos_casillas : [];
   const resultado = [];
   ORDEN_VILLANOS.forEach((villano) => {
-    const suyas = lista.filter((v) => v?.villano === villano);
+    const suyas = lista.filter((v) => v?.villano === villano && Number(v.casilla) > 0);
     const probAntigua = edicion?.[PROB_COLUMNA[villano]] ?? PROB_DEFECTO[villano];
-    [0, 1].forEach((i) => {
-      resultado.push({
-        villano,
-        casilla: Number(suyas[i]?.casilla) || POSICIONES_VILLANOS_DEFECTO[villano][i],
-        prob: suyas[i]?.prob ?? probAntigua,
-      });
-    });
+    if (suyas.length) {
+      suyas.forEach((v) => resultado.push({ villano, casilla: Number(v.casilla), prob: v.prob ?? probAntigua }));
+    } else {
+      POSICIONES_VILLANOS_DEFECTO[villano].forEach((casilla) => resultado.push({ villano, casilla, prob: probAntigua }));
+    }
   });
   return resultado;
 }

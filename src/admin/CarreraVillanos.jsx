@@ -19,11 +19,12 @@ import {
   normalizarVillanosCasillas,
   columnasAntiguasVillanos,
   tipoCasillaFija,
+  MAX_CASILLAS_POR_VILLANO,
 } from "../utils/carreraTablero";
 
 // Los 3 villanos están en casillas fijas (el cliente ve dónde está el
-// peligro) y cada uno sale 2 VECES en el tablero: El Melón Cabezón, Lucas
-// (el del kung fu) y El Jubilado. Cada una de las 6 posiciones tiene su
+// peligro) y cada uno sale VARIAS VECES en el tablero (5 por defecto): El
+// Melón Cabezón, Lucas (el del kung fu) y El Jubilado. Cada casilla tiene su
 // propio % de caída: cuando el dado iba a llevar a esa casilla, solo cae con
 // ese porcentaje; las demás veces el dado saca otro número.
 // José Luis y Rafa pueden anular a cualquiera de los tres.
@@ -69,6 +70,23 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
   const cambiar = (clave, valor) => setForm((a) => ({ ...a, [clave]: valor }));
   const cambiarPosicion = (indice, clave, valor) =>
     setForm((a) => ({ ...a, posiciones: a.posiciones.map((p, i) => (i === indice ? { ...p, [clave]: valor } : p)) }));
+  // Añade una casilla al villano: la primera libre (sin especial ni villano),
+  // con el mismo % que su primera casilla.
+  const anadirPosicion = (villano) =>
+    setForm((a) => {
+      const ocupadas = new Set(a.posiciones.map((p) => Math.round(num(p.casilla))));
+      let libre = null;
+      for (let n = CASILLA_SALIDA + 1; n < CASILLA_META && libre === null; n += 1) {
+        if (!ocupadas.has(n) && !tipoCasillaFija(n) && n !== 32) libre = n;
+      }
+      const primera = a.posiciones.find((p) => p.villano === villano);
+      const nueva = { villano, casilla: libre ?? "", prob: primera?.prob ?? 20 };
+      const ultimo = a.posiciones.map((p) => p.villano).lastIndexOf(villano);
+      const posiciones = [...a.posiciones];
+      posiciones.splice(ultimo + 1, 0, nueva);
+      return { ...a, posiciones };
+    });
+  const quitarPosicion = (indice) => setForm((a) => ({ ...a, posiciones: a.posiciones.filter((_, i) => i !== indice) }));
   const cambiarCastigo = (villano, i, clave, valor) =>
     setForm((a) => ({ ...a, [villano]: a[villano].map((c, j) => (j === i ? { ...c, [clave]: valor } : c)) }));
 
@@ -80,6 +98,7 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
   function problemaPosicion(indice) {
     const n = Math.round(num(form.posiciones[indice].casilla));
     if (n <= CASILLA_SALIDA || n >= CASILLA_META) return `Tiene que estar entre la ${CASILLA_SALIDA + 1} y la ${CASILLA_META - 1}.`;
+    if (n === 32) return "La 32 es la casilla del premio de la mitad.";
     const tipo = tipoCasillaFija(n);
     if (tipo) return `La ${n} ya es ${NOMBRE_TIPO[tipo]}.`;
     const repetida = form.posiciones.findIndex((p, i) => i !== indice && Math.round(num(p.casilla)) === n);
@@ -132,13 +151,14 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
 
   return (
     <div style={contenedor}>
-      <h4 style={tituloSeccion}>😈 Villanos en casillas fijas (cada uno sale 2 veces)</h4>
+      <h4 style={tituloSeccion}>😈 Villanos en casillas fijas (cada uno sale varias veces)</h4>
 
       {error && <div style={avisoError}>{error}</div>}
       {mensaje && <div style={avisoOk}>{mensaje}</div>}
 
       <p style={ayuda}>
-        Cada villano está dibujado en <strong>2 casillas</strong> del tablero, así el cliente sabe dónde está el peligro.
+        Cada villano está dibujado en <strong>varias casillas</strong> del tablero (hasta {MAX_CASILLAS_POR_VILLANO}), así el
+        cliente sabe dónde está el peligro. Con «＋ Añadir casilla» y «Quitar» decides cuántas tiene cada uno.
         Cada casilla tiene su propio <strong>% de caída</strong>: cuando el dado iba a llevar a un cliente a esa casilla,
         solo cae con ese porcentaje; las demás veces el dado saca otro número. Con un 30 %, de cada 10 veces que el dado
         «apunta» a esa casilla, cae unas 3. Al retroceder, la ficha nunca se queda en una casilla especial.
@@ -156,9 +176,11 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
             color={datos.color}
             posiciones={indices.map((i) => ({ indice: i, ...form.posiciones[i], problema: problemaPosicion(i) }))}
             onPosicion={cambiarPosicion}
+            onAnadir={() => anadirPosicion(villano)}
+            onQuitar={quitarPosicion}
             castigos={esLucas ? null : form[claveCastigos]}
             suma={villano === "melon" ? sumaMelon : sumaJubilado}
-            textoCastigo={esLucas ? "Vuelta a la salida (casilla 1), en sus dos casillas." : null}
+            textoCastigo={esLucas ? "Vuelta a la salida (casilla 1), en todas sus casillas." : null}
             bloqueada={bloqueada}
             onCastigo={(i, clave, valor) => cambiarCastigo(claveCastigos, i, clave, valor)}
             anula={anula}
@@ -171,7 +193,7 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
         <CampoPct id="lc-prob-anulacion" texto="% de que un amigo anule al villano" valor={form.prob_anulacion} bloqueada={bloqueada} onCambio={(v) => cambiar("prob_anulacion", v)} />
         <div style={{ flex: 2, minWidth: 220, alignSelf: "end" }}>
           <p style={ayuda}>
-            Vale para los 3 villanos y sus 6 casillas. Cuando un cliente cae en un villano, con este porcentaje aparece
+            Vale para los 3 villanos y todas sus casillas. Cuando un cliente cae en un villano, con este porcentaje aparece
             José Luis o Rafa (uno de los dos al azar), lo aparta y el cliente se queda donde estaba.
           </p>
         </div>
@@ -186,7 +208,7 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
   );
 }
 
-function TarjetaVillano({ titulo, color, posiciones, onPosicion, castigos, suma, textoCastigo, bloqueada, onCastigo, anula }) {
+function TarjetaVillano({ titulo, color, posiciones, onPosicion, onAnadir, onQuitar, castigos, suma, textoCastigo, bloqueada, onCastigo, anula }) {
   return (
     <div style={tarjetaVillano}>
       <strong style={{ fontSize: 16, color: "#111827" }}>{titulo}</strong>
@@ -230,9 +252,19 @@ function TarjetaVillano({ titulo, color, posiciones, onPosicion, castigos, suma,
                 </p>
               )}
             </div>
+            {!bloqueada && posiciones.length > 1 && (
+              <button type="button" style={{ ...botonQuitar, alignSelf: "center" }} onClick={() => onQuitar(p.indice)} aria-label={`Quitar la casilla ${p.casilla}`}>
+                Quitar
+              </button>
+            )}
           </div>
         );
       })}
+      {!bloqueada && posiciones.length < MAX_CASILLAS_POR_VILLANO && (
+        <button type="button" style={botonAnadir} onClick={onAnadir}>
+          ＋ Añadir casilla
+        </button>
+      )}
 
       {textoCastigo ? (
         <p style={{ margin: 0, fontSize: 14, color: "#374151" }}>
@@ -240,7 +272,7 @@ function TarjetaVillano({ titulo, color, posiciones, onPosicion, castigos, suma,
         </p>
       ) : (
         <>
-          <span style={{ fontSize: 13, color: "#6b7280" }}>Castigos (iguales en sus dos casillas):</span>
+          <span style={{ fontSize: 13, color: "#6b7280" }}>Castigos (iguales en todas sus casillas):</span>
           <table style={{ width: "100%", maxWidth: 480, borderCollapse: "collapse", fontSize: 14 }}>
             <thead>
               <tr style={{ color: "#6b7280", textAlign: "left" }}>
@@ -290,3 +322,5 @@ const numeroCasilla = { width: 38, height: 38, borderRadius: 999, color: "#fff",
 const th = { padding: "4px 6px", fontWeight: 700, fontSize: 13 };
 const td = { padding: "4px 6px", whiteSpace: "nowrap" };
 const resumen = { margin: 0, padding: "10px 12px", borderRadius: 10, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e3a8a", fontSize: 13, lineHeight: 1.4 };
+const botonAnadir = { justifySelf: "start", border: "1px dashed #9ca3af", borderRadius: 9, padding: "7px 12px", background: "#fff", color: "#374151", fontWeight: 700, fontSize: 13, cursor: "pointer" };
+const botonQuitar = { border: "1px solid #fecaca", borderRadius: 9, padding: "6px 10px", background: "#fff", color: "#b91c1c", fontWeight: 700, fontSize: 13, cursor: "pointer" };

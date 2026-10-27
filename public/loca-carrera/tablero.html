@@ -927,13 +927,13 @@ const VILLANOS_CASILLAS = (() => {
   const lista = (PARAMS.get('v') || '').split(',').map(t => t.split(':')).filter(p => p.length >= 2)
     .map(([n, v, p]) => ({ casilla: +n, tipo: TIPO_VILLANO[v], prob: p === undefined || p === '' ? null : +p }))
     .filter(x => x.tipo && x.casilla > 1 && x.casilla < 63);
-  return lista.length ? lista : [
-    { casilla: 24, tipo: 'villano', prob: null }, { casilla: 44, tipo: 'villano', prob: null },
-    { casilla: 31, tipo: 'vieja', prob: null }, { casilla: 58, tipo: 'vieja', prob: null },
-    { casilla: 50, tipo: 'jubilado', prob: null }, { casilla: 17, tipo: 'jubilado', prob: null },
-  ];
+  if (lista.length) return lista;
+  // por defecto: 5 casillas por villano, con más al principio del tablero
+  const def = { villano: [4, 14, 24, 35, 44], vieja: [8, 22, 31, 41, 58], jubilado: [11, 17, 29, 50, 61] };
+  return Object.entries(def).flatMap(([tipo, cs]) => cs.map(casilla => ({ casilla, tipo, prob: null })));
 })();
 const casillasDe = tipo => VILLANOS_CASILLAS.filter(x => x.tipo === tipo).map(x => x.casilla).sort((a, b) => a - b);
+const listaCasillas = ns => ns.length > 1 ? `${ns.slice(0, -1).join(', ')} Y ${ns[ns.length - 1]}` : String(ns[0] ?? '');
 const LOJOS = [9, 18, 27, 36, 45, 54];
 const ESPECIALES = {
   1:  { tipo: 'salida', ico: '🚦', nom: 'SALIDA', color: '#3cbf5a' },
@@ -1887,9 +1887,9 @@ async function trailer() {
   const tomas = [
     () => { senalaCasilla(lider.pos, 2.6, 3600, 'ease-in-out'); rotulo(`<small>🏆 LÍDER DE LA CARRERA</small><b>${lider.nombre}</b><span>casilla ${lider.pos} de ${META}</span>`); },
     () => { senalaCasilla(seg.pos, 2.4, 3600, 'ease-in-out'); rotulo(`<small>🥈 LE PISA LOS TALONES</small><b>${seg.nombre}</b><span>casilla ${seg.pos}</span>`); },
-    () => { const n = casillasDe('villano'); senalaCasilla(alAzar(n), 3, 3600, 'ease-in-out'); rotulo(`<small>😡 ¡CUIDADO EN LA ${n.join(' Y EN LA ')}!</small><b>El Melón Cabezón</b><span>¡te manda para atrás de un barrigazo!</span>`); },
-    () => { const n = casillasDe('jubilado'); senalaCasilla(alAzar(n), 3, 3600, 'ease-in-out'); rotulo(`<small>👴 Y EN LA ${n.join(' Y EN LA ')}…</small><b>El Jubilado</b><span>¡bastonazo y para atrás!</span>`); },
-    () => { const n = casillasDe('vieja'); senalaCasilla(alAzar(n), 3, 3600, 'ease-in-out'); rotulo(`<small>🥋 EN LA ${n.join(' Y EN LA ')}…</small><b>Lucas</b><span>¡kung fu y de vuelta a la salida!</span>`); },
+    () => { const n = casillasDe('villano'); senalaCasilla(alAzar(n), 3, 3600, 'ease-in-out'); rotulo(`<small>😡 ¡CUIDADO EN LAS CASILLAS ${listaCasillas(n)}!</small><b>El Melón Cabezón</b><span>¡te manda para atrás de un barrigazo!</span>`); },
+    () => { const n = casillasDe('jubilado'); senalaCasilla(alAzar(n), 3, 3600, 'ease-in-out'); rotulo(`<small>👴 Y EN LAS ${listaCasillas(n)}…</small><b>El Jubilado</b><span>¡bastonazo y para atrás!</span>`); },
+    () => { const n = casillasDe('vieja'); senalaCasilla(alAzar(n), 3, 3600, 'ease-in-out'); rotulo(`<small>🥋 EN LAS ${listaCasillas(n)}…</small><b>Lucas</b><span>¡kung fu y de vuelta a la salida!</span>`); },
     () => { const n = LOJOS[Math.floor(Math.random() * LOJOS.length)]; senalaCasilla(n, 2.8, 3600, 'ease-in-out'); rotulo(`<small>CASILLAS LOJO</small><b>¡De Lojo a Lojo…</b><span>…y tiro mientras mi pedido recojo!</span>`); },
     () => { senalaCasilla(6, 2.8, 3600, 'ease-in-out'); rotulo(`<small>📦 PALETS</small><b>¡Compro un palet…</b><span>…y tiro otra vez!</span>`); },
     () => { const k = Object.keys(PREMIOS).find(k => premioDisponible(k)); if (!k) return; const n = +k; senalaCasilla(n, 2.8, 3600, 'ease-in-out'); rotulo(`<small>🎁 CASILLA ${n}</small><b>${PREMIOS[n].nombre}</b><span>¡quedan ${PREMIOS[n].quedan}!</span>`); },
