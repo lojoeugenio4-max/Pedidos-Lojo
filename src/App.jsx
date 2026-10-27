@@ -821,6 +821,9 @@ export default function App() {
   const [fotoCamara, setFotoCamara] = useState(null);
   // Pedido por código de barras: escáner EAN en directo (botón de la cámara).
   const [escanerEanAbierto, setEscanerEanAbierto] = useState(false);
+  // Si la ficha se abrió desde el escáner, al cerrarla se vuelve al escáner
+  // para seguir escaneando (se sale con la "X" del escáner).
+  const fichaDesdeEscanerRef = useRef(false);
   const inputCamaraRef = useRef(null);
   const [campoCantidadActivo, setCampoCantidadActivo] = useState(null);
   const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
@@ -4329,6 +4332,10 @@ export default function App() {
   // todos los de "Cruzcampo") y pueda elegir otro artículo de esa marca.
   // Para buscar otra cosa, vuelve a pulsar el micrófono o escribe.
   function cerrarFichaProducto() {
+    if (fichaDesdeEscanerRef.current) {
+      fichaDesdeEscanerRef.current = false;
+      setEscanerEanAbierto(true);
+    }
     setFichaProductoId(null);
   }
 
@@ -5789,6 +5796,7 @@ export default function App() {
           productos={productosVisibles}
           language={language}
           onElegir={(id) => {
+            fichaDesdeEscanerRef.current = true;
             setEscanerEanAbierto(false);
             setFichaProductoId(String(id));
           }}

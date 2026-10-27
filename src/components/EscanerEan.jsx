@@ -27,7 +27,13 @@ async function lectorNativoDisponible() {
   }
 }
 
-export default function EscanerEan({ productos, language = "es", onElegir, onBuscarPorFoto, onCerrar }) {
+export default function EscanerEan({
+  productos,
+  language = "es",
+  onElegir,
+  onBuscarPorFoto,
+  onCerrar,
+}) {
   const zh = language === "zh";
   const txt = (es, chino) => (zh ? chino : es);
 
