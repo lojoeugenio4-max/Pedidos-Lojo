@@ -11,6 +11,9 @@ export default function Articulos() {
   const [departamentos, setDepartamentos] = useState([]);
   const [ubicaciones, setUbicaciones] = useState([]);
   const [ubicacionesDisponibles, setUbicacionesDisponibles] = useState(false);
+  // Códigos de barras (EAN): solo se usan si ya existe la columna "eans"
+  // (supabase/migracion_eans.sql ejecutada).
+  const [eansDisponibles, setEansDisponibles] = useState(false);
   // Asignación masiva de departamento y de ubicación: artículos marcados
   // en el listado.
   const [seleccionados, setSeleccionados] = useState(() => new Set());
@@ -41,6 +44,7 @@ export default function Articulos() {
     oferta_texto: "",
     oferta_fecha_inicio: "",
     oferta_fecha_fin: "",
+    eans: [],
   });
 
   const [foto, setFoto] = useState(null);
@@ -96,10 +100,28 @@ export default function Articulos() {
     setUbicaciones(resultadoUbicaciones.ubicaciones);
     setUbicacionesDisponibles(resultadoUbicaciones.ok);
 
+    // Los EAN también se cargan aparte: si la columna aún no existe, los
+    // artículos cargan igual (solo no se ven los códigos de barras).
+    const eansPorArticulo = {};
+    const { data: eansData, error: eansError } = await supabase.from("articulos").select("id, eans");
+    if (eansError) {
+      console.warn("Códigos de barras (EAN) no disponibles todavía:", eansError.message);
+    } else {
+      (eansData || []).forEach((fila) => {
+        eansPorArticulo[String(fila.id)] = Array.isArray(fila.eans) ? fila.eans : [];
+      });
+    }
+    setEansDisponibles(!eansError);
+
     setArticulos(
       (articulosData || []).map((articulo) => {
         const ubicacion = resultadoUbicaciones.porArticulo[String(articulo.id)] || null;
-        return { ...articulo, ubicacion, ubicacion_id: ubicacion?.id ?? null };
+        return {
+          ...articulo,
+          ubicacion,
+          ubicacion_id: ubicacion?.id ?? null,
+          eans: eansPorArticulo[String(articulo.id)] || [],
+        };
       })
     );
     setDepartamentos(departamentosData || []);
@@ -168,6 +190,7 @@ export default function Articulos() {
       oferta_texto: "",
       oferta_fecha_inicio: "",
       oferta_fecha_fin: "",
+      eans: [],
     });
 
     setFoto(null);
@@ -197,6 +220,7 @@ export default function Articulos() {
       oferta_texto: oferta?.texto || "",
       oferta_fecha_inicio: oferta?.fecha_inicio || "",
       oferta_fecha_fin: oferta?.fecha_fin || "",
+      eans: Array.isArray(articulo.eans) ? articulo.eans : [],
     });
 
     setFoto(null);
@@ -250,6 +274,26 @@ export default function Articulos() {
       return;
     }
 
+    // Aviso si algún código de barras ya lo tiene otro artículo.
+    if (eansDisponibles) {
+      const repetidos = (form.eans || [])
+        .map((ean) => {
+          const otro = articulos.find(
+            (articulo) => articulo.id !== editando?.id && (articulo.eans || []).includes(ean)
+          );
+          return otro ? `${ean} → ${otro.nombre}` : null;
+        })
+        .filter(Boolean);
+      if (
+        repetidos.length &&
+        !window.confirm(
+          `Estos códigos de barras ya los tiene otro artículo:\n\n${repetidos.join("\n")}\n\n¿Guardar de todas formas?`
+        )
+      ) {
+        return;
+      }
+    }
+
     setGuardando(true);
 
     try {
@@ -291,6 +335,11 @@ export default function Articulos() {
       // (migracion_ubicaciones.sql ejecutada); si no, se guardaría con error.
       if (ubicacionesDisponibles) {
         datosArticulo.ubicacion_id = form.ubicacion_id ? Number(form.ubicacion_id) : null;
+      }
+
+      // Igual con los códigos de barras (migracion_eans.sql).
+      if (eansDisponibles) {
+        datosArticulo.eans = [...new Set((form.eans || []).map((e) => String(e).trim()).filter(Boolean))];
       }
 
       let articuloId = editando?.id;
@@ -612,12 +661,12 @@ export default function Articulos() {
     (busqueda.trim() ? 1 : 0);
 
   // Búsqueda libre: todas las palabras escritas tienen que aparecer
-  // (en cualquier orden) en código, código Lojo, nombre, departamento o ubicación.
+  // (en cualquier orden) en código, código Lojo, EAN, nombre, departamento o ubicación.
   const palabrasBusqueda = normalizar(busqueda).split(/\s+/).filter(Boolean);
   function coincideBusqueda(articulo) {
     if (!palabrasBusqueda.length) return true;
     const texto = normalizar(
-      `${articulo.codigo} ${articulo.codigo_lojo || ""} ${articulo.nombre} ${
+      `${articulo.codigo} ${articulo.codigo_lojo || ""} ${(articulo.eans || []).join(" ")} ${articulo.nombre} ${
         articulo.departamentos?.nombre || ""
       } ${articulo.departamentos?.cod ?? ""} ${articulo.ubicacion?.codigo || ""} ${articulo.ubicacion?.nombre || ""}`
     );
@@ -733,6 +782,7 @@ export default function Articulos() {
             departamentos={departamentos}
             ubicaciones={ubicaciones}
             ubicacionesDisponibles={ubicacionesDisponibles}
+            eansDisponibles={eansDisponibles}
             preview={preview}
             onChange={cambiarCampo}
             onFotoChange={seleccionarFoto}

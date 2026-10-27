@@ -1,8 +1,11 @@
+import { useState } from "react";
+
 export default function FormArticulo({
   form,
   departamentos,
   ubicaciones = [],
   ubicacionesDisponibles = true,
+  eansDisponibles = false,
   preview,
   onChange,
   onFotoChange,
@@ -10,6 +13,34 @@ export default function FormArticulo({
   onCancelar,
   guardando = false,
 }) {
+  const eans = Array.isArray(form.eans) ? form.eans : [];
+  const [eanSeleccionado, setEanSeleccionado] = useState("");
+  const [eanNuevo, setEanNuevo] = useState("");
+  const [errorEan, setErrorEan] = useState("");
+  const eanActivo = eans.includes(eanSeleccionado) ? eanSeleccionado : eans[0] || "";
+
+  function anadirEan() {
+    const limpio = eanNuevo.replace(/\D/g, "");
+    if (limpio.length !== 13) {
+      setErrorEan("El EAN tiene que tener 13 cifras.");
+      return;
+    }
+    if (eans.includes(limpio)) {
+      setErrorEan("Este EAN ya está en el artículo.");
+      return;
+    }
+    onChange("eans", [...eans, limpio]);
+    setEanSeleccionado(limpio);
+    setEanNuevo("");
+    setErrorEan("");
+  }
+
+  function quitarEan() {
+    if (!eanActivo) return;
+    onChange("eans", eans.filter((e) => e !== eanActivo));
+    setEanSeleccionado("");
+  }
+
   return (
     <div style={formContainer}>
       <section style={sectionCard}>
@@ -199,6 +230,87 @@ export default function FormArticulo({
             </label>
           </div>
         </div>
+      </section>
+
+      <section style={sectionCard}>
+        <div style={sectionHeader}>
+          <div style={sectionIcon}>▥</div>
+
+          <div>
+            <h3 style={sectionTitle}>Códigos de barras (EAN)</h3>
+            <p style={sectionSubtitle}>
+              El cliente escanea cualquiera de estos códigos con la cámara y le sale este artículo.
+            </p>
+          </div>
+        </div>
+
+        {!eansDisponibles ? (
+          <div style={helpBox}>
+            ℹ️ Para usar los códigos de barras, ejecuta antes supabase/migracion_eans.sql en Supabase.
+          </div>
+        ) : (
+          <div style={gridTwo}>
+            <label style={field}>
+              <span style={label}>
+                {eans.length === 0
+                  ? "Sin códigos EAN"
+                  : `${eans.length} ${eans.length === 1 ? "código EAN" : "códigos EAN"}`}
+              </span>
+              <div style={filaEan}>
+                <select
+                  value={eanActivo}
+                  onChange={(e) => setEanSeleccionado(e.target.value)}
+                  style={{ ...input, flex: 1 }}
+                  disabled={eans.length === 0}
+                >
+                  {eans.length === 0 && <option value="">— Ninguno —</option>}
+                  {eans.map((ean) => (
+                    <option key={ean} value={ean}>
+                      {ean}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={quitarEan}
+                  style={botonQuitarEan}
+                  disabled={!eanActivo}
+                  title="Quitar el EAN seleccionado"
+                >
+                  🗑 Quitar
+                </button>
+              </div>
+            </label>
+
+            <label style={field}>
+              <span style={label}>Añadir EAN</span>
+              <div style={filaEan}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={eanNuevo}
+                  onChange={(e) => {
+                    setEanNuevo(e.target.value);
+                    setErrorEan("");
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      anadirEan();
+                    }
+                  }}
+                  placeholder="13 cifras"
+                  maxLength={14}
+                  style={{ ...input, flex: 1 }}
+                />
+                <button type="button" onClick={anadirEan} style={botonAnadirEan}>
+                  ＋ Añadir
+                </button>
+              </div>
+              {errorEan && <span style={textoErrorEan}>{errorEan}</span>}
+            </label>
+          </div>
+        )}
       </section>
 
       <section style={sectionCard}>
@@ -530,3 +642,38 @@ const cancelButton = {
   cursor: "pointer",
 };
 
+const filaEan = {
+  display: "flex",
+  gap: "8px",
+  alignItems: "stretch",
+};
+
+const botonAnadirEan = {
+  border: "none",
+  borderRadius: "14px",
+  padding: "0 16px",
+  background: "#4f46e5",
+  color: "#ffffff",
+  fontSize: "14px",
+  fontWeight: "950",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const botonQuitarEan = {
+  border: "1px solid #fecaca",
+  borderRadius: "14px",
+  padding: "0 14px",
+  background: "#fef2f2",
+  color: "#b91c1c",
+  fontSize: "14px",
+  fontWeight: "900",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const textoErrorEan = {
+  color: "#b91c1c",
+  fontSize: "13px",
+  fontWeight: "800",
+};

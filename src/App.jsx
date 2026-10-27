@@ -19,6 +19,7 @@ import {
   Camera,
 } from "lucide-react";
 import BuscarPorFoto from "./components/BuscarPorFoto";
+import EscanerEan from "./components/EscanerEan";
 import { precargarBusquedaPorFoto } from "./utils/buscarPorFoto";
 import { supabase } from "./supabaseClient";
 import { supabaseStorage } from "./supabaseStorageClient";
@@ -818,6 +819,8 @@ export default function App() {
   const [fichaProductoId, setFichaProductoId] = useState(null);
   // Pedido por foto: la foto que acaba de hacer el cliente con la cámara.
   const [fotoCamara, setFotoCamara] = useState(null);
+  // Pedido por código de barras: escáner EAN en directo (botón de la cámara).
+  const [escanerEanAbierto, setEscanerEanAbierto] = useState(false);
   const inputCamaraRef = useRef(null);
   const [campoCantidadActivo, setCampoCantidadActivo] = useState(null);
   const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
@@ -5483,17 +5486,17 @@ export default function App() {
               )}
             </div>
 
-            {/* Pedir por foto: abre la cámara del móvil. Se empieza a
-                cargar el reconocimiento mientras el cliente hace la foto. */}
+            {/* Pedir con la cámara: abre el escáner de código de barras
+                (EAN). Desde ahí, si el artículo no tiene código, se puede
+                pasar a la búsqueda por foto de siempre. */}
             <button
               type="button"
               onClick={() => {
                 if (escuchandoVoz || modoVozContinuoRef.current) detenerBusquedaPorVoz();
-                precargarBusquedaPorFoto();
-                inputCamaraRef.current?.click();
+                setEscanerEanAbierto(true);
               }}
-              aria-label={language === "zh" ? "拍照点单" : "Pedir con una foto"}
-              title={language === "zh" ? "拍照点单" : "Pedir con una foto"}
+              aria-label={language === "zh" ? "扫码点单" : "Pedir escaneando el código de barras"}
+              title={language === "zh" ? "扫码点单" : "Pedir escaneando el código de barras"}
               style={styles.botonCamara}
             >
               <Camera size={18} strokeWidth={2.6} />
@@ -5780,6 +5783,23 @@ export default function App() {
           if (archivo) setFotoCamara(archivo);
         }}
       />
+
+      {escanerEanAbierto && (
+        <EscanerEan
+          productos={productosVisibles}
+          language={language}
+          onElegir={(id) => {
+            setEscanerEanAbierto(false);
+            setFichaProductoId(String(id));
+          }}
+          onBuscarPorFoto={() => {
+            setEscanerEanAbierto(false);
+            precargarBusquedaPorFoto();
+            inputCamaraRef.current?.click();
+          }}
+          onCerrar={() => setEscanerEanAbierto(false)}
+        />
+      )}
 
       {fotoCamara && (
         <BuscarPorFoto
