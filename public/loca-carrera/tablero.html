@@ -147,10 +147,6 @@ body.modoTV .abrirPruebas,body.modoTV .controles{display:none!important}
 @keyframes auraMitad{0%,100%{opacity:.55;transform:scale(.92)}50%{opacity:1;transform:scale(1.06)}}
 .evento.mitad .carta{background:linear-gradient(135deg,#fff7c2,#ffd23f);border-color:#e8141c}
 .relampago.oro{background:#ffe27a}
-/* vídeo entre jugadas (alterna con las tormentas) */
-.videoEspera{position:fixed;inset:0;z-index:99999;background:#000;opacity:0;transition:opacity .6s}
-.videoEspera.ver{opacity:1}.videoEspera.fuera{opacity:0}
-.videoEspera video{width:100%;height:100%;object-fit:contain;display:block}
 /* tormenta cada 2 minutos */
 .caraCielo .fraseCielo{position:absolute;left:50%;top:100%;transform:translateX(-50%) scale(.3);white-space:nowrap;text-align:center;opacity:0;
   animation:fraseSale .45s cubic-bezier(.3,1.6,.5,1) .5s forwards;font-family:"Bowlby One",Impact,sans-serif;line-height:1.05}
@@ -1891,7 +1887,7 @@ function senalaCasilla(n, ...resto) {
   [0, 1100, 2200].forEach(ms => setTimeout(() => { g.classList.remove('flash'); void g.getBBox(); g.classList.add('flash'); }, ms));
 }
 async function trailer() {
-  if (ocupado || videoEnCurso || !enPrimerPlano()) return programarTrailer();
+  if (ocupado || !enPrimerPlano()) return programarTrailer();
   trailerVivo = true; cine(true); trailerVueltas++;
   const lider = ranking()[0] || { nombre: '¡Puedes ser tú!', pos: 1 }, seg = ranking()[1] || lider;
   const N = () => { }; // sin narrador: el tráiler solo lleva rótulos
@@ -3040,7 +3036,6 @@ ponerHalloween(MODO_HALLOWEEN);
 function silencioTotal() {
   try { speechSynthesis.cancel(); } catch { }
   try { pararTrailer(); } catch { }
-  try { pararVideoEspera(); } catch { }
   try { nivelPublico(0, .05); } catch { }
   try { if (ac && ac.state === 'running') ac.suspend(); } catch { }
 }
@@ -3115,8 +3110,6 @@ async function siguienteTiradaReal() {
   }
 }
 async function reproducirTirada(t) {
-  ultimaActividad = Date.now();
-  if (videoEnCurso) pararVideoEspera();
   while (ocupado || tormentaEnCurso) await espera(300);
   const id = String(t.cliente_id);
   let c = clientes.find(x => String(x.id) === id);
@@ -3149,7 +3142,6 @@ async function reproducirTirada(t) {
     ocupado = false; tiradaRealActual = null; castigoForzado = null; saltarEfecto = false;
     forzarAmigo = false; forzarSinAmigo = false; forzarAmigoId = null; forzarMelonGana = forzarJubGana = forzarLucasGana = null;
     c.pos = Math.min(META, Math.max(1, +t.hasta || c.pos)); c.ultimaTirada = Date.now(); pintar();
-    ultimaActividad = Date.now();
   }
 }
 // Cuando el villano gana, a veces sale igualmente un amigo y pierde (solo es
@@ -3291,7 +3283,7 @@ async function risaConEco(id) {
   setTimeout(() => { try { entrada.disconnect(); retardo.disconnect(); oscuro.disconnect(); realim.disconnect(); lejos.disconnect(); } catch { } }, total * 1000 + 500);
   return total * 1000;
 }
-let tormentaEnCurso = false, videoEnCurso = false;
+let tormentaEnCurso = false;
 const AMIGOS_EN_TORMENTA = false;
 
 // ---------- José Luis y Rafa plantan cara durante la carcajada ----------
@@ -3350,7 +3342,7 @@ async function sonarConEco(dataUri, { vol = 1.4, eco = .35, cuando = 0 } = {}) {
 const ORDEN_TORMENTAS = ['risa', 'melon', 'risa', 'jubilado'];
 let turnoTormenta = 0;
 async function tormentaConRisa(modo) {
-  if (tormentaEnCurso || ocupado || videoEnCurso || document.hidden) return;
+  if (tormentaEnCurso || ocupado || document.hidden) return;
   if (!modo) { modo = ORDEN_TORMENTAS[turnoTormenta % ORDEN_TORMENTAS.length]; turnoTormenta++; }
   tormentaEnCurso = true;
   try {
@@ -3388,57 +3380,7 @@ async function tormentaConRisa(modo) {
     d.classList.add('fuera'); asustados.irse(); await espera(900); d.remove();
   } finally { tv.classList.remove('noche'); tormentaEnCurso = false; }
 }
-// ===================== VÍDEO ENTRE JUGADAS =====================
-// Cada 2 minutos sin jugadas sale algo para llamar la atención, alternando:
-// vídeo, tormenta con carcajada, vídeo, tormenta del Melón, vídeo, tormenta del Jubilado.
-// Si llega una tirada mientras se ve el vídeo, se corta al momento.
-const VIDEO_ESPERA = 'entre-jugadas.mp4';
-let videoEl = null;
-function pararVideoEspera() {
-  const v = videoEl; videoEl = null; videoEnCurso = false;
-  if (!v) return;
-  try { v.pause(); } catch { }
-  const capaV = v.parentElement; if (capaV) { capaV.classList.add('fuera'); setTimeout(() => capaV.remove(), 700); }
-  programarTrailer(4000);
-}
-async function videoEspera() {
-  if (videoEnCurso || tormentaEnCurso || ocupado || document.hidden) return;
-  videoEnCurso = true; pararTrailer();
-  const capaV = document.createElement('div'); capaV.className = 'videoEspera';
-  const v = document.createElement('video'); v.src = VIDEO_ESPERA; v.playsInline = true; v.preload = 'auto';
-  capaV.appendChild(v); document.body.appendChild(capaV); videoEl = v;
-  v.muted = silenciado || !enPrimerPlano();
-  try { await v.play(); }
-  catch { try { v.muted = true; await v.play(); } catch { pararVideoEspera(); return; } }   // si el navegador no deja sonido, al menos se ve
-  if (videoEl !== v) return;
-  requestAnimationFrame(() => capaV.classList.add('ver'));
-  // Si el navegador no dejó sonido, en cuanto alguien toque la pantalla se activa.
-  const conSonido = () => { if (videoEl === v && !silenciado) { v.muted = false; v.play().catch(() => { }); } };
-  if (v.muted) ['pointerdown', 'keydown', 'touchstart'].forEach(ev => window.addEventListener(ev, conSonido, { capture: true, once: true }));
-  // Vigilante: si el vídeo se queda parado más de 6 s (o dura demasiado), se quita y vuelve el tablero.
-  const inicio = Date.now(); let ultimoT = -1, quieto = 0;
-  await new Promise(res => {
-    v.onended = res; v.onerror = res;
-    const vig = setInterval(() => {
-      if (videoEl !== v) { clearInterval(vig); return res(); }
-      if (v.currentTime === ultimoT) quieto += 250; else { quieto = 0; ultimoT = v.currentTime; }
-      if (quieto >= 6000 || Date.now() - inicio > ((v.duration || 60) + 15) * 1000) { clearInterval(vig); res(); }
-    }, 250);
-    v.addEventListener('ended', () => clearInterval(vig));
-  });
-  if (videoEl === v) pararVideoEspera();
-  ultimaActividad = Date.now();
-}
-// Vídeo: sale en la TV grande cuando pasan 4 minutos sin ninguna jugada
-// (cuenta desde la última tirada o desde que acabó el vídeo anterior).
-const CADA_VIDEO_MS = 4 * 60 * 1000;
-let ultimaActividad = Date.now();
-setInterval(() => {
-  if (videoEnCurso || tormentaEnCurso || ocupado || document.hidden || colaTiradas.length) return;
-  if (Date.now() - ultimaActividad >= CADA_VIDEO_MS) { ultimaActividad = Date.now(); videoEspera(); }
-}, 5000);
-// Tormentas cada 2 minutos, como antes (carcajada, Melón, carcajada, Jubilado)
-setInterval(() => { if (!videoEnCurso && Date.now() - ultimaActividad < CADA_VIDEO_MS - 20000) tormentaConRisa(); }, CADA_TORMENTA_MS);
+setInterval(tormentaConRisa, CADA_TORMENTA_MS);
 
 // ===================== BOTONES DE PRUEBA NUEVOS (no salen en la TV) =====================
 function tiradaDePrueba(pos, dado, eventos = [], hasta = null) {
@@ -3455,7 +3397,6 @@ function tiradaDePrueba(pos, dado, eventos = [], hasta = null) {
   nuevo('👴 Simular: tormenta con «¡Coco! ¡Coco!» del Jubilado', () => tormentaConRisa('jubilado'));
   nuevo('🍈 Simular: tormenta con «¡Fernandito, por aquí no pasa nadie!»', () => tormentaConRisa('melon'));
   nuevo('⛈️ Simular: tormenta con carcajada de terror', () => tormentaConRisa('risa'));
-  nuevo('🎬 Simular: vídeo entre jugadas', () => videoEspera());
 })();
 function aplicarDatos(d) {
   if (ocupado) { datosPendientes = d; return; }
