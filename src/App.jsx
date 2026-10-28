@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import BuscarPorFoto from "./components/BuscarPorFoto";
 import EscanerEan from "./components/EscanerEan";
+import { buscarArticulosPorEan } from "./utils/buscarPorEan";
 import { precargarBusquedaPorFoto } from "./utils/buscarPorFoto";
 import { supabase } from "./supabaseClient";
 import { supabaseStorage } from "./supabaseStorageClient";
@@ -852,6 +853,17 @@ export default function App() {
   // El acceso identificado es opcional. Sin token, la aplicación sigue
   // funcionando exactamente igual para clientes anónimos.
   const [clienteIdentificado, setClienteIdentificado] = useState(null);
+  // CLIENTE COMODÍN: enlace que usa el personal del Cash para pasar a la
+  // App los pedidos de clientes que no usan la aplicación (piden en el
+  // mostrador). Nunca juega a nada ni genera QR: el pedido va directo a
+  // ADMIN > Pedidos recibidos con el nombre real que se escriba.
+  const esComodin = Boolean(clienteIdentificado?.es_comodin);
+  const nombreInicialCliente = esComodin ? "" : clienteIdentificado?.nombre || "";
+  const [pedidoComodinGuardado, setPedidoComodinGuardado] = useState(null);
+  // Lector de códigos de barras (pistola USB/Bluetooth) en el buscador del
+  // Cliente Comodín: la pistola "escribe" el EAN y pulsa Enter.
+  const fichaDesdePistolaRef = useRef(false);
+  const [avisoPistolaEan, setAvisoPistolaEan] = useState("");
   // Búsqueda por voz (botón "Hablar" junto al buscador), para TODOS los
   // clientes. Usa el reconocimiento de voz del propio móvil/navegador: no
   // tiene coste ni necesita ningún servicio externo.
@@ -895,10 +907,10 @@ export default function App() {
   const [articulosBingoPromo, setArticulosBingoCliente] = useState([]);
   const [fechaLimiteBingoPropia, setFechaLimiteBingoPropia] = useState(null);
   const [bingoActivoCliente, setBingoActivoCliente] = useState(false);
-  const configuracionBingoCliente = bingoActivoCliente ? configuracionBingoPromo : null;
+  const configuracionBingoCliente = bingoActivoCliente && !esComodin ? configuracionBingoPromo : null;
   const articulosBingoCliente = useMemo(
-    () => (bingoActivoCliente ? articulosBingoPromo : []),
-    [bingoActivoCliente, articulosBingoPromo]
+    () => (bingoActivoCliente && !esComodin ? articulosBingoPromo : []),
+    [bingoActivoCliente, articulosBingoPromo, esComodin]
   );
 
   // Sorteo: disponible para todos los clientes identificados.
@@ -919,16 +931,16 @@ export default function App() {
   // el cliente y, a esa hora, pantalla con la rotación de números.
   const [revisionPremioSorteo, setRevisionPremioSorteo] = useState(0);
   const sorteoDirectoAbiertoRef = useRef(false);
-  const sorteoActivoParaCliente = Boolean(configuracionSorteoCliente);
+  const sorteoActivoParaCliente = Boolean(configuracionSorteoCliente) && !esComodin;
   // CLIENTE DEL MES: carrera de puntos (5 / 3 / 1 por pedido en la App, 1 cada 12 horas).
   const [mostrarClienteMes, setMostrarClienteMes] = useState(false);
   const clienteMes = useClasificacionClienteMes({
     token: clienteIdentificado?.token || null,
-    habilitado: Boolean(clienteIdentificado?.token),
+    habilitado: Boolean(clienteIdentificado?.token) && !esComodin,
     refrescoMs: mostrarClienteMes ? 30000 : 120000,
   });
-  const clienteMesVisible = Boolean(clienteMes.datos?.visible);
-  const lojopolyVisible = Boolean(tableroLojoPoly?.visible);
+  const clienteMesVisible = Boolean(clienteMes.datos?.visible) && !esComodin;
+  const lojopolyVisible = Boolean(tableroLojoPoly?.visible) && !esComodin;
 
   async function cargarTableroLojoPoly() {
     if (!clienteToken) return;
@@ -1078,18 +1090,31 @@ export default function App() {
       setCargandoCliente(true);
 
       try {
-        const { data, error } = await supabase
+        // Se pide también "es_comodin" (Cliente Comodín). Si todavía no se
+        // ha ejecutado la migración SQL y esa columna no existe, se repite
+        // la consulta sin ella para que ningún cliente se quede sin entrar.
+        let { data, error } = await supabase
           .from("clientes")
-          .select("id, nombre, telefono, estado, token, es_pruebas")
+          .select("id, nombre, telefono, estado, token, es_pruebas, es_comodin")
           .eq("token", clienteToken)
           .maybeSingle();
+
+        if (error) {
+          ({ data, error } = await supabase
+            .from("clientes")
+            .select("id, nombre, telefono, estado, token, es_pruebas")
+            .eq("token", clienteToken)
+            .maybeSingle());
+        }
 
         if (error) throw error;
         if (cancelado) return;
 
         if (data?.estado === "activo") {
           setClienteIdentificado(data);
-          setCustomerName(data.nombre || "");
+          // Cliente Comodín: el nombre se escribe a mano en cada pedido
+          // (el nombre real del cliente que pide en el Cash).
+          setCustomerName(data.es_comodin ? "" : data.nombre || "");
         } else {
           // Token inexistente o cliente inactivo: no se identifica. Más
           // abajo esto hace que se muestre la pantalla de "enlace no
@@ -1115,7 +1140,7 @@ export default function App() {
     let cancelado = false;
 
     async function comprobarPremioSorteoPendiente() {
-      if (!clienteIdentificado?.token) return;
+      if (!clienteIdentificado?.token || clienteIdentificado?.es_comodin) return;
 
       try {
         const { data, error } = await supabase.rpc("obtener_premio_sorteo_pendiente", {
@@ -1145,7 +1170,7 @@ export default function App() {
   useEffect(() => {
     let cancelado = false;
     async function comprobarPremioClienteMes() {
-      if (!clienteIdentificado?.token) return;
+      if (!clienteIdentificado?.token || clienteIdentificado?.es_comodin) return;
       try {
         const { data, error } = await supabase.rpc("cliente_mes_premio_pendiente", {
           p_token: clienteIdentificado.token,
@@ -1248,6 +1273,10 @@ export default function App() {
     let cancelado = false;
 
     async function comprobarPedidoPrevio() {
+      // El Cliente Comodín no "modifica pedidos enviados": cada pedido es
+      // de un cliente distinto del mostrador y se guarda al momento.
+      if (clienteIdentificado?.es_comodin) return;
+
       // Pedido concreto que el cliente ya descartó explícitamente
       // (botón "Hacer un pedido nuevo"). Si es el mismo que encontramos
       // aquí, no se recupera ni se vuelve a avisar de él.
@@ -2536,10 +2565,12 @@ export default function App() {
         // la ruleta?" es consistente en toda la app.
         const codigoArticulo = normalizePromoValue(articulo.codigo_lojo);
         const nombreArticulo = normalizePromoValue(articulo.nombre);
+        // El Cliente Comodín no juega a nada: tampoco a la Ruleta.
         const participaRuleta =
-          idsArticulosRuleta.has(articuloId) ||
-          codigosRuleta.has(codigoArticulo) ||
-          nombresArticulosRuleta.has(nombreArticulo);
+          !esComodin &&
+          (idsArticulosRuleta.has(articuloId) ||
+            codigosRuleta.has(codigoArticulo) ||
+            nombresArticulosRuleta.has(nombreArticulo));
         const cantidadMinimaRuleta =
           cantidadesMinimasRuletaPorArticulo.porId.get(articuloId) ||
           cantidadesMinimasRuletaPorArticulo.porCodigo.get(codigoArticulo) ||
@@ -2581,6 +2612,7 @@ export default function App() {
     cantidadesMinimasRuletaPorArticulo,
     idsArticulosBingo,
     cantidadesMinimasBingoPorArticulo,
+    esComodin,
   ]);
 
   const productosVisibles = useMemo(
@@ -3095,8 +3127,8 @@ export default function App() {
   };
 
   const resumenRuletaPedido = useMemo(
-    () => obtenerResumenPedidoRuleta(orderedItems),
-    [orderedItems, configuracionRuleta, articulosRuleta]
+    () => (esComodin ? null : obtenerResumenPedidoRuleta(orderedItems)),
+    [orderedItems, configuracionRuleta, articulosRuleta, esComodin]
   );
 
   const resumenSorteoPedido = useMemo(() => {
@@ -3618,14 +3650,14 @@ export default function App() {
 
   const clearOrder = () => {
     setQuantities({});
-    setCustomerName(clienteIdentificado?.nombre || "");
+    setCustomerName(nombreInicialCliente);
     setNotes("");
     setShowOrderSummary(false);
   };
 
   const resetToInitialState = () => {
     setQuantities({});
-    setCustomerName(clienteIdentificado?.nombre || "");
+    setCustomerName(nombreInicialCliente);
     setCustomerNameFocused(false);
     setSoloCajasAviso(null);
     setNotes("");
@@ -3711,7 +3743,7 @@ export default function App() {
 
       if (borrarError) throw borrarError;
 
-      if (!movimientos.length) return;
+      if (!movimientos.length) return true;
 
       const { error: movimientosError } = await supabase
         .from("estadisticas_movimientos")
@@ -3720,9 +3752,12 @@ export default function App() {
       if (movimientosError) {
         throw movimientosError;
       }
+      return true;
     } catch (err) {
       console.error("Error guardando estadísticas:", err);
-      // No bloqueamos WhatsApp si falla la estadística.
+      // No bloqueamos WhatsApp si falla la estadística. (El Cliente
+      // Comodín sí mira el resultado: su pedido solo llega por aquí.)
+      return false;
     }
   }
 
@@ -3733,7 +3768,7 @@ export default function App() {
     // nombre puesto para el siguiente pedido (evita que un pedido
     // posterior en la misma sesión salga "Sin nombre" si el campo se
     // limpia aquí sin volver a rellenarse).
-    setCustomerName(clienteIdentificado?.nombre || "");
+    setCustomerName(nombreInicialCliente);
     setCustomerNameFocused(false);
     setSoloCajasAviso(null);
     setNotes("");
@@ -4336,7 +4371,39 @@ export default function App() {
       fichaDesdeEscanerRef.current = false;
       setEscanerEanAbierto(true);
     }
+    if (fichaDesdePistolaRef.current) {
+      // Lector de códigos (Cliente Comodín): se vuelve al buscador vacío
+      // y con el cursor puesto, listo para pasar el siguiente artículo.
+      fichaDesdePistolaRef.current = false;
+      setTimeout(() => searchInputRef.current?.focus(), 60);
+    }
     setFichaProductoId(null);
+  }
+
+  // Un lector de códigos de barras "teclea" el EAN (solo cifras) y pulsa
+  // Enter. Se acepta EAN-8, UPC-A (12) y EAN-13/14.
+  function esCodigoPistola(texto) {
+    return /^\d{8,14}$/.test(String(texto || "").trim());
+  }
+
+  async function abrirArticuloPorPistola(texto) {
+    const codigo = String(texto || "").trim();
+    setAvisoPistolaEan("");
+    try {
+      const encontrados = await buscarArticulosPorEan(codigo, productosVisibles);
+      setSearchInput("");
+      setSearch("");
+      if (!encontrados.length) {
+        setAvisoPistolaEan(`No hay ningún artículo con el código ${codigo}.`);
+        setTimeout(() => searchInputRef.current?.focus(), 60);
+        return;
+      }
+      fichaDesdePistolaRef.current = true;
+      setFichaProductoId(String(encontrados[0].id));
+    } catch (error) {
+      console.error("No se pudo buscar el código de barras:", error);
+      setAvisoPistolaEan("No se pudo buscar el código. Comprueba la conexión.");
+    }
   }
 
   // Si se desmonta la app mientras escucha, se corta el micrófono.
@@ -4586,6 +4653,40 @@ export default function App() {
       alert(
         "Un momento, todavía estamos comprobando tu enlace personal. Vuelve a pulsar \"Enviar\" en un par de segundos."
       );
+      return;
+    }
+
+    // CLIENTE COMODÍN: sin juegos, sin QR y sin WhatsApp. El pedido se
+    // guarda directamente para ADMIN > Pedidos recibidos con el nombre real
+    // del cliente del mostrador, y la App queda limpia para el siguiente.
+    if (esComodin) {
+      const nombreReal = customerName.trim();
+      if (!nombreReal) {
+        alert("Escribe el nombre real del cliente antes de guardar el pedido.");
+        setShowOrderSummary(true);
+        setTimeout(() => document.getElementById("comodin-nombre-resumen")?.focus(), 80);
+        return;
+      }
+
+      const itemsComodin = [...orderedItems];
+      const guardado = await conLimiteDeTiempo(
+        guardarEstadisticasPedido(itemsComodin, crearPedidoId(), nombreReal),
+        15000
+      ).catch((error) => {
+        console.error("No se pudo guardar el pedido del Cliente Comodín:", error);
+        return false;
+      });
+
+      if (!guardado) {
+        alert(
+          "No se ha podido guardar el pedido. Comprueba la conexión y vuelve a pulsar \"Guardar pedido\"."
+        );
+        return;
+      }
+
+      localStorage.removeItem(obtenerClaveOrderStorage(clienteToken));
+      limpiarPedidoDespuesEnvio();
+      setPedidoComodinGuardado({ nombre: nombreReal, articulos: itemsComodin.length });
       return;
     }
 
@@ -4903,7 +5004,7 @@ export default function App() {
         />
       )}
 
-      {!appInstalada && clienteToken && (
+      {!appInstalada && clienteToken && !esComodin && (
         <div style={styles.installBanner} role="region" aria-label="Instalar aplicación">
           <div style={styles.installBannerIcon}>
             <Download size={26} />
@@ -4955,7 +5056,7 @@ export default function App() {
           </div>
         </div>
       )}
-      {pushOferta && pushItems.length > 0 && !pushCerrado && (
+      {pushOferta && pushItems.length > 0 && !pushCerrado && !esComodin && (
         <div style={styles.pushOverlay}>
           <button
             type="button"
@@ -5357,8 +5458,17 @@ export default function App() {
 
               {!cargandoCliente && clienteIdentificado && (
                 <div style={styles.clienteSesionActiva}>
-                  <strong>Hola, {clienteIdentificado.nombre}</strong>
-                  <span>Cliente identificado · ventajas personales activadas</span>
+                  {esComodin ? (
+                    <>
+                      <strong>🃏 Cliente Comodín</strong>
+                      <span>Pedido de mostrador · escribe el nombre real del cliente · sin juegos ni QR</span>
+                    </>
+                  ) : (
+                    <>
+                      <strong>Hola, {clienteIdentificado.nombre}</strong>
+                      <span>Cliente identificado · ventajas personales activadas</span>
+                    </>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -5400,15 +5510,17 @@ export default function App() {
               <input
                 type="text"
                 value={customerName}
-                readOnly={Boolean(clienteIdentificado)}
+                readOnly={Boolean(clienteIdentificado) && !esComodin}
                 onFocus={() => setCustomerNameFocused(true)}
                 onBlur={() => setCustomerNameFocused(false)}
                 onChange={(event) => setCustomerName(event.target.value)}
-                placeholder={t.optional}
+                placeholder={esComodin ? "Nombre real del cliente (obligatorio)" : t.optional}
+                autoComplete="off"
                 style={{
                   ...styles.inputCompact,
                   borderColor: customerNameFocused ? "#2563eb" : "#aeb7ff",
-                  ...(clienteIdentificado ? styles.inputClienteIdentificado : {}),
+                  ...(clienteIdentificado && !esComodin ? styles.inputClienteIdentificado : {}),
+                  ...(esComodin && !customerName.trim() ? styles.comodinNombreInputVacio : {}),
                 }}
               />
             </section>
@@ -5426,6 +5538,7 @@ export default function App() {
                 onChange={(event) => {
                   // Escribir a mano saca del modo voz continuo.
                   if (modoVozContinuoRef.current) detenerBusquedaPorVoz();
+                  if (avisoPistolaEan) setAvisoPistolaEan("");
                   setSearchInput(event.target.value);
                   setSearch(event.target.value);
                   if (event.target.value.trim()) {
@@ -5433,6 +5546,13 @@ export default function App() {
                   }
                 }}
                 onKeyDown={(event) => {
+                  if (event.key === "Enter" && esComodin && esCodigoPistola(searchInput)) {
+                    // Cliente Comodín con lector de códigos de barras: abre
+                    // directamente la ficha del artículo de ese EAN.
+                    event.preventDefault();
+                    abrirArticuloPorPistola(searchInput);
+                    return;
+                  }
                   if (event.key === "Enter") {
                     event.preventDefault();
                     event.currentTarget.blur();
@@ -5517,6 +5637,12 @@ export default function App() {
               {t.review}
             </button>
           </div>
+
+          {esComodin && avisoPistolaEan && (
+            <div style={styles.avisoPistolaEan} onClick={() => setAvisoPistolaEan("")}>
+              {avisoPistolaEan}
+            </div>
+          )}
 
           <style>{`
             @keyframes lojoMicPulso {
@@ -6294,6 +6420,34 @@ export default function App() {
         </div>
       )}
 
+      {pedidoComodinGuardado && (
+        <div style={styles.avisoModificacionOverlay}>
+          <div style={styles.avisoAbrirWhatsappPanel}>
+            <div style={styles.comodinGuardadoIcono}>
+              <Check size={40} strokeWidth={3} />
+            </div>
+            <p style={styles.comodinGuardadoTitulo}>Pedido guardado</p>
+            <p style={styles.comodinGuardadoTexto}>
+              El pedido de <strong>{pedidoComodinGuardado.nombre}</strong> (
+              {pedidoComodinGuardado.articulos}{" "}
+              {pedidoComodinGuardado.articulos === 1 ? "artículo" : "artículos"}) ya está en{" "}
+              <strong>Pedidos recibidos</strong>, listo para exportar.
+            </p>
+            <button
+              type="button"
+              autoFocus
+              onClick={() => {
+                setPedidoComodinGuardado(null);
+                window.scrollTo({ top: 0, behavior: "auto" });
+              }}
+              style={styles.avisoAbrirWhatsappBoton}
+            >
+              Siguiente cliente
+            </button>
+          </div>
+        </div>
+      )}
+
       {avisoAbrirWhatsapp && (
         <div style={styles.avisoModificacionOverlay}>
           <div style={styles.avisoAbrirWhatsappPanel}>
@@ -6335,14 +6489,19 @@ export default function App() {
 
             <h2 style={styles.summaryTitle}>{t.orderSummary}</h2>
 
-            <label style={styles.label}>{t.customerName}</label>
-            <input
-              type="text"
-              value={customerName}
-              onChange={(event) => setCustomerName(event.target.value)}
-              placeholder={t.optional}
-              style={styles.summaryCustomerInput}
-            />
+            {/* El Cliente Comodín escribe el nombre abajo, junto a "Guardar pedido". */}
+            {!esComodin && (
+              <>
+                <label style={styles.label}>{t.customerName}</label>
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={(event) => setCustomerName(event.target.value)}
+                  placeholder={t.optional}
+                  style={styles.summaryCustomerInput}
+                />
+              </>
+            )}
 
             {resumenRuletaPedido && orderedItems.length > 0 && (
               <div
@@ -6469,12 +6628,38 @@ export default function App() {
               ))
             )}
 
-            <label style={styles.label}>{t.notes}</label>
-            <textarea
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              style={styles.summaryNotes}
-            />
+            {esComodin ? (
+              // Cliente Comodín: aquí se escribe el nombre real del cliente
+              // del mostrador (obligatorio). Las observaciones no se piden
+              // porque el pedido no va por WhatsApp, va directo a Pedidos
+              // recibidos.
+              <div style={styles.comodinNombreCaja}>
+                <label style={styles.comodinNombreLabel} htmlFor="comodin-nombre-resumen">
+                  Nombre real del cliente
+                </label>
+                <input
+                  id="comodin-nombre-resumen"
+                  type="text"
+                  value={customerName}
+                  onChange={(event) => setCustomerName(event.target.value)}
+                  placeholder="Escribe el nombre del cliente"
+                  autoComplete="off"
+                  style={{
+                    ...styles.comodinNombreInput,
+                    ...(customerName.trim() ? null : styles.comodinNombreInputVacio),
+                  }}
+                />
+              </div>
+            ) : (
+              <>
+                <label style={styles.label}>{t.notes}</label>
+                <textarea
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  style={styles.summaryNotes}
+                />
+              </>
+            )}
 
             <div style={styles.summaryActions}>
               <button
@@ -6483,11 +6668,18 @@ export default function App() {
                 disabled={enviandoPedido}
                 style={{
                   ...styles.sendButton,
+                  ...(esComodin ? styles.sendButtonComodin : null),
                   ...(enviandoPedido ? { opacity: 0.6, pointerEvents: "none" } : null),
                 }}
               >
-                <Send size={18} />
-                {enviandoPedido ? "Enviando..." : t.sendByWhatsApp}
+                {esComodin ? <Check size={18} /> : <Send size={18} />}
+                {enviandoPedido
+                  ? esComodin
+                    ? "Guardando..."
+                    : "Enviando..."
+                  : esComodin
+                    ? "Guardar pedido"
+                    : t.sendByWhatsApp}
               </button>
 
               <button type="button" onClick={resetToInitialState} style={styles.clearButton}>
@@ -8302,6 +8494,68 @@ const styles = {
     marginTop: "14px",
   },
 
+  sendButtonComodin: {
+    background: "#2563eb",
+  },
+  comodinNombreCaja: {
+    margin: "14px 0 4px",
+    padding: "12px",
+    borderRadius: "12px",
+    background: "#eff6ff",
+    border: "1px solid #bfdbfe",
+  },
+  comodinNombreLabel: {
+    display: "block",
+    fontWeight: "900",
+    color: "#1e3a8a",
+    marginBottom: "6px",
+  },
+  comodinNombreInput: {
+    width: "100%",
+    boxSizing: "border-box",
+    border: "2px solid #93c5fd",
+    borderRadius: "10px",
+    padding: "12px",
+    fontSize: "17px",
+    fontWeight: "700",
+    background: "#fff",
+  },
+  comodinNombreInputVacio: {
+    borderColor: "#f59e0b",
+    background: "#fffbeb",
+  },
+  comodinGuardadoIcono: {
+    width: "64px",
+    height: "64px",
+    margin: "0 auto 10px",
+    borderRadius: "50%",
+    background: "#22c55e",
+    color: "#fff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  comodinGuardadoTitulo: {
+    margin: "0 0 8px",
+    fontSize: "22px",
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  comodinGuardadoTexto: {
+    margin: "0 0 16px",
+    fontSize: "16px",
+    lineHeight: 1.45,
+    textAlign: "center",
+  },
+  avisoPistolaEan: {
+    margin: "6px 0 0",
+    padding: "8px 10px",
+    borderRadius: "10px",
+    background: "#fef3c7",
+    color: "#92400e",
+    fontSize: "14px",
+    fontWeight: "700",
+  },
   sendButton: {
     border: "none",
     background: "#22c55e",
