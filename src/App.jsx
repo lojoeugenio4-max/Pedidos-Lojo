@@ -856,9 +856,10 @@ export default function App() {
   // CLIENTE COMODÍN: enlace que usa el personal del Cash para pasar a la
   // App los pedidos de clientes que no usan la aplicación (piden en el
   // mostrador). Nunca juega a nada ni genera QR: el pedido va directo a
-  // ADMIN > Pedidos recibidos con el nombre real que se escriba.
+  // ADMIN > Pedidos recibidos con el nombre del propio Cliente Comodín
+  // (no se escribe ningún nombre, para ir más rápido).
   const esComodin = Boolean(clienteIdentificado?.es_comodin);
-  const nombreInicialCliente = esComodin ? "" : clienteIdentificado?.nombre || "";
+  const nombreInicialCliente = clienteIdentificado?.nombre || "";
   const [pedidoComodinGuardado, setPedidoComodinGuardado] = useState(null);
   // Lector de códigos de barras (pistola USB/Bluetooth) en el buscador del
   // Cliente Comodín: la pistola "escribe" el EAN y pulsa Enter.
@@ -1112,9 +1113,7 @@ export default function App() {
 
         if (data?.estado === "activo") {
           setClienteIdentificado(data);
-          // Cliente Comodín: el nombre se escribe a mano en cada pedido
-          // (el nombre real del cliente que pide en el Cash).
-          setCustomerName(data.es_comodin ? "" : data.nombre || "");
+          setCustomerName(data.nombre || "");
         } else {
           // Token inexistente o cliente inactivo: no se identifica. Más
           // abajo esto hace que se muestre la pantalla de "enlace no
@@ -4660,13 +4659,8 @@ export default function App() {
     // guarda directamente para ADMIN > Pedidos recibidos con el nombre real
     // del cliente del mostrador, y la App queda limpia para el siguiente.
     if (esComodin) {
-      const nombreReal = customerName.trim();
-      if (!nombreReal) {
-        alert("Escribe el nombre real del cliente antes de guardar el pedido.");
-        setShowOrderSummary(true);
-        setTimeout(() => document.getElementById("comodin-nombre-resumen")?.focus(), 80);
-        return;
-      }
+      // Sin escribir nombre: el pedido sale con el nombre del Cliente Comodín.
+      const nombreReal = (clienteIdentificado?.nombre || "Cliente Comodín").trim();
 
       const itemsComodin = [...orderedItems];
       const guardado = await conLimiteDeTiempo(
@@ -5461,7 +5455,7 @@ export default function App() {
                   {esComodin ? (
                     <>
                       <strong>🃏 Cliente Comodín</strong>
-                      <span>Pedido de mostrador · escribe el nombre real del cliente · sin juegos ni QR</span>
+                      <span>Pedido de mostrador · sin juegos ni QR · va directo a Pedidos recibidos</span>
                     </>
                   ) : (
                     <>
@@ -5510,17 +5504,15 @@ export default function App() {
               <input
                 type="text"
                 value={customerName}
-                readOnly={Boolean(clienteIdentificado) && !esComodin}
+                readOnly={Boolean(clienteIdentificado)}
                 onFocus={() => setCustomerNameFocused(true)}
                 onBlur={() => setCustomerNameFocused(false)}
                 onChange={(event) => setCustomerName(event.target.value)}
-                placeholder={esComodin ? "Nombre real del cliente (obligatorio)" : t.optional}
-                autoComplete="off"
+                placeholder={t.optional}
                 style={{
                   ...styles.inputCompact,
                   borderColor: customerNameFocused ? "#2563eb" : "#aeb7ff",
-                  ...(clienteIdentificado && !esComodin ? styles.inputClienteIdentificado : {}),
-                  ...(esComodin && !customerName.trim() ? styles.comodinNombreInputVacio : {}),
+                  ...(clienteIdentificado ? styles.inputClienteIdentificado : {}),
                 }}
               />
             </section>
@@ -6428,8 +6420,7 @@ export default function App() {
             </div>
             <p style={styles.comodinGuardadoTitulo}>Pedido guardado</p>
             <p style={styles.comodinGuardadoTexto}>
-              El pedido de <strong>{pedidoComodinGuardado.nombre}</strong> (
-              {pedidoComodinGuardado.articulos}{" "}
+              El pedido ({pedidoComodinGuardado.articulos}{" "}
               {pedidoComodinGuardado.articulos === 1 ? "artículo" : "artículos"}) ya está en{" "}
               <strong>Pedidos recibidos</strong>, listo para exportar.
             </p>
@@ -6628,29 +6619,9 @@ export default function App() {
               ))
             )}
 
-            {esComodin ? (
-              // Cliente Comodín: aquí se escribe el nombre real del cliente
-              // del mostrador (obligatorio). Las observaciones no se piden
-              // porque el pedido no va por WhatsApp, va directo a Pedidos
-              // recibidos.
-              <div style={styles.comodinNombreCaja}>
-                <label style={styles.comodinNombreLabel} htmlFor="comodin-nombre-resumen">
-                  Nombre real del cliente
-                </label>
-                <input
-                  id="comodin-nombre-resumen"
-                  type="text"
-                  value={customerName}
-                  onChange={(event) => setCustomerName(event.target.value)}
-                  placeholder="Escribe el nombre del cliente"
-                  autoComplete="off"
-                  style={{
-                    ...styles.comodinNombreInput,
-                    ...(customerName.trim() ? null : styles.comodinNombreInputVacio),
-                  }}
-                />
-              </div>
-            ) : (
+            {/* Cliente Comodín: sin nombre ni observaciones; el pedido va
+                directo a Pedidos recibidos con el nombre "Cliente Comodín". */}
+            {!esComodin && (
               <>
                 <label style={styles.label}>{t.notes}</label>
                 <textarea
@@ -8496,33 +8467,6 @@ const styles = {
 
   sendButtonComodin: {
     background: "#2563eb",
-  },
-  comodinNombreCaja: {
-    margin: "14px 0 4px",
-    padding: "12px",
-    borderRadius: "12px",
-    background: "#eff6ff",
-    border: "1px solid #bfdbfe",
-  },
-  comodinNombreLabel: {
-    display: "block",
-    fontWeight: "900",
-    color: "#1e3a8a",
-    marginBottom: "6px",
-  },
-  comodinNombreInput: {
-    width: "100%",
-    boxSizing: "border-box",
-    border: "2px solid #93c5fd",
-    borderRadius: "10px",
-    padding: "12px",
-    fontSize: "17px",
-    fontWeight: "700",
-    background: "#fff",
-  },
-  comodinNombreInputVacio: {
-    borderColor: "#f59e0b",
-    background: "#fffbeb",
   },
   comodinGuardadoIcono: {
     width: "64px",
