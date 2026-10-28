@@ -8,7 +8,7 @@ import {
 
 const ACTIVO = "activo";
 const INACTIVO = "inactivo";
-const FORMULARIO_VACIO = { nombre: "", telefono: "", estado: ACTIVO, mensaje_bingo_voz: "", codigo_lojo: "", es_pruebas: false };
+const FORMULARIO_VACIO = { nombre: "", telefono: "", estado: ACTIVO, mensaje_bingo_voz: "", codigo_lojo: "", es_pruebas: false, es_comodin: false };
 const PLANTILLA_WHATSAPP_KEY = "lojo_admin_plantilla_whatsapp_clientes";
 const PLANTILLA_WHATSAPP_ANTERIOR = `Hola 👋
 
@@ -188,6 +188,7 @@ export default function Clientes() {
       mensaje_bingo_voz: cliente.mensaje_bingo_voz || "",
       codigo_lojo: cliente.codigo_lojo || "",
       es_pruebas: Boolean(cliente.es_pruebas),
+      es_comodin: Boolean(cliente.es_comodin),
     });
     setErrores({});
     setModalAbierto(true);
@@ -211,7 +212,10 @@ export default function Clientes() {
 
     const nuevosErrores = {};
     if (!formulario.nombre.trim()) nuevosErrores.nombre = "El nombre es obligatorio.";
-    if (!formulario.telefono.trim()) nuevosErrores.telefono = "El teléfono es obligatorio.";
+    // El Cliente Comodín no es una persona: no necesita teléfono.
+    if (!formulario.telefono.trim() && !formulario.es_comodin) {
+      nuevosErrores.telefono = "El teléfono es obligatorio.";
+    }
 
     if (Object.keys(nuevosErrores).length) {
       setErrores(nuevosErrores);
@@ -228,9 +232,15 @@ export default function Clientes() {
         estado: formulario.estado,
         mensaje_bingo_voz: formulario.mensaje_bingo_voz.trim() || null,
         codigo_lojo: formulario.codigo_lojo.trim() || null,
-        es_pruebas: Boolean(formulario.es_pruebas),
+        es_pruebas: Boolean(formulario.es_pruebas) && !formulario.es_comodin,
         updated_at: new Date().toISOString(),
       };
+      // "es_comodin" solo se envía si se marca o si la columna ya existe
+      // (el cliente editado la trae), así el Admin sigue funcionando aunque
+      // todavía no se haya ejecutado la migración del Cliente Comodín.
+      if (formulario.es_comodin || (clienteEditando && "es_comodin" in clienteEditando)) {
+        datos.es_comodin = Boolean(formulario.es_comodin);
+      }
 
       if (clienteEditando) {
         const { data, error } = await supabase
@@ -299,6 +309,15 @@ export default function Clientes() {
     } finally {
       setProcesandoId(null);
     }
+  }
+
+  function abrirEnlace(cliente) {
+    const enlace = cliente.enlace_personal || (cliente.token ? crearEnlace(cliente.token) : "");
+    if (!enlace) {
+      mostrarAviso("error", "Este cliente no tiene un enlace personal.");
+      return;
+    }
+    window.open(enlace, "_blank", "noopener");
   }
 
   async function copiarEnlace(cliente) {
@@ -570,6 +589,11 @@ export default function Clientes() {
                       </td>
                       <td style={styles.td}>
                         <strong>{cliente.nombre}</strong>
+                        {cliente.es_comodin && (
+                          <span style={styles.badgeComodin} title="Cliente Comodín: pedidos de mostrador, sin juegos ni QR">
+                            🃏 COMODÍN
+                          </span>
+                        )}
                         {cliente.es_pruebas && (
                           <span style={styles.badgePruebas} title="Cliente de pruebas: exento de límites de Bingo/Sorteo">
                             PRUEBAS
@@ -582,6 +606,11 @@ export default function Clientes() {
                         <button type="button" style={styles.botonLink} onClick={() => copiarEnlace(cliente)}>
                           Copiar enlace
                         </button>
+                        {cliente.es_comodin && (
+                          <button type="button" style={styles.botonLink} onClick={() => abrirEnlace(cliente)}>
+                            Abrir
+                          </button>
+                        )}
                       </td>
                       <td style={styles.td}>
                         <span style={{ ...styles.estado, ...(activo ? styles.activo : styles.inactivo) }}>
@@ -637,6 +666,16 @@ export default function Clientes() {
                 <option value={ACTIVO}>Activo</option>
                 <option value={INACTIVO}>Inactivo</option>
               </select>
+            </Campo>
+            <Campo titulo="Cliente Comodín">
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 500 }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(formulario.es_comodin)}
+                  onChange={(e) => cambiarCampo("es_comodin", e.target.checked)}
+                />
+                Para pasar a la App los pedidos de clientes que piden en el Cash. Se escribe el nombre real en cada pedido; no juega a nada ni genera QR
+              </label>
             </Campo>
             <Campo titulo="Cliente de pruebas">
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 500 }}>
@@ -797,6 +836,16 @@ const styles = {
   estado: { display: "inline-block", borderRadius: 999, padding: "5px 9px", fontSize: 12, fontWeight: 800 },
   activo: { background: "#dcfce7", color: "#166534" },
   inactivo: { background: "#f3f4f6", color: "#4b5563" },
+  badgeComodin: {
+    marginLeft: 8,
+    padding: "2px 7px",
+    borderRadius: 999,
+    background: "#0f766e",
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: 800,
+    letterSpacing: 0.3,
+  },
   badgePruebas: {
     marginLeft: 8,
     padding: "2px 7px",
