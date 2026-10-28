@@ -6,6 +6,7 @@ import CarreraCasillasPremio from "./CarreraCasillasPremio";
 import CarreraPremioFinal from "./CarreraPremioFinal";
 import CarreraPremioMitad from "./CarreraPremioMitad";
 import CarreraComodin from "./CarreraComodin";
+import CarreraFreno from "./CarreraFreno";
 import CarreraClasificacion from "./CarreraClasificacion";
 import { avisoAtencion, boton } from "./lojopolyEstilos";
 
@@ -19,6 +20,7 @@ const PESTANAS = [
   { id: "casillas", titulo: "Casillas de premio" },
   { id: "mitad", titulo: "Premio de la mitad (32)" },
   { id: "comodin", titulo: "🃏 Comodín" },
+  { id: "freno", titulo: "🐢 Freno al líder" },
   { id: "final", titulo: "Premio final" },
   { id: "clasificacion", titulo: "Clasificación y premios" },
 ];
@@ -137,6 +139,7 @@ export default function Carrera() {
           {pestana === "casillas" && edicion && <CarreraCasillasPremio edicion={edicion} />}
           {pestana === "mitad" && edicion && <CarreraPremioMitad edicion={edicion} onGuardado={cargar} />}
           {pestana === "comodin" && edicion && <CarreraComodin edicion={edicion} onGuardado={cargar} />}
+          {pestana === "freno" && edicion && <CarreraFreno edicion={edicion} onGuardado={cargar} />}
           {pestana === "final" && edicion && <CarreraPremioFinal edicion={edicion} onGuardado={cargar} />}
           {pestana === "clasificacion" && edicion && <CarreraClasificacion edicion={edicion} />}
         </>
