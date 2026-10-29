@@ -197,7 +197,7 @@ export function useSorteoDirecto({ modo = "cliente", token = "", habilitado = tr
       const { data, error } = await supabase.rpc(funcion, parametros);
       if (error) throw error;
       if (data?.ok) cargarRef.current();
-      else if (data?.motivo === "sin_numeros") intentosRef.current.set(clave, Date.now() + 60000);
+      else if (data?.motivo === "sin_numeros" || data?.motivo === "sin_elegibles") intentosRef.current.set(clave, Date.now() + 60000);
     } catch (error) {
       console.error(`No se pudo llamar a ${funcion}:`, error);
     }

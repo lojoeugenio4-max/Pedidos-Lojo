@@ -10,6 +10,7 @@ const configuracionVacia = {
   maximo_numeros_pedido: 4,
   maximo_numeros_dia: 4,
   mensaje_cliente: "Tu pedido cumple las condiciones para participar en el Sorteo.",
+  sin_repetir_ganadores: false,
 };
 
 export default function SorteoConfiguracion() {
@@ -52,6 +53,7 @@ export default function SorteoConfiguracion() {
         maximo_numeros_pedido: promo.maximo_numeros_pedido ?? 4,
         maximo_numeros_dia: promo.maximo_numeros_dia ?? 4,
         mensaje_cliente: promo.mensaje_cliente || "",
+        sin_repetir_ganadores: Boolean(promo.sin_repetir_ganadores),
       });
 
       const { data: depsPromo, error: depsPromoError } = await supabase
@@ -94,6 +96,7 @@ export default function SorteoConfiguracion() {
         maximo_numeros_pedido: Math.max(1, Number(configuracion.maximo_numeros_pedido || 4)),
         maximo_numeros_dia: Math.max(1, Number(configuracion.maximo_numeros_dia || 4)),
         mensaje_cliente: configuracion.mensaje_cliente || "",
+        sin_repetir_ganadores: Boolean(configuracion.sin_repetir_ganadores),
       };
 
       let promocionId = configuracion.id;
@@ -242,6 +245,36 @@ export default function SorteoConfiguracion() {
           ))}
         </div>
       )}
+
+      <div style={campo}>
+        <span>Cómo sale el ganador</span>
+        <div style={{ display: "grid", gap: 6 }}>
+          <label style={campoRadio}>
+            <input
+              type="radio"
+              name="ganador-sorteo"
+              checked={!configuracion.sin_repetir_ganadores}
+              onChange={() => cambiarCampo("sin_repetir_ganadores", false)}
+            />
+            Al azar entre todos los números repartidos
+          </label>
+          <label style={campoRadio}>
+            <input
+              type="radio"
+              name="ganador-sorteo"
+              checked={configuracion.sin_repetir_ganadores}
+              onChange={() => cambiarCampo("sin_repetir_ganadores", true)}
+            />
+            Al azar, sin repetir ganadores (quien ya ganó un Sorteo no puede volver a ganar)
+          </label>
+        </div>
+      </div>
+
+      <div style={ayuda}>
+        En los dos casos los clientes de la lista negra nunca salen premiados. Si en una cuadrícula fijas tú el
+        número a mano («Número que tocará»), sale ese número y no se aplica nada de esto. Si todos los números
+        repartidos son de clientes excluidos, sale una casilla libre y el sorteo queda sin ganador.
+      </div>
 
       <label style={campo}>
         <span>Mensaje al cliente cuando cumple</span>

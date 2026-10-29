@@ -36,6 +36,12 @@ function etiquetaEstado(edicion) {
   return "Abierta";
 }
 
+function textoReglasAzar(sinRepetir) {
+  return sinRepetir
+    ? "sin la lista negra y sin quien ya ha ganado otro Sorteo"
+    : "sin los clientes de la lista negra";
+}
+
 function mensajeGanador({ edicionNombre, numero, numeroPremiado, premioTexto }) {
   const premioLinea = premioTexto ? `\n\n🎁 Premio: *${premioTexto}*` : "";
   return (
@@ -60,6 +66,8 @@ export default function SorteoEditions() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [promocionId, setPromocionId] = useState(null);
+  // Opción de la configuración: quien ya ganó no puede volver a ganar.
+  const [sinRepetir, setSinRepetir] = useState(false);
   const [ediciones, setEdiciones] = useState([]);
   const [conteos, setConteos] = useState({});
   const [ganadoresPorEdicion, setGanadoresPorEdicion] = useState({});
@@ -112,7 +120,7 @@ export default function SorteoEditions() {
 
     const { data: promo, error: promoError } = await supabase
       .from("promociones_sorteo")
-      .select("id")
+      .select("*")
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle();
@@ -125,6 +133,7 @@ export default function SorteoEditions() {
       return;
     }
     setPromocionId(promo?.id || null);
+    setSinRepetir(Boolean(promo?.sin_repetir_ganadores));
     if (!promo?.id) {
       setEdiciones([]);
       setCargando(false);
@@ -232,6 +241,9 @@ export default function SorteoEditions() {
           `El número ${dosDigitos(numero)} todavía no lo tiene ningún cliente en esta cuadrícula. Si sale así, el sorteo quedará SIN GANADOR. ¿Guardarlo de todas formas?`
         );
         if (!seguir) return;
+      } else {
+        const aviso = await avisoExclusion(edicionAbierta.id, numero);
+        if (aviso && !window.confirm(`${aviso} Si lo fijas tú, saldrá igualmente. ¿Guardarlo de todas formas?`)) return;
       }
     }
     setGuardandoNumeroFijado(true);
@@ -256,6 +268,31 @@ export default function SorteoEditions() {
     } finally {
       setGuardandoNumeroFijado(false);
     }
+  }
+
+  // Si el número es de un cliente de la lista negra o que ya ganó, devuelve
+  // el texto del aviso (o "" si no pasa nada).
+  async function avisoExclusion(edicionId, numero) {
+    try {
+      const [{ data: filas }, { data: exclusiones }] = await Promise.all([
+        supabase.from("sorteo_numeros").select("cliente_token,cliente_nombre").eq("edition_id", edicionId).eq("numero", numero),
+        supabase.rpc("admin_sorteo_exclusiones"),
+      ]);
+      const fila = (filas || [])[0];
+      if (!fila?.cliente_token || !exclusiones) return "";
+      const token = String(fila.cliente_token);
+      const nombre = fila.cliente_nombre || "Este cliente";
+      if ((exclusiones.lista_negra || []).some((c) => c.token === token)) {
+        return `⚠️ El ${dosDigitos(numero)} es de ${nombre}, que está en la LISTA NEGRA.`;
+      }
+      const ganador = (exclusiones.ganadores || []).find((g) => g.token === token);
+      if (ganador && !ganador.puede_volver_a_ganar) {
+        return `⚠️ El ${dosDigitos(numero)} es de ${nombre}, que YA HA GANADO otro Sorteo.`;
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    return "";
   }
 
   async function crearCuadriculaNueva() {
@@ -358,7 +395,7 @@ export default function SorteoEditions() {
     if (!edicionAbierta) return;
     if (
       !window.confirm(
-        `Se sorteará "Sorteo ${edicionAbierta.numero}" AHORA MISMO: saldrá en la pantalla grande (tiene que estar abierta) y en el móvil de los participantes que tengan la app abierta. ${numeroFijado != null ? `Saldrá el número que has fijado: ${dosDigitos(numeroFijado)}.` : "El número se elige al azar."} No se puede repetir. ¿Empezar?`
+        `Se sorteará "Sorteo ${edicionAbierta.numero}" AHORA MISMO: saldrá en la pantalla grande (tiene que estar abierta) y en el móvil de los participantes que tengan la app abierta. ${numeroFijado != null ? `Saldrá el número que has fijado: ${dosDigitos(numeroFijado)}.` : `El número se elige al azar (${textoReglasAzar(sinRepetir)}).`} No se puede repetir. ¿Empezar?`
       )
     ) {
       return;
@@ -381,7 +418,9 @@ export default function SorteoEditions() {
         throw new Error(
           data?.motivo === "sin_numeros"
             ? "Esta cuadrícula todavía no tiene ningún número repartido: no hay a quién sortear."
-            : "No se ha podido arrancar el sorteo."
+            : data?.motivo === "sin_elegibles"
+              ? "Todos los números de esta cuadrícula son de clientes de la lista negra o que ya han ganado, y no quedan casillas libres. Fija tú el número a mano o deja que alguno vuelva a ganar."
+              : "No se ha podido arrancar el sorteo."
         );
       }
       await cargarEdiciones(true);
@@ -538,7 +577,7 @@ export default function SorteoEditions() {
       <p style={texto}>
         Una cuadrícula se cierra sola al llenar las 100 casillas o cuando se sortea. Tú solo eliges la fecha y la
         hora del sorteo de cada cuadrícula (pulsa «Ver cuadrícula»): a esa hora el sistema elige el número al azar
-        y se ve en directo en la pantalla grande y en el móvil de los participantes. Si a un cliente le quedan
+        ({textoReglasAzar(sinRepetir)}) y se ve en directo en la pantalla grande y en el móvil de los participantes. Si a un cliente le quedan
         números por asignar cuando eso pasa, se le asignan automáticamente en la cuadrícula siguiente la próxima
         vez que pase el QR.
       </p>
@@ -661,7 +700,7 @@ export default function SorteoEditions() {
                           ? ` (${(cuadricula.casillas || []).find((c) => Number(c.numero) === numeroFijado).cliente_nombre})`
                           : " · todavía no lo tiene nadie"
                       }. Solo lo ves tú aquí: ni la pantalla grande ni los clientes lo saben antes del sorteo.`
-                    : "Sin número fijado: saldrá uno al azar entre los repartidos."}
+                    : `Sin número fijado: saldrá uno al azar entre los repartidos (${textoReglasAzar(sinRepetir)}).`}
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -682,7 +721,7 @@ export default function SorteoEditions() {
                   ? `Sorteo programado: ${formatearFechaSorteo(Date.parse(edicionAbierta.sorteo_programado_at))}. Los clientes con números aquí ven el aviso en su app. `
                   : "Todavía sin fecha: los clientes no ven ningún aviso. "}
                 A esa hora tiene que haber una pantalla grande abierta (o algún participante con la app abierta) para que
-                arranque; si no, arranca en cuanto se abra. {numeroFijado != null ? `Saldrá el ${dosDigitos(numeroFijado)} (fijado).` : "El número se elige al azar entre los ya repartidos."}
+                arranque; si no, arranca en cuanto se abra. {numeroFijado != null ? `Saldrá el ${dosDigitos(numeroFijado)} (fijado).` : `El número se elige al azar entre los ya repartidos (${textoReglasAzar(sinRepetir)}).`}
               </p>
               {edicionAbierta.sorteo_programado_at && (
                 <div style={{ flexBasis: "100%" }}>

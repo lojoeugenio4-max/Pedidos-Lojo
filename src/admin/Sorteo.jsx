@@ -1,17 +1,19 @@
 import SorteoConfiguracion from "./SorteoConfiguracion";
 import SorteoEditions from "./SorteoEditions";
+import SorteoExclusiones from "./SorteoExclusiones";
 
 export default function Sorteo() {
   return (
     <div>
       <h3 style={titulo}>🎟️ Sorteo promocional</h3>
       <p style={texto}>
-        Por cada N artículos distintos (configurable) el cliente recibe un número del 00 al 99 en la cuadrícula activa. Al llenarse las 100 casillas se abre otra automáticamente. El sorteo lo hace el sistema al azar, en directo, en la fecha y hora que programes para cada cuadrícula.
+        Por cada N artículos distintos (configurable) el cliente recibe un número del 00 al 99 en la cuadrícula activa. Al llenarse las 100 casillas se abre otra automáticamente. El sorteo lo hace el sistema al azar (sin contar a los clientes de la lista negra y, si lo activas, sin repetir ganadores), en directo, en la fecha y hora que programes para cada cuadrícula.
       </p>
       <div style={aviso}>
         Disponible para todos los clientes identificados. Actívalo o desactívalo con la casilla "Sorteo activo" de abajo.
       </div>
       <SorteoConfiguracion />
+      <SorteoExclusiones />
       <SorteoEditions />
     </div>
   );
