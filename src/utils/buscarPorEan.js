@@ -6,29 +6,46 @@
 // del artículo.
 import { supabase } from "../supabaseClient";
 
-// Deja el código como EAN-13: solo cifras, y los UPC-A de 12 cifras
-// (productos americanos) con un 0 delante, que es su EAN-13.
+// Limpia el código leído: sin espacios ni caracteres de control.
+// Se aceptan códigos de cualquier tamaño (EAN-13, EAN-8, cajas de 14
+// cifras, códigos largos GS1-128...).
 export function normalizarEan(codigo) {
-  const cifras = String(codigo || "").replace(/\D/g, "");
-  if (cifras.length === 12) return `0${cifras}`;
-  return cifras;
+  return String(codigo || "")
+    .replace(/[\s\u0000-\u001f]/g, "")
+    .trim();
 }
 
-export function eanValido(codigo) {
-  return /^\d{13}$/.test(String(codigo || "").trim());
+// Formas en que el mismo código puede estar guardado en la base de datos.
+function variantesCodigo(codigo) {
+  const limpio = normalizarEan(codigo);
+  const variantes = new Set([limpio]);
+  if (/^\d+$/.test(limpio)) {
+    // UPC-A (12 cifras) = EAN-13 con un 0 delante, y al revés.
+    if (limpio.length === 12) variantes.add(`0${limpio}`);
+    if (limpio.length === 13 && limpio.startsWith("0")) variantes.add(limpio.slice(1));
+    // Código de caja de 14 cifras que empieza por 0 = EAN-13 del producto.
+    if (limpio.length === 14 && limpio.startsWith("0")) variantes.add(limpio.slice(1));
+  }
+  // Código largo GS1-128: "01" + 14 cifras del producto + más datos.
+  const gs1 = limpio.match(/^01(\d{14})/);
+  if (gs1) {
+    variantes.add(gs1[1]);
+    if (gs1[1].startsWith("0")) variantes.add(gs1[1].slice(1));
+  }
+  return [...variantes].filter(Boolean);
 }
 
 // Devuelve los artículos (de la lista "productos" que ve el cliente) que
 // llevan ese EAN. Normalmente uno; puede haber más si dos artículos
 // comparten código.
 export async function buscarArticulosPorEan(codigo, productos) {
-  const ean = normalizarEan(codigo);
-  if (!ean) return [];
+  const variantes = variantesCodigo(codigo);
+  if (!variantes.length) return [];
 
   const { data, error } = await supabase
     .from("articulos")
     .select("id")
-    .contains("eans", [ean])
+    .overlaps("eans", variantes)
     // Si no hay conexión, que no se quede esperando para siempre.
     .abortSignal(AbortSignal.timeout(8000));
 

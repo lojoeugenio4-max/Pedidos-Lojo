@@ -13,7 +13,11 @@ import { createPortal } from "react-dom";
 import { Camera, ScanBarcode, X } from "lucide-react";
 import { buscarArticulosPorEan, normalizarEan } from "../utils/buscarPorEan";
 
-const FORMATOS_NATIVOS = ["ean_13", "ean_8", "upc_a"];
+// Se leen todos los tipos de código de barras habituales en alimentación:
+// EAN-13/EAN-8 (unidad), ITF-14 (cajas), GS1-128 / Code 128, Code 39, UPC.
+const FORMATOS_NATIVOS = ["ean_13", "ean_8", "upc_a", "upc_e", "itf", "code_128", "code_39"];
+// Códigos más cortos que esto se toman como lecturas falsas.
+const LONGITUD_MINIMA = 4;
 // Cada cuánto mira el lector nativo un fotograma del vídeo.
 const INTERVALO_NATIVO_MS = 120;
 
@@ -55,7 +59,7 @@ export default function EscanerEan({
     async function alLeer(codigo) {
       if (leidoRef.current || cancelado) return;
       const ean = normalizarEan(codigo);
-      if (ean.length !== 13 && ean.length !== 8) return;
+      if (ean.length < LONGITUD_MINIMA) return;
       leidoRef.current = true;
       pararRef.current();
       try {
@@ -97,7 +101,10 @@ export default function EscanerEan({
           }
           video.srcObject = stream;
           await video.play().catch(() => {});
-          const detector = new window.BarcodeDetector({ formats: FORMATOS_NATIVOS });
+          const soportados = await window.BarcodeDetector.getSupportedFormats();
+          const detector = new window.BarcodeDetector({
+            formats: FORMATOS_NATIVOS.filter((f) => soportados.includes(f)),
+          });
           let temporizador = null;
           const mirar = async () => {
             if (cancelado || leidoRef.current) return;
@@ -126,7 +133,15 @@ export default function EscanerEan({
         ]);
         if (cancelado) return;
         const pistas = new Map();
-        pistas.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A]);
+        pistas.set(DecodeHintType.POSSIBLE_FORMATS, [
+          BarcodeFormat.EAN_13,
+          BarcodeFormat.EAN_8,
+          BarcodeFormat.UPC_A,
+          BarcodeFormat.UPC_E,
+          BarcodeFormat.ITF,
+          BarcodeFormat.CODE_128,
+          BarcodeFormat.CODE_39,
+        ]);
         pistas.set(DecodeHintType.TRY_HARDER, true);
         const lector = new BrowserMultiFormatReader(pistas, { delayBetweenScanAttempts: 100 });
         const controles = await lector.decodeFromConstraints(

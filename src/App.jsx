@@ -4379,9 +4379,18 @@ export default function App() {
     setFichaProductoId(null);
   }
 
-  // Un lector de códigos de barras "teclea" el EAN (solo cifras) y pulsa
-  // Enter. Se acepta EAN-8, UPC-A (12) y EAN-13/14.
+  // Un lector de códigos de barras "teclea" el código y pulsa Enter.
+  // Se acepta cualquier tamaño (EAN-8, EAN-13, cajas de 14 cifras, códigos
+  // largos GS1-128...): sin espacios y con al menos 4 cifras.
   function esCodigoPistola(texto) {
+    const limpio = String(texto || "").trim();
+    return /^[0-9A-Za-z]{4,60}$/.test(limpio) && (limpio.match(/\d/g) || []).length >= 4;
+  }
+
+  // Los típicos EAN (8 a 14 cifras): si no se encuentran, se avisa.
+  // Los códigos más cortos pueden ser una búsqueda escrita a mano (p. ej. un
+  // código Lojo): si no son un código de barras, se deja la búsqueda normal.
+  function esEanTipico(texto) {
     return /^\d{8,14}$/.test(String(texto || "").trim());
   }
 
@@ -4390,6 +4399,11 @@ export default function App() {
     setAvisoPistolaEan("");
     try {
       const encontrados = await buscarArticulosPorEan(codigo, productosVisibles);
+      if (!encontrados.length && codigo.length < 8 && !esEanTipico(codigo)) {
+        // No es un código de barras: se queda como búsqueda normal.
+        searchInputRef.current?.blur();
+        return;
+      }
       setSearchInput("");
       setSearch("");
       if (!encontrados.length) {

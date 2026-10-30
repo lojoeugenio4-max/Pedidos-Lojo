@@ -20,9 +20,9 @@ export default function FormArticulo({
   const eanActivo = eans.includes(eanSeleccionado) ? eanSeleccionado : eans[0] || "";
 
   function anadirEan() {
-    const limpio = eanNuevo.replace(/\D/g, "");
-    if (limpio.length !== 13) {
-      setErrorEan("El EAN tiene que tener 13 cifras.");
+    const limpio = eanNuevo.replace(/\s/g, "");
+    if (!limpio) {
+      setErrorEan("Escribe el código de barras.");
       return;
     }
     if (eans.includes(limpio)) {
@@ -287,7 +287,6 @@ export default function FormArticulo({
               <div style={filaEan}>
                 <input
                   type="text"
-                  inputMode="numeric"
                   value={eanNuevo}
                   onChange={(e) => {
                     setEanNuevo(e.target.value);
@@ -299,8 +298,8 @@ export default function FormArticulo({
                       anadirEan();
                     }
                   }}
-                  placeholder="13 cifras"
-                  maxLength={14}
+                  placeholder="Código de barras"
+                  maxLength={60}
                   style={{ ...input, flex: 1 }}
                 />
                 <button type="button" onClick={anadirEan} style={botonAnadirEan}>
