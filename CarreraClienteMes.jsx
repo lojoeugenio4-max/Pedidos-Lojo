@@ -81,6 +81,23 @@ export default function CarreraClienteMes({ datos, variante = "movil", maxFilas 
           </h2>
           <div className="cm-mes">{mes.toUpperCase()}</div>
         </div>
+        {/* Solo en la TV grande: reglas nuevas en el hueco de la cabecera */}
+        <div className="cm-cabecera-aviso">
+          <div className="cm-cabecera-aviso-l1">
+            <span>
+              📅 <strong>UN PEDIDO POR DÍA</strong> que recoges
+            </span>
+          </div>
+          {datos.turbo2_mult != null && (
+            <div className="cm-cabecera-aviso-l2">
+              <span>🔥 TURBO ×{numCorto(datos.turbo1_mult)} del {datos.turbo1_desde}º · ×{numCorto(datos.turbo2_mult)} del {datos.turbo2_desde}º</span>
+              {Number(datos.deposito_extra) > 0 && (
+                <span>⛽ {datos.deposito_rayitas} pedidos = +{datos.deposito_extra}</span>
+              )}
+              {Number(datos.caja_prob) > 0 && <span>❓ Caja sorpresa del {datos.caja_desde}º para abajo</span>}
+            </div>
+          )}
+        </div>
         {!empezado && (
           <div className="cm-contador cm-contador-inicio">
             <span className="cm-contador-txt">EMPIEZA</span>
@@ -97,6 +114,11 @@ export default function CarreraClienteMes({ datos, variante = "movil", maxFilas 
       </header>
 
       <div className="cm-info">
+        <div className="cm-un-dia">
+          <span className="cm-un-dia-txt">
+            📅 <strong>UN PEDIDO POR DÍA</strong> que recoges
+          </span>
+        </div>
         <div className="cm-niveles">
           <div className="cm-nivel cm-nivel-alto">
             <span className="cm-nivel-pts">+{datos.puntos_alto}</span>
@@ -393,6 +415,25 @@ function EstilosCarrera() {
 .cm-reglas{ position:relative; display:flex; flex-wrap:wrap; gap:6px; margin:12px 0 8px; }
 .cm-chip{ font-size:11px; font-weight:800; padding:5px 9px; border-radius:999px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); }
 .cm-chip-oro{ background:linear-gradient(90deg,#ffe14d,#ffb300); color:#3b1d00; border:0; }
+.cm-un-dia{ grid-column:1/-1; display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:12px;
+  background:linear-gradient(90deg,#ff3d00,#ff9100); color:#fff; border:2px solid #ffe14d; box-shadow:0 0 18px rgba(255,145,0,.55); }
+.cm-un-dia-nuevo{ flex:none; font-family:'Press Start 2P',monospace; font-size:10px; padding:5px 7px; border-radius:8px; background:#ffe14d; color:#7c2d12;
+  animation:cmUnDiaParpadeo 1s steps(2) infinite; }
+@keyframes cmUnDiaParpadeo{ 50%{ opacity:.35 } }
+.cm-un-dia-txt{ font-weight:800; font-size:13px; line-height:1.3; }
+.cm-un-dia-txt strong{ font-weight:900; color:#fffbe6; }
+.cm-un-dia-txt em{ font-style:normal; color:#3b1d00; }
+.cm-cabecera-aviso{ display:none; }
+.cm-tv .cm-cabecera-aviso{ display:grid; gap:.8vh; justify-items:center; align-self:center; flex:1; margin:0 2vw; min-width:0; }
+.cm-cabecera-aviso-l1{ display:flex; align-items:center; gap:1vw; padding:.9vh 1.2vw; border-radius:1.4vh; color:#fff; font-weight:800;
+  font-size:clamp(12px,1.2vw,26px); white-space:nowrap; background:linear-gradient(90deg,#ff3d00,#ff9100); border:2px solid #ffe14d; box-shadow:0 0 18px rgba(255,145,0,.55); }
+.cm-cabecera-aviso-l1 strong{ font-weight:900; color:#fffbe6; }
+.cm-cabecera-aviso-l1 em{ font-style:normal; color:#3b1d00; }
+.cm-cabecera-aviso-l2{ display:flex; flex-wrap:wrap; justify-content:center; gap:.6vw 1.6vw; font-weight:800; font-size:clamp(11px,1vw,19px); color:#ffcc80; }
+.cm-tv .cm-info > .cm-un-dia, .cm-tv .cm-ayudas{ display:none; }
+.cm-tv .cm-un-dia{ padding:.9vh 1vw; gap:1vw; border-radius:1.4vh; }
+.cm-tv .cm-un-dia-nuevo{ font-size:clamp(10px,.95vw,18px); padding:.6vh .6vw; }
+.cm-tv .cm-un-dia-txt{ font-size:clamp(14px,1.45vw,28px); }
 .cm-info{ position:relative; display:grid; gap:10px; margin:12px 0 8px; }
 .cm-tv .cm-info{ grid-template-columns:1.25fr 1fr; gap:1.4vw; margin:1.2vh 0 .4vh; align-items:stretch; }
 .cm-niveles{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }

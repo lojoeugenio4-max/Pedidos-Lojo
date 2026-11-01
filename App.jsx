@@ -5305,6 +5305,44 @@ export default function App() {
                   </div>
                 </div>
               )}
+              {clienteMes.datos?.visible && (
+                <div style={styles.clienteMesReglasNuevas}>
+                  <div style={styles.clienteMesReglasTitulo}>📢 NUEVAS REGLAS desde noviembre</div>
+                  <div>
+                    ⏰ <strong>Ya no hay que esperar 12 horas.</strong> Ahora suma{" "}
+                    <strong>un pedido por cada día que recoges</strong>, sin mirar la hora. Ejemplo: el lunes a las 23:00 pides para el
+                    martes y el martes a las 18:00 pides para el miércoles: <strong>suman los dos</strong>. Si haces dos pedidos para el
+                    mismo día, suma solo el primero que pase por caja.
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.85 }}>
+                    (Los pedidos hechos hasta las 7:00, o hasta las 13:00 el sábado, son para ese mismo día; los de después, para el
+                    día siguiente. Los del sábado tarde y el domingo, para el lunes.)
+                  </div>
+                  <div>
+                    🛒 Para sumar, el pedido tiene que llevar al menos{" "}
+                    <strong>{clienteMes.datos.min_articulos_puntuar || 1} artículos distintos</strong>.
+                  </div>
+                  {Number(clienteMes.datos.turbo2_mult) > 1 && (
+                    <div>
+                      🔥 <strong>Turbo</strong> para los que van detrás: tus puntos ×{textoMultiplicador(clienteMes.datos.turbo1_mult)} si
+                      vas del {clienteMes.datos.turbo1_desde}º al {Number(clienteMes.datos.turbo2_desde) - 1}º y{" "}
+                      {`×${textoMultiplicador(clienteMes.datos.turbo2_mult)}`} del {clienteMes.datos.turbo2_desde}º para abajo.
+                    </div>
+                  )}
+                  {Number(clienteMes.datos.deposito_extra) > 0 && (
+                    <div>
+                      ⛽ <strong>Depósito:</strong> cada {clienteMes.datos.deposito_rayitas} pedidos que suman,{" "}
+                      {`+${clienteMes.datos.deposito_extra}`} puntos de regalo.
+                    </div>
+                  )}
+                  {Number(clienteMes.datos.caja_prob) > 0 && (
+                    <div>
+                      ❓ <strong>Caja sorpresa:</strong> si vas del {clienteMes.datos.caja_desde}º para abajo, al pasar tu QR te puede
+                      salir una caja con entre {clienteMes.datos.caja_min} y {clienteMes.datos.caja_max} puntos extra.
+                    </div>
+                  )}
+                </div>
+              )}
               {clienteMes.error && !clienteMes.datos && <div style={styles.bingoErrorBox}>{clienteMes.error}</div>}
               <CarreraClienteMes datos={clienteMes.datos} variante="movil" maxFilas={10} cargando={clienteMes.cargando} />
             </div>
@@ -9067,6 +9105,20 @@ const styles = {
   },
   clienteMesMarcadorNum: { fontSize: 26, fontWeight: 900, lineHeight: 1.1 },
   clienteMesMarcadorTxt: { fontSize: 10, fontWeight: 800, letterSpacing: 1 },
+  clienteMesReglasNuevas: {
+    display: "grid",
+    gap: 6,
+    margin: "10px 0",
+    padding: "12px 14px",
+    borderRadius: 14,
+    background: "#fff7ed",
+    border: "2px solid #fb923c",
+    color: "#431407",
+    fontSize: 13,
+    lineHeight: 1.4,
+    textAlign: "left",
+  },
+  clienteMesReglasTitulo: { fontWeight: 900, fontSize: 15, color: "#c2410c" },
   clienteMesMarcadorHoy: { flex: "1 1 180px", fontSize: 13, fontWeight: 700, lineHeight: 1.35 },
   juegoTarjetaSorteo: {
     background: "linear-gradient(135deg, #059669, #064e3b)",
