@@ -34,6 +34,18 @@ const CONFIG_VACIA = {
   min_uds_por_articulo: 5,
   meta_puntos: 100,
   premio_texto: "",
+  // Reglas de noviembre 2026
+  min_articulos_puntuar: 3,
+  turbo1_desde: 6,
+  turbo1_mult: 1.5,
+  turbo2_desde: 16,
+  turbo2_mult: 2,
+  deposito_rayitas: 5,
+  deposito_extra: 5,
+  caja_desde: 16,
+  caja_prob: 20,
+  caja_min: 2,
+  caja_max: 10,
 };
 
 export default function ClienteMes() {
@@ -147,6 +159,17 @@ export default function ClienteMes() {
           medio_uds_por_articulo: n(config.medio_uds_por_articulo, 5),
           puntos_base: n(config.puntos_base, 1),
           meta_puntos: n(config.meta_puntos, 100),
+          min_articulos_puntuar: n(config.min_articulos_puntuar, 3),
+          turbo1_desde: n(config.turbo1_desde, 6),
+          turbo1_mult: n(config.turbo1_mult, 1.5),
+          turbo2_desde: n(config.turbo2_desde, 16),
+          turbo2_mult: n(config.turbo2_mult, 2),
+          deposito_rayitas: n(config.deposito_rayitas, 5),
+          deposito_extra: n(config.deposito_extra, 5),
+          caja_desde: n(config.caja_desde, 16),
+          caja_prob: n(config.caja_prob, 20),
+          caja_min: n(config.caja_min, 2),
+          caja_max: n(config.caja_max, 10),
           premio_1: config.premio_texto || "",
           premio_2: config.premio_2_texto || "",
           premio_3: config.premio_3_texto || "",
@@ -227,10 +250,12 @@ export default function ClienteMes() {
         <h2 style={titulo}>🏆 Cliente del mes</h2>
         <p style={texto}>
           Carrera de puntos: cada pedido hecho por la App suma puntos <strong>al pasar su QR en caja</strong>, igual que el
-          resto de juegos. Según el pedido vale los puntos del nivel alto, del nivel medio o, si no llega a ninguno, los de
-          base por haber usado la App. Se puntúa <strong>un pedido por cliente cada 12 horas</strong>
-          (contando desde la hora en que se envió el pedido que sumó). Premio para el podio (1º, 2º y 3º) el último día del mes; si hay empate, va delante
-          quien llegó antes. Cada día 1 empieza una carrera nueva.
+          resto de juegos. Según el pedido vale los puntos del nivel alto, del nivel medio o los de base, siempre que lleve el{" "}
+          <strong>mínimo de artículos distintos</strong>. Se puntúa <strong>un pedido por cliente y día de preparación</strong>{" "}
+          (el mismo corte del almacén: hasta las 7:00, o las 13:00 el sábado, es para ese día; después, para el siguiente).
+          Los que van atrás tienen ayudas: <strong>turbo</strong>, <strong>depósito de constancia</strong> y{" "}
+          <strong>caja sorpresa</strong>. Premio para el podio (1º, 2º y 3º) el último día del mes; si hay empate, va
+          delante quien llegó antes. Cada día 1 empieza una carrera nueva.
         </p>
       </div>
 
@@ -301,6 +326,66 @@ export default function ClienteMes() {
               <div style={rejilla}>
                 <Campo etiqueta="Puntos (si no llega a ningún nivel)" valor={config.puntos_base} onChange={(v) => cambiar("puntos_base", v)} />
               </div>
+            </div>
+
+            <div style={reglaBox}>
+              <strong>🚫 Pedido mínimo (contra los trucos)</strong>
+              <div style={rejilla}>
+                <Campo
+                  etiqueta="Artículos distintos para sumar"
+                  valor={config.min_articulos_puntuar}
+                  onChange={(v) => cambiar("min_articulos_puntuar", v)}
+                />
+              </div>
+              <p style={texto}>
+                Un pedido con menos artículos distintos no suma nada (ni turbo, ni depósito, ni caja) y no gasta el día: si
+                luego hace otro pedido bueno para ese mismo día, ese sí suma.
+              </p>
+            </div>
+
+            <div style={reglaBox}>
+              <strong>🔥 Turbo según el puesto</strong>
+              <div style={rejilla}>
+                <Campo etiqueta="Turbo 1: desde el puesto" valor={config.turbo1_desde} onChange={(v) => cambiar("turbo1_desde", v)} />
+                <Campo etiqueta="Turbo 1: multiplica por" valor={config.turbo1_mult} paso="0.5" onChange={(v) => cambiar("turbo1_mult", v)} />
+                <Campo etiqueta="Turbo 2: desde el puesto" valor={config.turbo2_desde} onChange={(v) => cambiar("turbo2_desde", v)} />
+                <Campo etiqueta="Turbo 2: multiplica por" valor={config.turbo2_mult} paso="0.5" onChange={(v) => cambiar("turbo2_mult", v)} />
+              </div>
+              <p style={texto}>
+                Los puntos del pedido se multiplican según el puesto que lleva el cliente al pasar el QR (redondeando hacia
+                arriba). Ejemplo: un pedido de 3 puntos vale {Math.ceil(3 * (Number(config.turbo1_mult) || 1))} del{" "}
+                {config.turbo1_desde || "?"}º al {Math.max(0, (Number(config.turbo2_desde) || 0) - 1)}º y{" "}
+                {Math.ceil(3 * (Number(config.turbo2_mult) || 1))} del {config.turbo2_desde || "?"}º para abajo. Un cliente sin
+                puntos cuenta como el último. Pon 1 para quitar un turbo.
+              </p>
+            </div>
+
+            <div style={reglaBox}>
+              <strong>⛽ Depósito de constancia</strong>
+              <div style={rejilla}>
+                <Campo etiqueta="Pedidos para llenarlo" valor={config.deposito_rayitas} onChange={(v) => cambiar("deposito_rayitas", v)} />
+                <Campo etiqueta="Puntos de regalo al llenarlo" valor={config.deposito_extra} onChange={(v) => cambiar("deposito_extra", v)} />
+              </div>
+              <p style={texto}>
+                Cada pedido que suma llena una rayita. Al llenar las {config.deposito_rayitas || "?"} sale en la TV el STOP y el
+                repostaje con +{config.deposito_extra || 0} puntos, y vuelve a vaciarse. Es para todos y premia venir a
+                menudo. Pon 0 puntos para quitarlo.
+              </p>
+            </div>
+
+            <div style={reglaBox}>
+              <strong>❓ Caja sorpresa</strong>
+              <div style={rejilla}>
+                <Campo etiqueta="Desde el puesto" valor={config.caja_desde} onChange={(v) => cambiar("caja_desde", v)} />
+                <Campo etiqueta="Probabilidad (% de pedidos)" valor={config.caja_prob} onChange={(v) => cambiar("caja_prob", v)} />
+                <Campo etiqueta="Puntos mínimos" valor={config.caja_min} onChange={(v) => cambiar("caja_min", v)} />
+                <Campo etiqueta="Puntos máximos" valor={config.caja_max} onChange={(v) => cambiar("caja_max", v)} />
+              </div>
+              <p style={texto}>
+                Si el cliente va del {config.caja_desde || "?"}º para abajo, {config.caja_prob || 0} de cada 100 pedidos que suman
+                le sale en la TV una caja ❓ con entre {config.caja_min || "?"} y {config.caja_max || "?"} puntos al azar. Pon 0
+                % para quitarla.
+              </p>
             </div>
 
             <div style={reglaBox}>
@@ -465,11 +550,11 @@ function CampoTexto({ etiqueta, valor, onChange }) {
   );
 }
 
-function Campo({ etiqueta, valor, onChange }) {
+function Campo({ etiqueta, valor, onChange, paso = "1" }) {
   return (
     <label style={campo}>
       <span>{etiqueta}</span>
-      <input style={input} type="number" min="0" value={valor} onChange={(e) => onChange(e.target.value)} />
+      <input style={input} type="number" min="0" step={paso} value={valor ?? ""} onChange={(e) => onChange(e.target.value)} />
     </label>
   );
 }

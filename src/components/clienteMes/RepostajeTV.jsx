@@ -112,7 +112,7 @@ export default function RepostajeTV({ celebracion, onFin }) {
     });
     en(REPOSTAJE_CM.engancha + 600, () => {
       poner({ repostando: true });
-      rot("⛽ REPOSTAJE EXTRA DE REGALO ⛽", "rpt-rot-extra");
+      rot(celebracion?.deposito_rayitas ? `⛽ ¡${celebracion.deposito_rayitas} PEDIDOS! REPOSTAJE DE REGALO ⛽` : "⛽ REPOSTAJE EXTRA DE REGALO ⛽", "rpt-rot-extra");
       repChorro(extra * (REPOSTAJE_CM.paso / 1000) + 0.2);
     });
 

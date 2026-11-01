@@ -18,6 +18,7 @@ import CeremoniaPodio from "../components/clienteMes/CeremoniaPodio";
 import CelebracionPuntosTV from "../components/clienteMes/CelebracionPuntosTV";
 import BromaLiderTV from "../components/clienteMes/BromaLiderTV";
 import RepostajeTV from "../components/clienteMes/RepostajeTV";
+import CajaSorpresaTV from "../components/clienteMes/CajaSorpresaTV";
 import { useClasificacionClienteMes } from "../utils/clienteMes";
 import logoLojo from "../assets/logo-lojo.jpg";
 
@@ -902,32 +903,44 @@ function DisplayPageContenido() {
       />
     );
   }
-  // Repostaje extra (pocos puntos y del 16º para abajo), en dos partes:
-  // 1º la celebración normal con los puntos del pedido (total y puesto de
-  // ANTES del regalo) y, al terminar, el STOP + repostaje con los +5.
-  if (celebracionClienteMes?.repostaje) {
-    if (celebracionClienteMes.etapa !== "repostaje") {
-      const antes = {
-        ...celebracionClienteMes,
-        total: celebracionClienteMes.total_antes ?? celebracionClienteMes.total,
-        posicion: celebracionClienteMes.posicion_antes ?? celebracionClienteMes.posicion,
-      };
+  // Celebración por partes (reglas de noviembre 2026):
+  //  1º los puntos del pedido (con su TURBO), con el total y el puesto de
+  //     ANTES de los regalos;
+  //  2º si se llenó el DEPÓSITO: STOP + repostaje con sus +5;
+  //  3º si salió CAJA SORPRESA: la caja ❓ con sus puntos.
+  if (celebracionClienteMes && (celebracionClienteMes.repostaje || celebracionClienteMes.caja)) {
+    const c = celebracionClienteMes;
+    const etapas = ["puntos", ...(c.repostaje ? ["repostaje"] : []), ...(c.caja ? ["caja"] : [])];
+    const etapa = etapas.includes(c.etapa) ? c.etapa : "puntos";
+    const siguiente = () => {
+      const i = etapas.indexOf(etapa);
+      if (i < 0 || i >= etapas.length - 1) {
+        terminarCelebracionClienteMes();
+        return;
+      }
+      setCelebracionClienteMes((actual) => (actual ? { ...actual, etapa: etapas[i + 1] } : actual));
+    };
+    const trasRepostaje = c.total_tras_repostaje ?? c.total;
+    if (etapa === "puntos") {
       return (
         <CelebracionPuntosTV
-          key={celebracionClienteMes.id}
-          celebracion={antes}
+          key={c.id}
+          celebracion={{ ...c, total: c.total_antes ?? c.total, posicion: c.posicion_antes ?? c.posicion }}
           meta={clienteMesTV.datos?.meta_puntos}
-          onFin={() => setCelebracionClienteMes((c) => (c ? { ...c, etapa: "repostaje" } : c))}
+          onFin={siguiente}
         />
       );
     }
-    return (
-      <RepostajeTV
-        key={`${celebracionClienteMes.id}-rep`}
-        celebracion={celebracionClienteMes}
-        onFin={terminarCelebracionClienteMes}
-      />
-    );
+    if (etapa === "repostaje") {
+      return (
+        <RepostajeTV
+          key={`${c.id}-rep`}
+          celebracion={{ ...c, total: trasRepostaje, posicion: c.posicion_tras_repostaje ?? c.posicion }}
+          onFin={siguiente}
+        />
+      );
+    }
+    return <CajaSorpresaTV key={`${c.id}-caja`} celebracion={c} onFin={siguiente} />;
   }
   if (celebracionClienteMes) {
     return (

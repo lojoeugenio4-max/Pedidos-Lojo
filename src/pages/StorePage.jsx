@@ -757,7 +757,8 @@ export default function StorePage() {
       notificarQrLeido({ orderId: unified.order_id, code: unified.code || code });
 
       // CLIENTE DEL MES: al pasar el QR se suman los puntos (si el pedido
-      // cumple y no sumó otro en las últimas 12 horas). Pasa siempre, se elija el juego que
+      // lleva el mínimo de artículos y no sumó otro para el mismo día de
+      // preparación). Pasa siempre, se elija el juego que
       // se elija, y un fallo aquí nunca bloquea el resto de juegos.
       let resultadoClienteMes = null;
       try {
@@ -769,7 +770,7 @@ export default function StorePage() {
         const visibleEnTPV =
           rawClienteMes?.sumado ||
           (unified.cliente_mes_available &&
-            ["ya_sumado_hoy", "ya_canjeado"].includes(rawClienteMes?.motivo));
+            ["ya_sumado_hoy", "ya_canjeado", "pedido_pequeno"].includes(rawClienteMes?.motivo));
         setClienteMesResultado(visibleEnTPV ? rawClienteMes : null);
         if (rawClienteMes?.sumado) {
           enviarEventoDisplay("cliente-mes-sumado", {
@@ -777,11 +778,22 @@ export default function StorePage() {
             puntos: rawClienteMes.puntos,
             total: rawClienteMes.total,
             posicion: rawClienteMes.posicion,
-            // Repostaje extra: +5 de regalo por sumar poco yendo del 16º abajo.
-            repostaje: Boolean(rawClienteMes.repostaje),
-            puntos_extra: rawClienteMes.puntos_extra,
+            valor_pedido: rawClienteMes.valor_pedido,
+            // Turbo según el puesto que llevaba al pasar el QR.
+            turbo_mult: rawClienteMes.turbo_mult,
+            posicion_salida: rawClienteMes.posicion_salida,
             total_antes: rawClienteMes.total_antes,
             posicion_antes: rawClienteMes.posicion_antes,
+            // Depósito de constancia: rayitas y, si se llenó, repostaje.
+            deposito_rayita: rawClienteMes.deposito_rayita,
+            deposito_rayitas: rawClienteMes.deposito_rayitas,
+            repostaje: Boolean(rawClienteMes.repostaje),
+            puntos_extra: rawClienteMes.puntos_extra,
+            total_tras_repostaje: rawClienteMes.total_tras_repostaje,
+            posicion_tras_repostaje: rawClienteMes.posicion_tras_repostaje,
+            // Caja sorpresa para los de atrás.
+            caja: Boolean(rawClienteMes.caja),
+            caja_extra: rawClienteMes.caja_extra,
           });
         }
       } catch (err) {
@@ -1923,14 +1935,19 @@ export default function StorePage() {
             <div style={styles.clienteMesGrande}>
               +{clienteMesResultado?.puntos}
               {clienteMesResultado?.repostaje ? ` ⛽+${clienteMesResultado?.puntos_extra || 5}` : ""}
+              {clienteMesResultado?.caja ? ` ❓+${clienteMesResultado?.caja_extra}` : ""}
             </div>
             <h2 style={{ margin: "4px 0 6px" }}>
               ¡Puntos para {clienteMesResultado?.nombre || entitlement?.customer_name || "el cliente"}!
             </h2>
             <p style={styles.info}>
+              {`🖥️ Mirad la TV grande: el carrito avanza con un bocinazo por cada punto${
+                Number(clienteMesResultado?.turbo_mult) > 1 ? ` (¡con TURBO ×${String(Number(clienteMesResultado.turbo_mult)).replace(".", ",")}!)` : ""
+              }.`}
               {clienteMesResultado?.repostaje
-                ? `🖥️ Mirad la TV grande: primero el carrito con sus puntos y después ¡STOP y repostaje! Se le regalan ${clienteMesResultado?.puntos_extra || 5} puntos extra de gasolina.`
-                : "🖥️ Mirad la TV grande: el carrito avanza con un bocinazo por cada punto."}
+                ? ` Después ¡STOP y repostaje! Depósito lleno: +${clienteMesResultado?.puntos_extra || 5} de regalo.`
+                : ""}
+              {clienteMesResultado?.caja ? ` ¡Y le ha salido la CAJA SORPRESA: +${clienteMesResultado?.caja_extra}!` : ""}
               {clienteMesResultado?.total ? ` Lleva ${clienteMesResultado.total} puntos` : ""}
               {clienteMesResultado?.posicion ? ` y va ${clienteMesResultado.posicion}º.` : clienteMesResultado?.total ? "." : ""}
             </p>
@@ -2326,12 +2343,17 @@ function textoClienteMes(r) {
       r.motivo === "mejorado"
         ? `+${pts(r.puntos)} para ${r.nombre || "el cliente"}: este pedido vale ${r.valor_pedido} y mejora al que ya tenía hoy.`
         : `+${pts(r.puntos)} para ${r.nombre || "el cliente"}.`;
-    const extra = r.repostaje ? ` ⛽ Repostaje: +${pts(r.puntos_extra || 5)} extra de regalo.` : "";
-    return `${base}${extra} Lleva ${pts(r.total)}${r.posicion ? ` y va ${r.posicion}º` : ""}.`;
+    const turbo = Number(r.turbo_mult) > 1 ? ` (${r.valor_pedido} × ${String(Number(r.turbo_mult)).replace(".", ",")} de turbo 🔥)` : "";
+    const extra = r.repostaje ? ` ⛽ Depósito lleno: +${pts(r.puntos_extra || 5)} de regalo.` : "";
+    const caja = r.caja ? ` ❓ Caja sorpresa: +${pts(r.caja_extra)}.` : "";
+    return `${base.replace(/\.$/, "")}${turbo}.${extra}${caja} Lleva ${pts(r.total)}${r.posicion ? ` y va ${r.posicion}º` : ""}.`;
   }
   if (r.motivo === "ya_sumado_hoy") {
     const regalo = Number(r.extra_hoy) > 0 ? ` + ${r.extra_hoy} de regalo` : "";
-    return `Ya sumó ${pts(r.puntos_hoy)}${regalo} con otro pedido hace menos de 12 horas: solo suma un pedido cada 12 horas.`;
+    return `Ya sumó ${pts(r.puntos_hoy)}${regalo} con otro pedido para el mismo día: solo suma un pedido por día.`;
+  }
+  if (r.motivo === "pedido_pequeno") {
+    return `Este pedido no suma: lleva ${r.articulos} ${Number(r.articulos) === 1 ? "artículo" : "artículos"} y hacen falta ${r.minimo} distintos.`;
   }
   if (r.motivo === "ya_canjeado") return "Los puntos de este pedido ya se sumaron.";
   return "Este pedido no suma puntos.";

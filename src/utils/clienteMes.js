@@ -1,9 +1,14 @@
 // CLIENTE DEL MES · carrera de puntos.
 //
-// Los puntos se calculan en el servidor (cliente_mes_clasificacion) a partir
-// de los pedidos enviados por la App: 5 / 3 / 1 puntos por pedido según lo
-// que lleve, y solo suma 1 pedido cada 12 horas. Gana quien más puntos
-// tenga al terminar el mes.
+// Los puntos se calculan en el servidor (cliente_mes_canjear_qr) al pasar el
+// QR en caja (reglas de noviembre 2026):
+//  - 5 / 3 / 1 puntos según lo que lleve el pedido, y como mínimo N
+//    artículos distintos (si no, 0);
+//  - un pedido puntuable por cada DÍA DE PREPARACIÓN (ya no 12 horas);
+//  - TURBO según el puesto (×1,5 del 6º, ×2 del 16º);
+//  - DEPÓSITO: cada 5 pedidos que suman, +5 de regalo (repostaje);
+//  - CAJA SORPRESA para los de atrás (+2 a +10 al azar).
+// Gana quien más puntos tenga al terminar el mes.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 
@@ -27,17 +32,28 @@ export function diasRestantesMes(hoyIso) {
   return ultimo - d + 1;
 }
 
-// "Podrás volver a sumar a partir de las 12:27." (o "mañana a las 0:27.")
-export function textoProximoClienteMes(proximoIso) {
-  if (!proximoIso) return "Solo suma un pedido cada 12 horas.";
-  const fecha = new Date(proximoIso);
-  if (Number.isNaN(fecha.getTime()) || fecha.getTime() <= Date.now()) return "";
-  const zona = { timeZone: "Europe/Madrid" };
-  const hora = fecha.toLocaleTimeString("es-ES", { ...zona, hour: "2-digit", minute: "2-digit" });
-  const dia = (d) => d.toLocaleDateString("en-CA", zona);
-  const manana = new Date(Date.now() + 24 * 3600 * 1000);
-  const cuando = dia(fecha) === dia(new Date()) ? "hoy" : dia(fecha) === dia(manana) ? "mañana" : "";
-  return `Podrás volver a sumar ${cuando ? cuando + " " : ""}a partir de las ${hora}.`;
+const DIAS_SEMANA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+
+// "2026-11-03" -> "el martes 3"
+export function textoDiaPreparacion(isoFecha) {
+  if (!isoFecha) return "";
+  const [y, m, d] = String(isoFecha).slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "";
+  const fecha = new Date(y, m - 1, d);
+  return `el ${DIAS_SEMANA[fecha.getDay()]} ${d}`;
+}
+
+// Se conserva por compatibilidad: ya no hay espera de 12 horas, se suma
+// un pedido por cada día de preparación.
+export function textoProximoClienteMes() {
+  return "Tu próximo pedido para otro día volverá a sumar.";
+}
+
+// 1.5 -> "1,5"; 2 -> "2"
+export function textoMultiplicador(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return "";
+  return String(Math.round(v * 100) / 100).replace(".", ",");
 }
 
 export async function cargarClasificacionClienteMes({ token = null, mes = null } = {}) {
@@ -86,15 +102,10 @@ export function useClasificacionClienteMes({ token = null, habilitado = true, re
   return { datos, cargando, error, recargar };
 }
 
-// Puntos que vale un pedido (misma regla que _cliente_mes_puntos_pedido en
-// el servidor, que es quien decide de verdad al pasar el QR):
-//  - nivel alto (5): N artículos distintos con 1+ caja, o M artículos con K+ uds
-//  - nivel medio (3): lo mismo con los números del nivel medio
-//  - base (1): cualquier otro pedido hecho por la App
-export function puntosPedidoClienteMes(items, d) {
-  if (!d?.visible || !d?.empezado || !Array.isArray(items)) return 0;
+// Artículos distintos del pedido con alguna caja o unidad.
+function articulosPedido(items) {
   const porArticulo = new Map();
-  items.forEach((item) => {
+  (Array.isArray(items) ? items : []).forEach((item) => {
     const clave = String(item?.product?.id ?? item?.product?.codigo_lojo ?? item?.product?.name ?? "");
     if (!clave) return;
     const actual = porArticulo.get(clave) || { cajas: 0, unidades: 0 };
@@ -102,8 +113,27 @@ export function puntosPedidoClienteMes(items, d) {
     actual.unidades += Number(item.units || 0);
     porArticulo.set(clave, actual);
   });
-  const lista = [...porArticulo.values()].filter((a) => a.cajas > 0 || a.unidades > 0);
+  return [...porArticulo.values()].filter((a) => a.cajas > 0 || a.unidades > 0);
+}
+
+// Cuántos artículos distintos le faltan al pedido para poder sumar (0 = ya llega).
+export function faltanArticulosClienteMes(items, d) {
+  if (!d?.visible || !Array.isArray(items)) return 0;
+  const minimo = Math.max(1, Number(d.min_articulos_puntuar || 1));
+  return Math.max(0, minimo - articulosPedido(items).length);
+}
+
+// Puntos que vale un pedido SIN turbo (misma regla que _cliente_mes_puntos_pedido
+// en el servidor, que es quien decide de verdad al pasar el QR):
+//  - menos del mínimo de artículos distintos: 0
+//  - nivel alto (5): N artículos distintos con 1+ caja, o M artículos con K+ uds
+//  - nivel medio (3): lo mismo con los números del nivel medio
+//  - base (1): cualquier otro pedido hecho por la App
+export function puntosPedidoClienteMes(items, d) {
+  if (!d?.visible || !d?.empezado || !Array.isArray(items)) return 0;
+  const lista = articulosPedido(items);
   if (!lista.length) return 0;
+  if (lista.length < Math.max(1, Number(d.min_articulos_puntuar || 1))) return 0;
   const conCajas = lista.filter((a) => a.cajas >= 1).length;
   const conUds = (minimo) => lista.filter((a) => a.unidades >= Number(minimo || 1)).length;
   if (conCajas >= Number(d.min_art_cajas) || conUds(d.min_uds_por_articulo) >= Number(d.min_art_unidades)) {
@@ -113,6 +143,19 @@ export function puntosPedidoClienteMes(items, d) {
     return Number(d.puntos_medio || 3);
   }
   return Number(d.puntos_base ?? 1);
+}
+
+// Turbo que tiene ahora el cliente (según su puesto). 1 = sin turbo.
+export function turboClienteMes(d) {
+  const t = Number(d?.yo?.turbo_mult);
+  return Number.isFinite(t) && t > 1 ? t : 1;
+}
+
+// Puntos del pedido ya con el turbo actual del cliente (aproximado: el
+// servidor mira el puesto en el momento de pasar el QR).
+export function puntosConTurboClienteMes(items, d) {
+  const base = puntosPedidoClienteMes(items, d);
+  return base > 0 ? Math.ceil(base * turboClienteMes(d)) : 0;
 }
 
 // ---------------------------------------------------------------------
@@ -146,12 +189,12 @@ export function duracionBromaLider(revelar) {
 }
 
 // ---------------------------------------------------------------------
-// REPOSTAJE EXTRA (RepostajeTV): cuando un pedido suma menos de 5 puntos y
-// el cliente va del 16º para abajo, el servidor le regala 5 puntos de
-// "gasolina" (cliente_mes_canjear_qr devuelve repostaje = true). En la TV
-// sale primero la celebración normal con los puntos del pedido, luego una
-// señal de STOP con bocinas y sirenas y después el repostaje. El TPV espera
-// lo que duran las dos cosas.
+// REPOSTAJE (RepostajeTV) = DEPÓSITO DE CONSTANCIA LLENO: cada pedido que
+// suma llena una rayita; al llenar las 5, el servidor regala +5 puntos
+// (cliente_mes_canjear_qr devuelve repostaje = true). En la TV sale primero
+// la celebración normal con los puntos del pedido, luego una señal de STOP
+// con bocinas y sirenas y después el repostaje. El TPV espera lo que duran
+// todas las partes.
 // ---------------------------------------------------------------------
 export const REPOSTAJE_CM = {
   stop: 4200, // señal de STOP con sirenas y bocinas (desde 0)
@@ -168,10 +211,27 @@ export function duracionRepostajeClienteMes(extra = 5) {
   return REPOSTAJE_CM.chorros + n * REPOSTAJE_CM.paso + REPOSTAJE_CM.final;
 }
 
+// ---------------------------------------------------------------------
+// CAJA SORPRESA (CajaSorpresaTV): cae una caja ❓, tiembla, se abre y una
+// ruleta de números se para en los puntos de regalo.
+// ---------------------------------------------------------------------
+export const CAJA_CM = {
+  cae: 500, // cae la caja
+  tiembla: 2300, // redoble y temblor
+  abre: 4300, // se abre
+  para: 6600, // la ruleta de números se para
+  total: 11500,
+};
+
+export function duracionCajaSorpresa() {
+  return CAJA_CM.total;
+}
+
 // Duración de todo lo que sale en la TV al sumar puntos: la celebración
-// normal y, si hay repostaje, además el STOP y el repostaje.
+// normal y, si hay, el STOP + repostaje y la caja sorpresa.
 export function duracionAnimacionPuntosClienteMes(resultado) {
-  const normal = duracionCelebracionClienteMes(resultado?.puntos);
-  if (!resultado?.repostaje) return normal;
-  return normal + duracionRepostajeClienteMes(resultado.puntos_extra);
+  let ms = duracionCelebracionClienteMes(resultado?.puntos);
+  if (resultado?.repostaje) ms += duracionRepostajeClienteMes(resultado.puntos_extra);
+  if (resultado?.caja) ms += duracionCajaSorpresa();
+  return ms;
 }

@@ -11,7 +11,12 @@
 //     queda en la clasificación con la fila del cliente destacada.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Carrito, Cofre } from "./CarreraClienteMes";
-import { CELEBRACION_CM, duracionCelebracionClienteMes, pasosCelebracionClienteMes } from "../../utils/clienteMes";
+import {
+  CELEBRACION_CM,
+  duracionCelebracionClienteMes,
+  pasosCelebracionClienteMes,
+  textoMultiplicador,
+} from "../../utils/clienteMes";
 import {
   sonidoAcelerar,
   sonidoBocina,
@@ -98,6 +103,11 @@ export default function CelebracionPuntosTV({ celebracion, meta = 100, onFin }) 
   const faltan = Math.max(0, metaPts - marcador);
   const nombre = celebracion?.nombre || "CLIENTE";
   const posicion = Number(celebracion?.posicion) || null;
+  // TURBO según el puesto (×1,5 / ×2) y DEPÓSITO de constancia (rayitas).
+  const turbo = Number(celebracion?.turbo_mult) > 1 ? Number(celebracion.turbo_mult) : null;
+  const valorPedido = Number(celebracion?.valor_pedido) || null;
+  const rayitas = Number(celebracion?.deposito_rayitas) || 0;
+  const rayita = Math.min(rayitas, Number(celebracion?.deposito_rayita) || 0);
 
   return (
     <div
@@ -136,6 +146,12 @@ export default function CelebracionPuntosTV({ celebracion, meta = 100, onFin }) 
         {/* 2. CARRERA: casillas, carrito gigante, bocinazos */}
         {fase !== "intro" && (
           <div className={`cpt-carrera${fase === "final" ? " cpt-carrera-atenuada" : ""}`}>
+            {turbo && (
+              <div className="cpt-turbo" key="turbo">
+                🔥 TURBO ×{textoMultiplicador(turbo)} 🔥
+                <small>{celebracion?.posicion_salida ? `por ir ${celebracion.posicion_salida}º` : "por ir de los últimos"}</small>
+              </div>
+            )}
             <div className="cpt-marcador">
               <span className="cpt-marcador-txt">PUNTOS</span>
               <span className="cpt-marcador-num" key={marcador}>{marcador}</span>
@@ -157,7 +173,7 @@ export default function CelebracionPuntosTV({ celebracion, meta = 100, onFin }) 
               })}
 
               <div
-                className={`cpt-carro${moviendo ? " cpt-carro-moviendo" : ""}`}
+                className={`cpt-carro${moviendo ? " cpt-carro-moviendo" : ""}${turbo ? " cpt-carro-turbo" : ""}`}
                 style={{ left: `calc(${(paso + 0.5) / casillas} * 100%)` }}
               >
                 {moviendo && (
@@ -167,6 +183,7 @@ export default function CelebracionPuntosTV({ celebracion, meta = 100, onFin }) 
                     <span className="cpt-humo" aria-hidden="true">💨</span>
                   </>
                 )}
+                {turbo && <span className="cpt-llamas" aria-hidden="true">🔥🔥</span>}
                 {paso > 0 && (
                   <span className="cpt-mas" key={`m-${paso}`}>+{pasos[paso - 1]}</span>
                 )}
@@ -193,12 +210,32 @@ export default function CelebracionPuntosTV({ celebracion, meta = 100, onFin }) 
             <div className="cpt-final-caja">
               <div className="cpt-final-mas">+{puntos}</div>
               <div className="cpt-final-palabra">{puntos === 1 ? "PUNTO" : "PUNTOS"}</div>
+              {turbo && valorPedido && (
+                <div className="cpt-final-turbo">
+                  {valorPedido} × {textoMultiplicador(turbo)} 🔥 TURBO
+                </div>
+              )}
               <div className="cpt-final-total">
                 TOTAL <strong>{total}</strong> PUNTOS
               </div>
               {posicion && (
                 <div className={`cpt-final-puesto${posicion === 1 ? " cpt-final-lider" : ""}`}>
                   {posicion === 1 ? "👑 ¡VA LÍDER! 👑" : `${MEDALLAS[posicion] || "🏁"} VA ${posicion}º EN LA CARRERA`}
+                </div>
+              )}
+              {rayitas > 0 && rayita > 0 && (
+                <div className={`cpt-deposito${rayita >= rayitas ? " cpt-deposito-lleno" : ""}`}>
+                  <span>⛽</span>
+                  <span className="cpt-deposito-rayas">
+                    {Array.from({ length: rayitas }, (_, i) => (
+                      <i key={i} className={i < rayita ? "cpt-raya-on" : ""} style={{ animationDelay: `${1 + i * 0.15}s` }} />
+                    ))}
+                  </span>
+                  <span>
+                    {rayita >= rayitas
+                      ? "¡DEPÓSITO LLENO!"
+                      : `${rayitas - rayita === 1 ? "¡Falta 1 pedido" : `¡Faltan ${rayitas - rayita} pedidos`} para el repostaje!`}
+                  </span>
                 </div>
               )}
               <div className="cpt-final-app">📱 ¡Pide por la App y sigue sumando!</div>
@@ -372,6 +409,23 @@ function EstilosCelebracion() {
 .cpt-final-puesto{ display:inline-block; margin-top:2.4vh; padding:1.4vh 2vw; border-radius:2vh; font-weight:900; font-size:clamp(22px,3vw,60px);
   background:linear-gradient(90deg,#7c3aed,#ff2d75); box-shadow:0 0 30px rgba(255,45,117,.7); animation:cptZoom .6s cubic-bezier(.2,1.8,.4,1) .7s both; }
 .cpt-final-lider{ background:linear-gradient(90deg,#ffb300,#ffe14d,#ffb300); color:#3b1d00; box-shadow:0 0 50px rgba(255,225,77,.95); }
+.cpt-turbo{ position:absolute; top:3vh; left:3vw; z-index:7; display:grid; justify-items:center; padding:1.2vh 1.6vw; border-radius:2vh;
+  font-family:'Press Start 2P',monospace; font-size:clamp(16px,2.2vw,44px); color:#fff; background:linear-gradient(90deg,#ff3d00,#ff9100,#ff3d00);
+  border:4px solid #ffe14d; box-shadow:0 0 40px rgba(255,61,0,.9); animation:cptZoom .5s cubic-bezier(.2,1.8,.4,1) both, cptTurbo .6s ease-in-out .5s infinite alternate; }
+.cpt-turbo small{ font-family:'Rubik',system-ui,sans-serif; font-weight:900; font-size:.55em; margin-top:.6vh; color:#3b1d00; }
+@keyframes cptTurbo{ from{box-shadow:0 0 20px rgba(255,61,0,.6)} to{box-shadow:0 0 70px rgba(255,145,0,1)} }
+.cpt-llamas{ position:absolute; right:88%; bottom:8%; font-size:clamp(30px,4vw,80px); transform:scaleX(-1) rotate(-90deg); transform-origin:center;
+  animation:cptLlamas .18s steps(2) infinite; pointer-events:none; }
+@keyframes cptLlamas{ 50%{opacity:.6; transform:scaleX(-1) rotate(-90deg) scale(1.2)} }
+.cpt-final-turbo{ display:inline-block; margin-top:1.4vh; padding:.8vh 1.4vw; border-radius:1.4vh; font-family:'Press Start 2P',monospace;
+  font-size:clamp(14px,1.8vw,36px); color:#fff; background:linear-gradient(90deg,#ff3d00,#ff9100); box-shadow:0 0 30px rgba(255,61,0,.8);
+  animation:cptZoom .5s cubic-bezier(.2,1.8,.4,1) .4s both; }
+.cpt-deposito{ display:flex; align-items:center; justify-content:center; gap:1vw; margin-top:2.2vh; font-weight:900;
+  font-size:clamp(14px,1.8vw,36px); color:#7cf9ff; animation:cptZoom .5s ease-out 1s both; }
+.cpt-deposito-rayas{ display:flex; gap:.5vw; }
+.cpt-deposito-rayas i{ width:clamp(14px,1.8vw,36px); height:clamp(22px,3vw,58px); border-radius:6px; background:#1f1846; border:3px solid rgba(255,255,255,.35); }
+.cpt-deposito-rayas i.cpt-raya-on{ background:linear-gradient(180deg,#76ff03,#00c853); border-color:#fff; box-shadow:0 0 14px #76ff03; animation:cptCasilla .5s cubic-bezier(.2,1.8,.4,1) both; }
+.cpt-deposito-lleno{ color:#ffe14d; animation:cptZoom .5s ease-out 1s both, cptParpadeo .5s steps(2) 1.6s infinite; }
 .cpt-final-app{ margin-top:3vh; font-weight:800; font-size:clamp(14px,1.6vw,32px); opacity:.9; animation:cptZoom .5s ease-out 1.4s both; }
 
 .cpt-fuego{ position:absolute; width:0; height:0; }

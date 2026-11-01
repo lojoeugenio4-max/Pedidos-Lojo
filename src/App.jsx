@@ -37,7 +37,15 @@ import MisNumerosSorteo from "./components/sorteo/MisNumerosSorteo";
 import LojoPolyJuego from "./components/lojopoly/LojoPolyJuego";
 import CarreraClienteMes from "./components/clienteMes/CarreraClienteMes";
 import PremioClienteMes from "./components/clienteMes/PremioClienteMes";
-import { puntosPedidoClienteMes, textoProximoClienteMes, useClasificacionClienteMes } from "./utils/clienteMes";
+import {
+  faltanArticulosClienteMes,
+  puntosConTurboClienteMes,
+  puntosPedidoClienteMes,
+  textoDiaPreparacion,
+  textoMultiplicador,
+  turboClienteMes,
+  useClasificacionClienteMes,
+} from "./utils/clienteMes";
 import { useSorteoDirecto } from "./utils/sorteoDirecto";
 import { desbloquearAudioSorteo } from "./utils/sorteoSound";
 import logoLojo from "./assets/logo-lojo.jpg";
@@ -933,7 +941,7 @@ export default function App() {
   const [revisionPremioSorteo, setRevisionPremioSorteo] = useState(0);
   const sorteoDirectoAbiertoRef = useRef(false);
   const sorteoActivoParaCliente = Boolean(configuracionSorteoCliente) && !esComodin;
-  // CLIENTE DEL MES: carrera de puntos (5 / 3 / 1 por pedido en la App, 1 cada 12 horas).
+  // CLIENTE DEL MES: carrera de puntos (5 / 3 / 1 por pedido, con turbo, 1 por día de preparación).
   const [mostrarClienteMes, setMostrarClienteMes] = useState(false);
   const clienteMes = useClasificacionClienteMes({
     token: clienteIdentificado?.token || null,
@@ -960,18 +968,18 @@ export default function App() {
     cargarTableroLojoPoly();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteToken]);
-  // Puntos de Cliente del mes que vale este pedido (5 / 3 / 1). Se suman
-  // al pasar el QR en caja; el servidor lo vuelve a calcular y aplica la
-  // regla de 1 puntuación por cliente cada 12 horas.
+  // Puntos de Cliente del mes que vale este pedido (5 / 3 / 1, ya con el
+  // turbo que lleva ahora el cliente). Se suman al pasar el QR en caja; el
+  // servidor lo vuelve a calcular con el puesto de ese momento y aplica el
+  // mínimo de artículos y la regla de 1 pedido por día de preparación.
   function puntosClienteMesPedido(items) {
-    return puntosPedidoClienteMes(items, clienteMes.datos);
+    return puntosConTurboClienteMes(items, clienteMes.datos);
   }
   function pedidoSumaClienteMes(items) {
-    return puntosClienteMesPedido(items) > 0;
+    return puntosPedidoClienteMes(items, clienteMes.datos) > 0;
   }
-  // Solo suma un pedido cada 12 horas. Si en las últimas 12 horas ya hay
-  // otro pedido con Cliente del mes y este no es una modificación de aquel,
-  // este no suma (el servidor manda "pedido_hoy" = últimas 12 horas).
+  // Ya sumó con otro pedido para el mismo día de preparación que tendría
+  // un pedido enviado ahora (el servidor manda "pedido_hoy").
   const clienteMesYaPidioHoy = Boolean(clienteMes.datos?.yo?.pedido_hoy) && !pedidoEnviadoActivo;
   const sorteoEnDirecto = useSorteoDirecto({
     modo: "cliente",
@@ -4559,11 +4567,15 @@ export default function App() {
       participacionSorteo,
       participacionLojopoly,
       participacionCarrera,
-      // El servidor decide si este pedido lleva Cliente del mes (solo el
-      // primero en 12 horas): se mira lo que de verdad quedó guardado en el QR.
-      clienteMesActivo: Boolean(clienteToken && normalizarRespuestaRpc(participacionJuegos)?.cliente_mes_eligible),
+      // Todos los pedidos del cliente llevan Cliente del mes en el QR; en
+      // caja se decide si suma (mínimo de artículos y 1 por día). En el
+      // mensaje solo se anuncia si este pedido va a sumar de verdad.
+      clienteMesActivo:
+        Boolean(clienteToken && normalizarRespuestaRpc(participacionJuegos)?.cliente_mes_eligible) &&
+        !clienteMesYaPidioHoy &&
+        faltanArticulosClienteMes(itemsPedido, clienteMes.datos) === 0,
       clienteMesPuntos:
-        clienteToken && normalizarRespuestaRpc(participacionJuegos)?.cliente_mes_eligible
+        clienteToken && normalizarRespuestaRpc(participacionJuegos)?.cliente_mes_eligible && !clienteMesYaPidioHoy
           ? puntosClienteMesPedido(itemsPedido)
           : 0,
       clienteMesYaHoy:
@@ -4571,7 +4583,7 @@ export default function App() {
         clienteMesVisible &&
         Boolean(clienteMes.datos?.empezado) &&
         pedidoSumaClienteMes(itemsPedido) &&
-        !normalizarRespuestaRpc(participacionJuegos)?.cliente_mes_eligible,
+        clienteMesYaPidioHoy,
     });
 
     if (esModificacion) {
@@ -4879,10 +4891,11 @@ export default function App() {
     // también necesitan su fila en game_entitlements para que el lector los valide.
     // Cliente del mes: para cualquier cliente identificado se pide al
     // servidor, que es quien decide si este pedido lo lleva (activado, ya
-    // empezado, el cliente participa y es su primer pedido del día). Antes lo
-    // decidía la App y, si aún no había cargado el Cliente del mes, el pedido
-    // salía sin él y el cliente no sumaba ni 1 punto.
-    const clienteMesSuma = Boolean(clienteToken) && !clienteMesYaPidioHoy;
+    // empezado y el cliente participa). Desde noviembre 2026 TODOS los
+    // pedidos lo llevan: en caja se decide si suman (mínimo de artículos y
+    // un pedido por día de preparación), así un pedido pequeño no le quita
+    // el día a uno bueno.
+    const clienteMesSuma = Boolean(clienteToken);
     const otrosJuegos =
       Boolean(participacionRuleta) ||
       pedidoCumpleBingo(participacionBingo) ||
@@ -5274,12 +5287,60 @@ export default function App() {
                   <div style={styles.clienteMesMarcadorHoy}>
                     {!clienteMes.datos.empezado
                       ? "🏁 La carrera todavía no ha empezado. ¡Muy pronto!"
-                      : clienteMes.datos.yo.pedido_hoy && !clienteMes.datos.yo.hoy_cuenta
-                        ? `🛒 Ya tienes un pedido que suma en Cliente del mes: los puntos se suman al pasar su QR en caja. ${textoProximoClienteMes(clienteMes.datos.yo.proximo_at)}`
-                        : clienteMes.datos.yo.hoy_cuenta
-                        ? `✅ Ya tienes ${clienteMes.datos.yo.puntos_hoy} ${clienteMes.datos.yo.puntos_hoy === 1 ? "punto" : "puntos"}${Number(clienteMes.datos.yo.extra_hoy) > 0 ? ` + ${clienteMes.datos.yo.extra_hoy} de regalo ⛽` : ""} por tu último pedido. ${textoProximoClienteMes(clienteMes.datos.yo.proximo_at)}`
-                        : `🛒 Cada vez que pidas por la App (con 12 horas entre pedidos) sumas puntos al pasar el QR en caja: ${clienteMes.datos.puntos_alto}, ${clienteMes.datos.puntos_medio} o ${clienteMes.datos.puntos_base} según tu pedido.`}
+                      : clienteMes.datos.yo.hoy_cuenta
+                        ? `✅ Ya tienes ${clienteMes.datos.yo.puntos_hoy} ${clienteMes.datos.yo.puntos_hoy === 1 ? "punto" : "puntos"}${Number(clienteMes.datos.yo.extra_hoy) > 0 ? ` + ${clienteMes.datos.yo.extra_hoy} de regalo 🎁` : ""} con tu pedido para ${textoDiaPreparacion(clienteMes.datos.yo.dia_preparacion)}. Tu próximo pedido para otro día volverá a sumar.`
+                        : `🛒 Suma un pedido por cada día que recoges (desde ${clienteMes.datos.min_articulos_puntuar || 1} artículos distintos): ${clienteMes.datos.puntos_alto}, ${clienteMes.datos.puntos_medio} o ${clienteMes.datos.puntos_base} puntos según tu pedido, al pasar el QR en caja.`}
+                    {turboClienteMes(clienteMes.datos) > 1 && (
+                      <div style={{ marginTop: 6, fontWeight: 900, color: "#c2410c" }}>
+                        🔥 ¡Tienes TURBO ×{textoMultiplicador(turboClienteMes(clienteMes.datos))}! Tus pedidos valen más puntos.
+                      </div>
+                    )}
+                    {Number(clienteMes.datos.deposito_rayitas) > 0 && Number(clienteMes.datos.deposito_extra) > 0 && (
+                      <div style={{ marginTop: 6, fontWeight: 800 }}>
+                        ⛽ Depósito: {"▮".repeat(Number(clienteMes.datos.yo.deposito) || 0)}
+                        {"▯".repeat(Math.max(0, Number(clienteMes.datos.deposito_rayitas) - (Number(clienteMes.datos.yo.deposito) || 0)))}
+                        {" "}— cada {clienteMes.datos.deposito_rayitas} pedidos, +{clienteMes.datos.deposito_extra} de regalo
+                      </div>
+                    )}
                   </div>
+                </div>
+              )}
+              {clienteMes.datos?.visible && (
+                <div style={styles.clienteMesReglasNuevas}>
+                  <div style={styles.clienteMesReglasTitulo}>📢 NUEVAS REGLAS desde noviembre</div>
+                  <div>
+                    ⏰ <strong>Ya no hay que esperar 12 horas.</strong> Ahora suma{" "}
+                    <strong>un pedido por cada día que recoges</strong>, sin mirar la hora. Ejemplo: el lunes a las 23:00 pides para el
+                    martes y el martes a las 18:00 pides para el miércoles: <strong>suman los dos</strong>. Si haces dos pedidos para el
+                    mismo día, suma solo el primero que pase por caja.
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.85 }}>
+                    (Los pedidos hechos hasta las 7:00, o hasta las 13:00 el sábado, son para ese mismo día; los de después, para el
+                    día siguiente. Los del sábado tarde y el domingo, para el lunes.)
+                  </div>
+                  <div>
+                    🛒 Para sumar, el pedido tiene que llevar al menos{" "}
+                    <strong>{clienteMes.datos.min_articulos_puntuar || 1} artículos distintos</strong>.
+                  </div>
+                  {Number(clienteMes.datos.turbo2_mult) > 1 && (
+                    <div>
+                      🔥 <strong>Turbo</strong> para los que van detrás: tus puntos ×{textoMultiplicador(clienteMes.datos.turbo1_mult)} si
+                      vas del {clienteMes.datos.turbo1_desde}º al {Number(clienteMes.datos.turbo2_desde) - 1}º y{" "}
+                      {`×${textoMultiplicador(clienteMes.datos.turbo2_mult)}`} del {clienteMes.datos.turbo2_desde}º para abajo.
+                    </div>
+                  )}
+                  {Number(clienteMes.datos.deposito_extra) > 0 && (
+                    <div>
+                      ⛽ <strong>Depósito:</strong> cada {clienteMes.datos.deposito_rayitas} pedidos que suman,{" "}
+                      {`+${clienteMes.datos.deposito_extra}`} puntos de regalo.
+                    </div>
+                  )}
+                  {Number(clienteMes.datos.caja_prob) > 0 && (
+                    <div>
+                      ❓ <strong>Caja sorpresa:</strong> si vas del {clienteMes.datos.caja_desde}º para abajo, al pasar tu QR te puede
+                      salir una caja con entre {clienteMes.datos.caja_min} y {clienteMes.datos.caja_max} puntos extra.
+                    </div>
+                  )}
                 </div>
               )}
               {clienteMes.error && !clienteMes.datos && <div style={styles.bingoErrorBox}>{clienteMes.error}</div>}
@@ -6536,20 +6597,28 @@ export default function App() {
               </div>
             )}
 
-            {clienteMesVisible && clienteMes.datos?.empezado && orderedItems.length > 0 && pedidoSumaClienteMes(orderedItems) && (
-              <div style={clienteMesYaPidioHoy ? styles.bingoSummaryPending : styles.bingoSummaryOk}>
-                <div style={styles.ruletaSummaryTitle}>🏆 Cliente del mes</div>
-                <div style={styles.bingoSummaryMessage}>
-                  {clienteMesYaPidioHoy
-                    ? "Hoy ya tienes otro pedido que suma en Cliente del mes: este no suma puntos."
-                    : (() => {
-                        const p = puntosClienteMesPedido(orderedItems);
-                        return `Este pedido suma ${p} ${p === 1 ? "punto" : "puntos"} al pasar el QR en caja.`;
-                      })()}
+            {clienteMesVisible && clienteMes.datos?.empezado && orderedItems.length > 0 && (() => {
+              const faltan = faltanArticulosClienteMes(orderedItems, clienteMes.datos);
+              const suma = pedidoSumaClienteMes(orderedItems) && !clienteMesYaPidioHoy;
+              const base = puntosPedidoClienteMes(orderedItems, clienteMes.datos);
+              const p = puntosClienteMesPedido(orderedItems);
+              const turbo = turboClienteMes(clienteMes.datos);
+              return (
+                <div style={suma ? styles.bingoSummaryOk : styles.bingoSummaryPending}>
+                  <div style={styles.ruletaSummaryTitle}>🏆 Cliente del mes</div>
+                  <div style={styles.bingoSummaryMessage}>
+                    {clienteMesYaPidioHoy
+                      ? `Ya sumaste con otro pedido para ${textoDiaPreparacion(clienteMes.datos?.yo?.dia_preparacion)}: este no suma puntos.`
+                      : faltan > 0
+                      ? `Añade ${faltan} ${faltan === 1 ? "artículo distinto más" : "artículos distintos más"} y este pedido sumará puntos.`
+                      : `Este pedido suma ${p} ${p === 1 ? "punto" : "puntos"}${turbo > 1 ? ` (${base} × ${textoMultiplicador(turbo)} de TURBO 🔥)` : ""} al pasar el QR en caja.`}
+                  </div>
+                  <div style={styles.bingoSummaryNote}>
+                    Suma un pedido por cada día que recoges, desde {clienteMes.datos?.min_articulos_puntuar || 1} artículos distintos.
+                  </div>
                 </div>
-                <div style={styles.bingoSummaryNote}>Solo suma un pedido al día: el primero.</div>
-              </div>
-            )}
+              );
+            })()}
 
             {resumenBingoPedido && orderedItems.length > 0 && (
               <div
@@ -9036,6 +9105,20 @@ const styles = {
   },
   clienteMesMarcadorNum: { fontSize: 26, fontWeight: 900, lineHeight: 1.1 },
   clienteMesMarcadorTxt: { fontSize: 10, fontWeight: 800, letterSpacing: 1 },
+  clienteMesReglasNuevas: {
+    display: "grid",
+    gap: 6,
+    margin: "10px 0",
+    padding: "12px 14px",
+    borderRadius: 14,
+    background: "#fff7ed",
+    border: "2px solid #fb923c",
+    color: "#431407",
+    fontSize: 13,
+    lineHeight: 1.4,
+    textAlign: "left",
+  },
+  clienteMesReglasTitulo: { fontWeight: 900, fontSize: 15, color: "#c2410c" },
   clienteMesMarcadorHoy: { flex: "1 1 180px", fontSize: 13, fontWeight: 700, lineHeight: 1.35 },
   juegoTarjetaSorteo: {
     background: "linear-gradient(135deg, #059669, #064e3b)",

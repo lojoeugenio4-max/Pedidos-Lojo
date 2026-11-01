@@ -209,7 +209,7 @@ function construirBloqueParticipacion({
           : "🏆 Cliente del mes: al pasar el QR sumarás tus puntos"
       );
     } else if (clienteMesYaHoy) {
-      bannerLineas.push("🏆 Cliente del mes ya conseguido con otro pedido hace menos de 12 horas.");
+      bannerLineas.push("🏆 Cliente del mes ya conseguido con otro pedido para el mismo día.");
     }
 
     if (carreraYa12h) {
@@ -239,7 +239,7 @@ function construirBloqueParticipacion({
   }
 
   if (clienteMesYaHoy) {
-    lines.push("🏆 Cliente del mes ya conseguido con otro pedido hace menos de 12 horas: este pedido no suma puntos.");
+    lines.push("🏆 Cliente del mes ya conseguido con otro pedido para el mismo día: este pedido no suma puntos.");
     lines.push("");
   }
 
