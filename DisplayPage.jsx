@@ -413,6 +413,10 @@ function DisplayPageContenido() {
     }
     setCeremonia(null);
   }
+  // Para los avisos que llegan de "Pedidos recibidos" (el manejador de
+  // avisos se crea una sola vez, así que siempre usa la versión de ahora).
+  const terminarCeremoniaRef = useRef(null);
+  terminarCeremoniaRef.current = terminarCeremonia;
   const clienteMesTVRef = useRef(null);
   // ¿Se está viendo un juego (y no una pantalla de reposo)?
   const juegoEnPantallaRef = useRef(false);
@@ -673,6 +677,12 @@ function DisplayPageContenido() {
 
     if (event.type === "waiting" || event.type === "vista-reposo") {
       juegoEnPantallaRef.current = false;
+      // Pulsar a mano un botón de "Pedidos recibidos" (Cliente del mes,
+      // Bingo...) mientras se ve la ceremonia del podio la corta y enseña
+      // lo que se ha pulsado. (Para repetirla está «Cofres del podio».)
+      if (event.type === "vista-reposo" && !payload.automatica) {
+        terminarCeremoniaRef.current?.();
+      }
       // El TPV manda "waiting" cuando vuelve a estar listo para leer el
       // siguiente código (botón "reiniciar", o tras un error). El reposo
       // de la pantalla grande es el Bombo de Bingo, gane lo que gane el
