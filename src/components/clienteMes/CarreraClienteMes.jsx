@@ -88,15 +88,6 @@ export default function CarreraClienteMes({ datos, variante = "movil", maxFilas 
               📅 <strong>UN PEDIDO POR DÍA</strong> que recoges
             </span>
           </div>
-          {datos.turbo2_mult != null && (
-            <div className="cm-cabecera-aviso-l2">
-              <span>🔥 TURBO ×{numCorto(datos.turbo1_mult)} del {datos.turbo1_desde}º · ×{numCorto(datos.turbo2_mult)} del {datos.turbo2_desde}º</span>
-              {Number(datos.deposito_extra) > 0 && (
-                <span>⛽ {datos.deposito_rayitas} pedidos = +{datos.deposito_extra}</span>
-              )}
-              {Number(datos.caja_prob) > 0 && <span>❓ Caja sorpresa del {datos.caja_desde}º para abajo</span>}
-            </div>
-          )}
         </div>
         {!empezado && (
           <div className="cm-contador cm-contador-inicio">
@@ -140,7 +131,8 @@ export default function CarreraClienteMes({ datos, variante = "movil", maxFilas 
           </div>
         </div>
 
-        {datos.turbo2_mult != null && (
+        {/* Turbo, depósito y caja sorpresa son SORPRESA: solo se ven en el Admin */}
+        {variante === "admin" && datos.turbo2_mult != null && (
           <div className="cm-niveles cm-ayudas">
             <div className="cm-nivel cm-nivel-ayuda">
               <span className="cm-nivel-pts">🔥</span>
