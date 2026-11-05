@@ -42,8 +42,6 @@ import {
   puntosConTurboClienteMes,
   puntosPedidoClienteMes,
   textoDiaPreparacion,
-  textoMultiplicador,
-  turboClienteMes,
   useClasificacionClienteMes,
 } from "./utils/clienteMes";
 import { useSorteoDirecto } from "./utils/sorteoDirecto";
@@ -5290,18 +5288,6 @@ export default function App() {
                       : clienteMes.datos.yo.hoy_cuenta
                         ? `✅ Ya tienes ${clienteMes.datos.yo.puntos_hoy} ${clienteMes.datos.yo.puntos_hoy === 1 ? "punto" : "puntos"}${Number(clienteMes.datos.yo.extra_hoy) > 0 ? ` + ${clienteMes.datos.yo.extra_hoy} de regalo 🎁` : ""} con tu pedido para ${textoDiaPreparacion(clienteMes.datos.yo.dia_preparacion)}. Tu próximo pedido para otro día volverá a sumar.`
                         : `🛒 Suma un pedido por cada día que recoges (desde ${clienteMes.datos.min_articulos_puntuar || 1} artículos distintos): ${clienteMes.datos.puntos_alto}, ${clienteMes.datos.puntos_medio} o ${clienteMes.datos.puntos_base} puntos según tu pedido, al pasar el QR en caja.`}
-                    {turboClienteMes(clienteMes.datos) > 1 && (
-                      <div style={{ marginTop: 6, fontWeight: 900, color: "#c2410c" }}>
-                        🔥 ¡Tienes TURBO ×{textoMultiplicador(turboClienteMes(clienteMes.datos))}! Tus pedidos valen más puntos.
-                      </div>
-                    )}
-                    {Number(clienteMes.datos.deposito_rayitas) > 0 && Number(clienteMes.datos.deposito_extra) > 0 && (
-                      <div style={{ marginTop: 6, fontWeight: 800 }}>
-                        ⛽ Depósito: {"▮".repeat(Number(clienteMes.datos.yo.deposito) || 0)}
-                        {"▯".repeat(Math.max(0, Number(clienteMes.datos.deposito_rayitas) - (Number(clienteMes.datos.yo.deposito) || 0)))}
-                        {" "}— cada {clienteMes.datos.deposito_rayitas} pedidos, +{clienteMes.datos.deposito_extra} de regalo
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
@@ -5322,25 +5308,6 @@ export default function App() {
                     🛒 Para sumar, el pedido tiene que llevar al menos{" "}
                     <strong>{clienteMes.datos.min_articulos_puntuar || 1} artículos distintos</strong>.
                   </div>
-                  {Number(clienteMes.datos.turbo2_mult) > 1 && (
-                    <div>
-                      🔥 <strong>Turbo</strong> para los que van detrás: tus puntos ×{textoMultiplicador(clienteMes.datos.turbo1_mult)} si
-                      vas del {clienteMes.datos.turbo1_desde}º al {Number(clienteMes.datos.turbo2_desde) - 1}º y{" "}
-                      {`×${textoMultiplicador(clienteMes.datos.turbo2_mult)}`} del {clienteMes.datos.turbo2_desde}º para abajo.
-                    </div>
-                  )}
-                  {Number(clienteMes.datos.deposito_extra) > 0 && (
-                    <div>
-                      ⛽ <strong>Depósito:</strong> cada {clienteMes.datos.deposito_rayitas} pedidos que suman,{" "}
-                      {`+${clienteMes.datos.deposito_extra}`} puntos de regalo.
-                    </div>
-                  )}
-                  {Number(clienteMes.datos.caja_prob) > 0 && (
-                    <div>
-                      ❓ <strong>Caja sorpresa:</strong> si vas del {clienteMes.datos.caja_desde}º para abajo, al pasar tu QR te puede
-                      salir una caja con entre {clienteMes.datos.caja_min} y {clienteMes.datos.caja_max} puntos extra.
-                    </div>
-                  )}
                 </div>
               )}
               {clienteMes.error && !clienteMes.datos && <div style={styles.bingoErrorBox}>{clienteMes.error}</div>}
@@ -6600,9 +6567,7 @@ export default function App() {
             {clienteMesVisible && clienteMes.datos?.empezado && orderedItems.length > 0 && (() => {
               const faltan = faltanArticulosClienteMes(orderedItems, clienteMes.datos);
               const suma = pedidoSumaClienteMes(orderedItems) && !clienteMesYaPidioHoy;
-              const base = puntosPedidoClienteMes(orderedItems, clienteMes.datos);
               const p = puntosClienteMesPedido(orderedItems);
-              const turbo = turboClienteMes(clienteMes.datos);
               return (
                 <div style={suma ? styles.bingoSummaryOk : styles.bingoSummaryPending}>
                   <div style={styles.ruletaSummaryTitle}>🏆 Cliente del mes</div>
@@ -6611,7 +6576,7 @@ export default function App() {
                       ? `Ya sumaste con otro pedido para ${textoDiaPreparacion(clienteMes.datos?.yo?.dia_preparacion)}: este no suma puntos.`
                       : faltan > 0
                       ? `Añade ${faltan} ${faltan === 1 ? "artículo distinto más" : "artículos distintos más"} y este pedido sumará puntos.`
-                      : `Este pedido suma ${p} ${p === 1 ? "punto" : "puntos"}${turbo > 1 ? ` (${base} × ${textoMultiplicador(turbo)} de TURBO 🔥)` : ""} al pasar el QR en caja.`}
+                      : `Este pedido suma ${p} ${p === 1 ? "punto" : "puntos"} al pasar el QR en caja.`}
                   </div>
                   <div style={styles.bingoSummaryNote}>
                     Suma un pedido por cada día que recoges, desde {clienteMes.datos?.min_articulos_puntuar || 1} artículos distintos.

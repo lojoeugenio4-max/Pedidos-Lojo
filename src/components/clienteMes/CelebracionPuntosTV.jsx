@@ -103,11 +103,9 @@ export default function CelebracionPuntosTV({ celebracion, meta = 100, onFin }) 
   const faltan = Math.max(0, metaPts - marcador);
   const nombre = celebracion?.nombre || "CLIENTE";
   const posicion = Number(celebracion?.posicion) || null;
-  // TURBO según el puesto (×1,5 / ×2) y DEPÓSITO de constancia (rayitas).
+  // TURBO (sin decir el motivo: es sorpresa).
   const turbo = Number(celebracion?.turbo_mult) > 1 ? Number(celebracion.turbo_mult) : null;
   const valorPedido = Number(celebracion?.valor_pedido) || null;
-  const rayitas = Number(celebracion?.deposito_rayitas) || 0;
-  const rayita = Math.min(rayitas, Number(celebracion?.deposito_rayita) || 0);
 
   return (
     <div
@@ -149,7 +147,6 @@ export default function CelebracionPuntosTV({ celebracion, meta = 100, onFin }) 
             {turbo && (
               <div className="cpt-turbo" key="turbo">
                 🔥 TURBO ×{textoMultiplicador(turbo)} 🔥
-                <small>{celebracion?.posicion_salida ? `por ir ${celebracion.posicion_salida}º` : "por ir de los últimos"}</small>
               </div>
             )}
             <div className="cpt-marcador">
@@ -221,21 +218,6 @@ export default function CelebracionPuntosTV({ celebracion, meta = 100, onFin }) 
               {posicion && (
                 <div className={`cpt-final-puesto${posicion === 1 ? " cpt-final-lider" : ""}`}>
                   {posicion === 1 ? "👑 ¡VA LÍDER! 👑" : `${MEDALLAS[posicion] || "🏁"} VA ${posicion}º EN LA CARRERA`}
-                </div>
-              )}
-              {rayitas > 0 && rayita > 0 && (
-                <div className={`cpt-deposito${rayita >= rayitas ? " cpt-deposito-lleno" : ""}`}>
-                  <span>⛽</span>
-                  <span className="cpt-deposito-rayas">
-                    {Array.from({ length: rayitas }, (_, i) => (
-                      <i key={i} className={i < rayita ? "cpt-raya-on" : ""} style={{ animationDelay: `${1 + i * 0.15}s` }} />
-                    ))}
-                  </span>
-                  <span>
-                    {rayita >= rayitas
-                      ? "¡DEPÓSITO LLENO!"
-                      : `${rayitas - rayita === 1 ? "¡Falta 1 pedido" : `¡Faltan ${rayitas - rayita} pedidos`} para el repostaje!`}
-                  </span>
                 </div>
               )}
               <div className="cpt-final-app">📱 ¡Pide por la App y sigue sumando!</div>
