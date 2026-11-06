@@ -337,7 +337,18 @@ export function useRegalos({ avisarConSonido = false } = {}) {
         original: r,
       });
     });
-    lojopoly.forEach((p) => {
+    // Premios de La Loca Carrera que llegan mezclados en la lista de LojoPoly
+    // (la consulta de Supabase de LojoPoly también los devuelve): no son de
+    // LojoPoly. Si ya están en la lista de la Carrera se quitan de aquí; si
+    // no, se pasan a la Carrera.
+    const idsCarrera = new Set(carrera.map((c) => String(c.id)));
+    const esDeCarrera = (p) =>
+      idsCarrera.has(String(p.id)) ||
+      /carrera/i.test(`${p.origen || ""} ${p.juego || ""} ${p.fuente || ""} ${p.tipo || ""}`) ||
+      ["mitad", "final"].includes(String(p.tipo || ""));
+    const carreraEnLojopoly = lojopoly.filter((p) => esDeCarrera(p) && !idsCarrera.has(String(p.id)));
+    const soloLojopoly = lojopoly.filter((p) => !esDeCarrera(p));
+    soloLojopoly.forEach((p) => {
       const etiqueta =
         p.tipo === "grupo"
           ? `GRUPO ${String(p.grupo_nombre || "").toUpperCase()}`.trim()
@@ -364,7 +375,16 @@ export function useRegalos({ avisarConSonido = false } = {}) {
         original: p,
       });
     });
-    carrera.forEach((p) => {
+    [
+      ...carrera,
+      ...carreraEnLojopoly.map((p) => ({
+        ...p,
+        cliente_id: p.cliente_id ?? p.cliente_token ?? "",
+        created_at: p.created_at || p.ganado_at,
+        entregado: p.entregado ?? p.estado === "entregado",
+        casilla: p.casilla ?? null,
+      })),
+    ].forEach((p) => {
       const etiqueta =
         p.tipo === "final" ? "🏆 META (PREMIO FINAL)" : p.tipo === "mitad" ? "🚩 MITAD (casilla 32)" : `🎁 CASILLA ${p.casilla ?? ""}`.trim();
       lista.push({
