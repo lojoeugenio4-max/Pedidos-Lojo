@@ -768,11 +768,11 @@ export default function QrPendientes({ onClienteSinMasQr } = {}) {
                         style={badgeClienteMes}
                         title={
                           pedido.puntos_a_sumar != null && Number(pedido.puntos_a_sumar) < Number(pedido.puntos_pedido)
-                            ? `El pedido vale ${pedido.puntos_pedido}, pero no sumará: o lleva menos artículos distintos del mínimo, o el cliente ya sumó con otro pedido para el mismo día`
-                            : "Puntos de Cliente del mes que sumará al pasar el QR (sin contar turbo, depósito ni caja sorpresa)"
+                            ? "No sumará: o lleva menos artículos distintos del mínimo, o el cliente ya sumó con otro pedido para el mismo día"
+                            : "Pendiente de sumar en Cliente del mes al pasar el QR"
                         }
                       >
-                        🏆 {pedido.puntos_a_sumar != null ? `+${pedido.puntos_a_sumar}` : ""}
+                        🏆
                       </span>
                     ) : (
                       <span style={celdaVacia}>—</span>

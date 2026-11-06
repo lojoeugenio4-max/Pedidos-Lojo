@@ -77,7 +77,42 @@ export function limpiarClienteRegalos() {
   }
 }
 
-async function contarRegalosPendientesCliente(token) {
+// ---------------------------------------------------------------------
+// LA LOCA CARRERA: premios de casilla, de la mitad (32) y de la meta.
+// Se leen de las últimas ediciones con admin_listar_premios_carrera y se
+// marcan con admin_marcar_premio_carrera (los mismos que usa Admin → Carrera).
+// ---------------------------------------------------------------------
+const EDICIONES_CARRERA_REGALOS = 3;
+
+async function cargarPremiosCarrera() {
+  const { data: ediciones, error } = await supabase
+    .from("carrera_ediciones")
+    .select("id")
+    .order("created_at", { ascending: false })
+    .limit(EDICIONES_CARRERA_REGALOS);
+  if (error) throw error;
+  const respuestas = await Promise.all(
+    (ediciones || []).map((e) => supabase.rpc("admin_listar_premios_carrera", { p_edicion: e.id }))
+  );
+  const fallo = respuestas.find((r) => r.error);
+  if (fallo) throw fallo.error;
+  return respuestas.flatMap((r) => r.data || []);
+}
+
+const tokenPremioCarrera = (p) => String(p.cliente_token || p.customer_token || p.token || "");
+
+// ¿Es de este cliente? Por token y, si la lista de la Carrera no trae el
+// token, por el nombre del cliente.
+function premioCarreraEsDe(p, token, nombre) {
+  const t = tokenPremioCarrera(p);
+  if (t) return t === String(token || "");
+  // admin_listar_premios_carrera trae cliente_id (no el token): se acepta si
+  // coincide con el token o, si no, por el nombre del cliente.
+  if (token && String(p.cliente_id || "") === String(token)) return true;
+  return Boolean(nombre) && normalizar(p.cliente_nombre) === normalizar(nombre);
+}
+
+async function contarRegalosPendientesCliente(token, nombre = "") {
   const [premios, entregas, lojopoly] = await Promise.all([
     supabase.rpc("admin_listar_premios_bingo"),
     supabase.rpc("admin_listar_entregas_premios_bingo"),
@@ -94,6 +129,11 @@ async function contarRegalosPendientesCliente(token) {
       (p) => String(p.cliente_token || "") === token && p.estado === "pendiente"
     ).length;
   }
+  try {
+    total += (await cargarPremiosCarrera()).filter((p) => !p.entregado && premioCarreraEsDe(p, token, nombre)).length;
+  } catch (err) {
+    console.warn("No se pudieron contar los regalos de La Loca Carrera:", err);
+  }
   return total;
 }
 
@@ -103,7 +143,7 @@ export async function prepararRegalosTrasJugar({ customerToken, customerName } =
   const token = customerToken ? String(customerToken) : "";
   if (!token) return false;
   try {
-    const pendientes = await contarRegalosPendientesCliente(token);
+    const pendientes = await contarRegalosPendientesCliente(token, customerName);
     if (!pendientes) return false;
     window.sessionStorage.setItem(
       CLAVE_CLIENTE_REGALOS,
@@ -178,7 +218,21 @@ export function useRegalos({ avisarConSonido = false } = {}) {
   const [lojopolyDisponible, setLojopolyDisponible] = useState(true);
   const [cargandoLojopoly, setCargandoLojopoly] = useState(false);
   const [clientesBingo, setClientesBingo] = useState(() => new Map());
+  const [carrera, setCarrera] = useState([]);
+  const [carreraDisponible, setCarreraDisponible] = useState(true);
   const montado = useRef(true);
+
+  const cargarCarrera = useCallback(async () => {
+    try {
+      const data = await cargarPremiosCarrera();
+      if (!montado.current) return;
+      setCarrera(data);
+      setCarreraDisponible(true);
+    } catch (err) {
+      console.warn("Regalos de La Loca Carrera no disponibles:", err);
+      if (montado.current) setCarreraDisponible(false);
+    }
+  }, []);
 
   const cargarLojopoly = useCallback(async () => {
     setCargandoLojopoly(true);
@@ -197,20 +251,27 @@ export function useRegalos({ avisarConSonido = false } = {}) {
   useEffect(() => {
     montado.current = true;
     cargarLojopoly();
-    const intervalo = setInterval(cargarLojopoly, REFRESCO_RESPALDO_MS);
+    cargarCarrera();
+    const intervalo = setInterval(() => {
+      cargarLojopoly();
+      cargarCarrera();
+    }, REFRESCO_RESPALDO_MS);
     return () => {
       montado.current = false;
       clearInterval(intervalo);
     };
-  }, [cargarLojopoly]);
+  }, [cargarLojopoly, cargarCarrera]);
 
   // Cuando en caja se gana un premio (de Bingo o de LojoPoly) llega el aviso
   // por el canal de premios: se recarga también LojoPoly.
   useEffect(() => {
     if (!bingo.ultimoAviso) return undefined;
-    const t = setTimeout(cargarLojopoly, 900);
+    const t = setTimeout(() => {
+      cargarLojopoly();
+      cargarCarrera();
+    }, 900);
     return () => clearTimeout(t);
-  }, [bingo.ultimoAviso, cargarLojopoly]);
+  }, [bingo.ultimoAviso, cargarLojopoly, cargarCarrera]);
 
   // Artículo guardado de cada regalo de Bingo. Si alguno aún no lo tiene,
   // se le guarda ahora el de la promoción actual.
@@ -303,24 +364,62 @@ export function useRegalos({ avisarConSonido = false } = {}) {
         original: p,
       });
     });
+    carrera.forEach((p) => {
+      const etiqueta =
+        p.tipo === "final" ? "🏆 META (PREMIO FINAL)" : p.tipo === "mitad" ? "🚩 MITAD (casilla 32)" : `🎁 CASILLA ${p.casilla ?? ""}`.trim();
+      lista.push({
+        id: `carrera:${p.id}`,
+        origen: "carrera",
+        clave: String(p.id),
+        juego: "Loca Carrera",
+        clienteNombre: p.cliente_nombre || "",
+        clienteToken: tokenPremioCarrera(p),
+        codigoLojo: p.cliente_codigo_lojo || p.codigo_lojo || "",
+        etiqueta,
+        detalle: "",
+        regalo: p.texto || p.articulo_nombre || "Premio sorpresa",
+        articulo: p.articulo_id ? { id: p.articulo_id, codigo: p.articulo_codigo || "", nombre: p.articulo_nombre || "" } : null,
+        cantidad: Number(p.cantidad ?? 1),
+        formato: p.formato || "unidades",
+        ganadoEn: p.created_at,
+        entregadoEn: p.entregado ? p.entregado_at || p.created_at : null,
+        estado: p.entregado ? "entregado" : "pendiente",
+        editable: true,
+        original: p,
+      });
+    });
     const orden = { pendiente: 0, entregado: 1, caducado: 2 };
     lista.sort((a, b) => {
       if (orden[a.estado] !== orden[b.estado]) return (orden[a.estado] ?? 3) - (orden[b.estado] ?? 3);
       return new Date(b.ganadoEn || 0) - new Date(a.ganadoEn || 0);
     });
     return lista;
-  }, [bingo.regalos, bingo.entregasDisponibles, lojopoly, clientesBingo, guardados]);
+  }, [bingo.regalos, bingo.entregasDisponibles, lojopoly, carrera, clientesBingo, guardados]);
 
   const pendientes = useMemo(() => regalos.filter((r) => r.estado === "pendiente" && r.editable), [regalos]);
 
   const cargar = useCallback(async () => {
-    await Promise.all([bingo.cargar(), cargarLojopoly()]);
-  }, [bingo, cargarLojopoly]);
+    await Promise.all([bingo.cargar(), cargarLojopoly(), cargarCarrera()]);
+  }, [bingo, cargarLojopoly, cargarCarrera]);
 
   const marcarEntregado = useCallback(
     async (regalo, entregado) => {
       if (regalo.origen === "bingo") {
         await bingo.marcarEntregado(regalo.original, entregado);
+        return;
+      }
+      if (regalo.origen === "carrera") {
+        const { error } = await supabase.rpc("admin_marcar_premio_carrera", {
+          p_id: regalo.original.id,
+          p_entregado: entregado,
+        });
+        if (error) throw error;
+        const ahora = new Date().toISOString();
+        setCarrera((prev) =>
+          prev.map((p) =>
+            String(p.id) === regalo.clave ? { ...p, entregado, entregado_at: entregado ? ahora : null } : p
+          )
+        );
         return;
       }
       const { error } = await supabase.rpc("admin_marcar_premio_lojopoly", {
@@ -344,9 +443,10 @@ export function useRegalos({ avisarConSonido = false } = {}) {
     regalos,
     pendientes,
     // Compatibilidad con el aviso parpadeante de "Pedidos recibidos"
-    entregasDisponibles: bingo.entregasDisponibles || lojopolyDisponible,
+    entregasDisponibles: bingo.entregasDisponibles || lojopolyDisponible || carreraDisponible,
     bingoDisponible: bingo.entregasDisponibles,
     lojopolyDisponible,
+    carreraDisponible,
     cargando: bingo.cargando || cargandoLojopoly,
     error: bingo.error,
     cargar,
@@ -376,7 +476,11 @@ export function RegalosVista({ datos, modoAlmacen = false, conValoracion = false
   const porJuego = useMemo(
     () =>
       regalos.filter(
-        (r) => (juego === "todos" || r.origen === juego) && (!cliente || r.clienteToken === cliente.token)
+        (r) =>
+          (juego === "todos" || r.origen === juego) &&
+          (!cliente ||
+            r.clienteToken === cliente.token ||
+            (r.origen === "carrera" && premioCarreraEsDe(r.original, cliente.token, cliente.nombre)))
       ),
     [regalos, juego, cliente]
   );
@@ -448,7 +552,7 @@ export function RegalosVista({ datos, modoAlmacen = false, conValoracion = false
         <div>
           <h2 style={titulo}>🎁 Regalos</h2>
           <p style={subtitulo}>
-            Regalos que han ganado los clientes en el Bingo y en LojoPoly. Marca la casilla cuando se lo
+            Regalos que han ganado los clientes en el Bingo, en LojoPoly y en La Loca Carrera. Marca la casilla cuando se lo
             hayas dado.
           </p>
         </div>
@@ -464,6 +568,7 @@ export function RegalosVista({ datos, modoAlmacen = false, conValoracion = false
             <option value="todos">Todos los juegos</option>
             <option value="bingo">🎱 Bingo</option>
             <option value="lojopoly">🎲 LojoPoly</option>
+            <option value="carrera">🏁 Loca Carrera</option>
           </select>
           <button type="button" onClick={cargar} disabled={cargando} style={botonOscuro}>
             {cargando ? "Actualizando…" : "🔄 Actualizar"}

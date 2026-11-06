@@ -98,7 +98,9 @@ export default function CelebracionPuntosTV({ celebracion, meta = 100, onFin }) 
 
   const sumadoHasta = (n) => inicio + pasos.slice(0, n).reduce((s, p) => s + p, 0);
   const marcador = sumadoHasta(contados);
-  const casillas = pasos.length + 2; // salida + 1 por paso + la que viene
+  // Pista SIEMPRE del mismo largo (salida + 10 + meta) y casillas con "?"
+  // hasta que el carrito llega: así nadie sabe los puntos antes de jugar.
+  const casillas = 12;
   const pctMeta = Math.min(1, sumadoHasta(paso) / metaPts);
   const faltan = Math.max(0, metaPts - marcador);
   const nombre = celebracion?.nombre || "CLIENTE";
@@ -163,7 +165,7 @@ export default function CelebracionPuntosTV({ celebracion, meta = 100, onFin }) 
                     key={i}
                     className={`cpt-casilla${alcanzada ? " cpt-casilla-ok" : ""}${i === 0 ? " cpt-casilla-salida" : ""}${ultima ? " cpt-casilla-sig" : ""}`}
                   >
-                    <span className="cpt-casilla-num">{ultima ? "🏁" : sumadoHasta(i)}</span>
+                    <span className="cpt-casilla-num">{ultima ? "🏁" : i === 0 || i <= contados ? sumadoHasta(i) : "?"}</span>
                     {alcanzada && <span className="cpt-casilla-chispas" key={`ch-${i}`} />}
                   </div>
                 );

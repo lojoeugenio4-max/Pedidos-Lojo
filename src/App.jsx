@@ -6567,7 +6567,6 @@ export default function App() {
             {clienteMesVisible && clienteMes.datos?.empezado && orderedItems.length > 0 && (() => {
               const faltan = faltanArticulosClienteMes(orderedItems, clienteMes.datos);
               const suma = pedidoSumaClienteMes(orderedItems) && !clienteMesYaPidioHoy;
-              const p = puntosClienteMesPedido(orderedItems);
               return (
                 <div style={suma ? styles.bingoSummaryOk : styles.bingoSummaryPending}>
                   <div style={styles.ruletaSummaryTitle}>🏆 Cliente del mes</div>
@@ -6576,7 +6575,7 @@ export default function App() {
                       ? `Ya sumaste con otro pedido para ${textoDiaPreparacion(clienteMes.datos?.yo?.dia_preparacion)}: este no suma puntos.`
                       : faltan > 0
                       ? `Añade ${faltan} ${faltan === 1 ? "artículo distinto más" : "artículos distintos más"} y este pedido sumará puntos.`
-                      : `Este pedido suma ${p} ${p === 1 ? "punto" : "puntos"} al pasar el QR en caja.`}
+                      : "Este pedido suma puntos al pasar el QR en caja. ¡Descubre cuántos en la TV de Cash Lojo!"}
                   </div>
                   <div style={styles.bingoSummaryNote}>
                     Suma un pedido por cada día que recoges, desde {clienteMes.datos?.min_articulos_puntuar || 1} artículos distintos.

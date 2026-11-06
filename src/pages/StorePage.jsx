@@ -1637,6 +1637,21 @@ export default function StorePage() {
           ...actual,
           e.tipo === "meta" ? `🏆 PREMIO FINAL: ${texto}` : e.tipo === "mitad" ? `🚩 Premio de la mitad: ${texto}` : `Casilla ${e.casilla}: ${texto}`,
         ]);
+        // Aviso de REGALO en la pantalla de almacén (igual que Bingo y
+        // LojoPoly): el premio queda en 🎁 Regalos para marcarlo entregado.
+        notificarPremioBingo({
+          juego: "carrera",
+          customerToken: entitlement?.customer_token || "",
+          customerName: tirada.cliente_nombre || entitlement?.customer_name || "",
+          tipo: "carrera",
+          etiqueta:
+            e.tipo === "meta"
+              ? "Loca Carrera · ¡META!"
+              : e.tipo === "mitad"
+                ? "Loca Carrera · Mitad del tablero"
+                : `Loca Carrera · Casilla ${e.casilla ?? ""}`.trim(),
+          premioNombre: texto,
+        });
       }
     });
     if (carreraCodigoRef.current && Number(tirada.pendientes) > 0 && !tirada.terminada) programarTiradaCarrera(1500);
@@ -1932,25 +1947,11 @@ export default function StorePage() {
               <h2 style={{ margin: "4px 0 6px" }}>🖥️ ¡Mirad la TV grande! 😏</h2>
             ) : (
               <>
-            <div style={styles.clienteMesGrande}>
-              +{clienteMesResultado?.puntos}
-              {clienteMesResultado?.repostaje ? ` ⛽+${clienteMesResultado?.puntos_extra || 5}` : ""}
-              {clienteMesResultado?.caja ? ` ❓+${clienteMesResultado?.caja_extra}` : ""}
-            </div>
+            {/* Sin puntos en el TPV: se descubren SOLO jugando en la TV grande. */}
             <h2 style={{ margin: "4px 0 6px" }}>
-              ¡Puntos para {clienteMesResultado?.nombre || entitlement?.customer_name || "el cliente"}!
+              ¡{clienteMesResultado?.nombre || entitlement?.customer_name || "El cliente"} suma en Cliente del mes!
             </h2>
-            <p style={styles.info}>
-              {`🖥️ Mirad la TV grande: el carrito avanza con un bocinazo por cada punto${
-                Number(clienteMesResultado?.turbo_mult) > 1 ? ` (¡con TURBO ×${String(Number(clienteMesResultado.turbo_mult)).replace(".", ",")}!)` : ""
-              }.`}
-              {clienteMesResultado?.repostaje
-                ? ` Después ¡STOP y repostaje! Depósito lleno: +${clienteMesResultado?.puntos_extra || 5} de regalo.`
-                : ""}
-              {clienteMesResultado?.caja ? ` ¡Y le ha salido la CAJA SORPRESA: +${clienteMesResultado?.caja_extra}!` : ""}
-              {clienteMesResultado?.total ? ` Lleva ${clienteMesResultado.total} puntos` : ""}
-              {clienteMesResultado?.posicion ? ` y va ${clienteMesResultado.posicion}º.` : clienteMesResultado?.total ? "." : ""}
-            </p>
+            <p style={styles.info}>🖥️ Mirad la TV grande para ver cuántos puntos consigue.</p>
               </>
             )}
             <BarraEsperaCelebracion finAt={celebracionFinAt} />
@@ -1967,10 +1968,10 @@ export default function StorePage() {
           <p style={styles.info}>Cliente: <strong>{entitlement.customer_name || "sin nombre"}</strong></p>
           <div style={styles.bingoResultBox}>
             <div style={styles.clienteMesGrande}>
-              {clienteMesResultado?.sumado ? `+${clienteMesResultado.puntos}` : "🏆"}
+              🏆
             </div>
             <h2 style={{ margin: 0 }}>
-              {clienteMesResultado?.sumado ? "¡Puntos sumados en Cliente del mes!" : "Cliente del mes"}
+              {clienteMesResultado?.sumado ? "¡Suma en Cliente del mes!" : "Cliente del mes"}
             </h2>
             <p style={styles.info}>{textoClienteMes(clienteMesResultado)}</p>
             <button type="button" onClick={finalizarPartida} style={styles.nextButton}>FINALIZAR ›</button>
@@ -2337,26 +2338,16 @@ function BarraEsperaCelebracion({ finAt }) {
 
 function textoClienteMes(r) {
   if (!r) return "";
-  const pts = (n) => `${n} ${Number(n) === 1 ? "punto" : "puntos"}`;
-  if (r.sumado) {
-    const base =
-      r.motivo === "mejorado"
-        ? `+${pts(r.puntos)} para ${r.nombre || "el cliente"}: este pedido vale ${r.valor_pedido} y mejora al que ya tenía hoy.`
-        : `+${pts(r.puntos)} para ${r.nombre || "el cliente"}.`;
-    const turbo = Number(r.turbo_mult) > 1 ? ` (${r.valor_pedido} × ${String(Number(r.turbo_mult)).replace(".", ",")} de turbo 🔥)` : "";
-    const extra = r.repostaje ? ` ⛽ Depósito lleno: +${pts(r.puntos_extra || 5)} de regalo.` : "";
-    const caja = r.caja ? ` ❓ Caja sorpresa: +${pts(r.caja_extra)}.` : "";
-    return `${base.replace(/\.$/, "")}${turbo}.${extra}${caja} Lleva ${pts(r.total)}${r.posicion ? ` y va ${r.posicion}º` : ""}.`;
-  }
+  // Nunca se muestran puntos en el TPV: solo se descubren en la TV grande.
+  if (r.sumado) return `${r.nombre || "El cliente"} suma en la carrera. ¡Los puntos se ven en la TV grande!`;
   if (r.motivo === "ya_sumado_hoy") {
-    const regalo = Number(r.extra_hoy) > 0 ? ` + ${r.extra_hoy} de regalo` : "";
-    return `Ya sumó ${pts(r.puntos_hoy)}${regalo} con otro pedido para el mismo día: solo suma un pedido por día.`;
+    return "Ya sumó con otro pedido para el mismo día: solo suma un pedido por día.";
   }
   if (r.motivo === "pedido_pequeno") {
     return `Este pedido no suma: lleva ${r.articulos} ${Number(r.articulos) === 1 ? "artículo" : "artículos"} y hacen falta ${r.minimo} distintos.`;
   }
-  if (r.motivo === "ya_canjeado") return "Los puntos de este pedido ya se sumaron.";
-  return "Este pedido no suma puntos.";
+  if (r.motivo === "ya_canjeado") return "Este pedido ya sumó en Cliente del mes.";
+  return "Este pedido no suma en Cliente del mes.";
 }
 
 const styles = {

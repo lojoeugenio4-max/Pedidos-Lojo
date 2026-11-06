@@ -3425,7 +3425,10 @@ function tiradaDePrueba(pos, dado, eventos = [], hasta = null) {
   nuevo('⛈️ Simular: tormenta con carcajada de terror', () => tormentaConRisa('risa'));
 })();
 function aplicarDatos(d) {
-  if (ocupado) { datosPendientes = d; return; }
+  // Mientras haya una tirada jugándose o esperando su turno (p. ej. durante
+  // la tormenta), no se actualizan fichas ni Top 10: si no, el resultado se
+  // veía en la clasificación ANTES de jugar la tirada.
+  if (ocupado || colaTiradas.length) { datosPendientes = d; return; }
   if (d.premioFinal) PREMIO_FINAL = d.premioFinal;
   if ('premioMitad' in d) ponerPremioMitad(d.premioMitad || '');
   if ('comodin' in d) COMODIN = d.comodin || null;
@@ -3435,7 +3438,7 @@ function aplicarDatos(d) {
   }
   if (Array.isArray(d.jugadores)) cargarJugadoresReales(d.jugadores);
 }
-setInterval(() => { if (datosPendientes && !ocupado) { const d = datosPendientes; datosPendientes = null; aplicarDatos(d); } }, 1000);
+setInterval(() => { if (datosPendientes && !ocupado && !colaTiradas.length) { const d = datosPendientes; datosPendientes = null; aplicarDatos(d); } }, 1000);
 window.addEventListener('message', e => {
   if (e.origin !== location.origin) return;
   const d = e.data;

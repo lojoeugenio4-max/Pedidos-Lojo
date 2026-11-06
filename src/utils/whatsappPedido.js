@@ -203,11 +203,8 @@ function construirBloqueParticipacion({
     }
 
     if (clienteMesSuma) {
-      bannerLineas.push(
-        Number(clienteMesPuntos) > 0
-          ? `🏆 Cliente del mes: al pasar el QR sumarás *${clienteMesPuntos} ${Number(clienteMesPuntos) === 1 ? "punto" : "puntos"}*`
-          : "🏆 Cliente del mes: al pasar el QR sumarás tus puntos"
-      );
+      // Sin decir cuántos: los puntos se descubren al jugar en la TV grande.
+      bannerLineas.push("🏆 Cliente del mes: al pasar el QR sumarás puntos. ¡Descubre cuántos en la TV de Cash Lojo!");
     } else if (clienteMesYaHoy) {
       bannerLineas.push("🏆 Cliente del mes ya conseguido con otro pedido para el mismo día.");
     }
