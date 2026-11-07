@@ -621,6 +621,45 @@ body.modoHw .lucImg img:not(.hw){display:none!important}
 @keyframes flotaB50{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-6px) rotate(2deg)}}
 @keyframes brilloB50{0%,55%{transform:translateX(-30%);opacity:0}60%{opacity:1}100%{transform:translateX(330%);opacity:0}}
 @media (prefers-reduced-motion:reduce){.billete50,.billete50 .brillo{animation:none}}
+/* ===== GRAN ESCENA DE PREMIO (casillas de premio) ===== */
+.premioShow{position:absolute;inset:0;z-index:20;pointer-events:none;overflow:hidden;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .35s;font-family:"Bowlby One",Impact,sans-serif;color:#fff;text-align:center}
+.premioShow.ver{opacity:1}
+.premioShow .psFondo{position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,rgba(60,10,60,.86),rgba(0,0,0,.94) 70%)}
+.premioShow .psRayos{position:absolute;left:50%;top:50%;width:260vmax;height:260vmax;margin:-130vmax 0 0 -130vmax;opacity:0;background:repeating-conic-gradient(from 0deg,rgba(255,210,63,.35) 0deg 9deg,rgba(255,210,63,0) 9deg 22.5deg);animation:psGira 9s linear infinite;transition:opacity .6s}
+.premioShow.revela .psRayos{opacity:1}
+@keyframes psGira{to{transform:rotate(360deg)}}
+.premioShow .psFlash{position:absolute;inset:0;opacity:0}
+.premioShow.sirena .psFlash{animation:psPolicia .5s steps(1) infinite}
+@keyframes psPolicia{0%{opacity:.55;background:radial-gradient(circle at 0% 0%,#ff1a1a 0,rgba(255,0,0,0) 65%)}50%{opacity:.55;background:radial-gradient(circle at 100% 0%,#1a5cff 0,rgba(0,60,255,0) 65%)}}
+.premioShow .psBaliza{position:absolute;top:2vh;width:13vmin;height:13vmin;border-radius:50%;opacity:0;transition:opacity .3s}
+.premioShow.sirena .psBaliza{opacity:1}
+.premioShow .psBaliza.roja{left:3vw;background:radial-gradient(circle,#fff 0 12%,#ff2a2a 30%,#7a0000 70%);box-shadow:0 0 6vmin 2vmin #ff2a2a;animation:psLuz .5s steps(1) infinite}
+.premioShow .psBaliza.azul{right:3vw;background:radial-gradient(circle,#fff 0 12%,#2a6bff 30%,#00206e 70%);box-shadow:0 0 6vmin 2vmin #2a6bff;animation:psLuz .5s steps(1) infinite reverse}
+.premioShow .psBaliza::after{content:"";position:absolute;left:50%;top:50%;width:90vmax;height:9vmin;margin:-4.5vmin 0 0 0;transform-origin:0 50%;background:linear-gradient(90deg,rgba(255,255,255,.55),rgba(255,255,255,0));animation:psHaz 1s linear infinite;mix-blend-mode:screen}
+.premioShow .psBaliza.azul::after{animation-direction:reverse}
+@keyframes psLuz{0%{filter:brightness(1.6)}50%{filter:brightness(.35)}}
+@keyframes psHaz{to{transform:rotate(360deg)}}
+.premioShow .psCaja{position:relative;display:grid;gap:2.2vh;justify-items:center;padding:0 4vw}
+.premioShow .psPrevio{display:grid;gap:3.5vh;justify-items:center}
+.premioShow .psAtencion{font-size:7.5vmin;color:#ffd23f;-webkit-text-stroke:.35vmin #000;text-shadow:0 .8vmin 0 #b0002a,0 0 4vmin #ff2a2a;letter-spacing:.05em;animation:psLatido .5s ease-in-out infinite}
+.premioShow .psSub{font-size:4.6vmin;text-shadow:0 .5vmin 0 #000}
+.premioShow .psSub b{color:#ff7ad1}
+.premioShow .psRegalo{font-size:24vmin;line-height:1;filter:drop-shadow(0 2vmin 3vmin rgba(255,80,180,.7));transform-origin:50% 90%}
+.premioShow.redoble .psRegalo{animation:psTiembla .09s linear infinite}
+.premioShow .psRevela{display:none;gap:2vh;justify-items:center}
+.premioShow.revela .psRevela{display:grid;animation:psEntra .75s cubic-bezier(.2,1.6,.4,1) both}
+.premioShow.revela .psPrevio{display:none}
+.premioShow .psTitulo{font-size:11vmin;color:#ffd23f;-webkit-text-stroke:.45vmin #5a1a00;text-shadow:0 1vmin 0 #a0400a,0 0 6vmin rgba(255,210,63,.9);animation:psLatido .8s ease-in-out infinite}
+.premioShow .psFoto{height:30vh;max-width:50vw;object-fit:contain;border-radius:2vmin;background:#fff;padding:1.5vmin;box-shadow:0 0 0 1vmin #ffd23f,0 0 8vmin 2vmin rgba(255,210,63,.8);animation:psFlota 2.2s ease-in-out infinite}
+.premioShow .psNombrePremio{font-size:7.5vmin;line-height:1.05;max-width:86vw;color:#fff;-webkit-text-stroke:.3vmin #000;text-shadow:0 .7vmin 0 #d4148a,0 0 3vmin rgba(255,80,180,.9)}
+.premioShow .psDetalle{font-size:4vmin;color:#ffe8a3}
+.premioShow .psCliente{font-size:5.2vmin;color:#fff;background:linear-gradient(90deg,#d4148a,#ff7a00);padding:1vmin 4vmin;border-radius:999px;box-shadow:0 .7vmin 0 #000}
+.premioShow .psCaja2{font-size:3.6vmin;color:#ffd23f;text-shadow:0 .4vmin 0 #000}
+@keyframes psLatido{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+@keyframes psTiembla{0%{transform:rotate(-5deg) scale(1.02)}25%{transform:rotate(4deg) translateY(-1vmin)}50%{transform:rotate(-3deg) scale(1.05)}75%{transform:rotate(5deg) translateY(.5vmin)}100%{transform:rotate(-5deg)}}
+@keyframes psEntra{0%{transform:scale(.1) rotate(-12deg);opacity:0}100%{transform:scale(1) rotate(0);opacity:1}}
+@keyframes psFlota{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-1.6vh) rotate(2deg)}}
+@media (prefers-reduced-motion:reduce){.premioShow *{animation-duration:2s!important}}
 </style>
 </head>
 <body>
@@ -1541,8 +1580,9 @@ async function efecto(c) {
     case 'villano': await escenaMelon(c, tomarCastigo(CASTIGOS.melon)); return false;
     case 'jubilado': await escenaJubilado(c, tomarCastigo(CASTIGOS.jubilado)); return false;
     case 'vieja': await escenaVieja(c); return false;
-    case 'regalo': { const p = PREMIOS[c.pos]; p.quedan--; pintarPremios(); sonido.regalo();
-      await cartel(`<div class="grande">🎁</div><h2>¡PREMIO!</h2><p>${c.nombre} se lleva<br><b>${p.nombre}</b><br><small>${p.quedan > 0 ? `Quedan ${p.quedan} en esta casilla` : 'Era el último: esta casilla queda agotada'}</small></p>`, '', 3000); return false; }
+    // Tirada real: el premio lo anuncia escenasDespuesReal con el premio que
+    // ha dado el servidor (evento «premio»). En las pruebas, aquí mismo.
+    case 'regalo': if (tiradaRealActual) return false; await escenaPremio(c, c.pos, { texto: PREMIOS[c.pos]?.nombre }); return false;
     case 'meta': await celebracionMeta(c); return false;
   }
   return false;
@@ -3183,6 +3223,7 @@ async function escenasAntesReal(c, t) {
   if (com) await escenaComodin(c, com.frase);
 }
 async function escenasDespuesReal(c, t) {
+  for (const e of (t.eventos || []).filter(e => e.tipo === 'premio')) await escenaPremio(c, Number(e.casilla) || c.pos, e.premio || {});
   const mit = (t.eventos || []).find(e => e.tipo === 'mitad');
   if (mit) await escenaMitad(c, mit.premio || {});
 }
@@ -3225,6 +3266,94 @@ async function escenaMitad(c, premio) {
 }
 function relampagoOro() { const r = $('relampago'); r.classList.add('oro'); relampago(); setTimeout(() => r.classList.remove('oro'), 900); }
 function monedasLluvia() { const zr = tv.getBoundingClientRect(); for (let i = 0; i < 6; i++) setTimeout(() => { try { monedas(zr.width * (.15 + Math.random() * .7), zr.height * .1, 10, 1, 'arriba'); } catch { } }, i * 220); }
+
+// ===================== GRAN ESCENA DE PREMIO (casillas 10, 20, 38, 47, 56) =====================
+// Cuando el servidor da un premio de casilla (evento «premio» de
+// carrera_tirar_qr), la TV grande lo anuncia a lo grande: sirenas con luces de
+// policía, redoble de tambor, platillazo, fanfarria, fuegos artificiales y el
+// premio con su foto en el centro de la pantalla.
+function sirena(dur = 3) {
+  if (silenciado || !enPrimerPlano()) return;
+  const a = audio(), t = a.currentTime;
+  const o = a.createOscillator(), lfo = a.createOscillator(), prof = a.createGain(), f = a.createBiquadFilter(), g = a.createGain();
+  o.type = 'sawtooth'; o.frequency.setValueAtTime(950, t);
+  lfo.type = 'triangle'; lfo.frequency.setValueAtTime(1.3, t); prof.gain.setValueAtTime(380, t);
+  lfo.connect(prof).connect(o.frequency);
+  f.type = 'lowpass'; f.frequency.setValueAtTime(2600, t);
+  g.gain.setValueAtTime(.001, t); g.gain.linearRampToValueAtTime(.11, t + .15); g.gain.setValueAtTime(.11, t + dur - .3); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+  o.connect(f).connect(g).connect(a.destination);
+  o.start(t); lfo.start(t); o.stop(t + dur + .05); lfo.stop(t + dur + .05);
+}
+function platillazo() {
+  ruido(2.6, { desde: 9000, hasta: 4500, vol: .42, tipo: 'highpass' });
+  ruido(1.4, { desde: 5000, hasta: 2500, vol: .25, cuando: .02, tipo: 'bandpass' });
+  tono(110, 45, .6, 'sine', .55); // bombo
+}
+function redobleFinal(dur = 2.6) {
+  sonidoCine.redoble(dur);
+  // el tambor va subiendo de intensidad y acaba en un golpe seco
+  for (let i = 0; i < dur * 14; i++) tono(190, 150, .05, 'triangle', .04 + i / (dur * 14) * .1, i / 14);
+}
+function textoPremio(premio = {}, casilla) {
+  const art = premio.articulo?.nombre ? `${premio.cantidad || 1} ${premio.formato === 'cajas' ? (Number(premio.cantidad || 1) === 1 ? 'caja' : 'cajas') : (Number(premio.cantidad || 1) === 1 ? 'ud.' : 'uds.')} de ${premio.articulo.nombre}` : '';
+  const nombre = premio.texto || art || PREMIOS[casilla]?.nombre || 'Premio sorpresa';
+  return { nombre, detalle: premio.texto && art ? art : '' };
+}
+async function escenaPremio(c, casilla, premio = {}) {
+  pararTrailer();
+  const p = PREMIOS[casilla];
+  if (p) { p.quedan = Math.max(0, p.quedan - 1); pintarPremios(); }
+  const { nombre, detalle } = textoPremio(premio, casilla);
+  const foto = fotoPremio(premio);
+  const ov = document.createElement('div');
+  ov.className = 'premioShow';
+  ov.innerHTML = `<div class="psFondo"></div><div class="psRayos"></div><div class="psFlash"></div>
+    <div class="psBaliza roja"></div><div class="psBaliza azul"></div>
+    <div class="psCaja">
+      <div class="psPrevio">
+        <div class="psAtencion">🚨 ¡ATENCIÓN, ATENCIÓN! 🚨</div>
+        <div class="psSub">¡<b>${escaparHTML(c.nombre)}</b> ha caído en la casilla de PREMIO ${casilla}!</div>
+        <div class="psRegalo">🎁</div>
+      </div>
+      <div class="psRevela">
+        <div class="psTitulo">🎉 ¡PREMIO! 🎉</div>
+        ${foto ? `<img class="psFoto" src="${foto}" alt="">` : '<div class="psRegalo">🎁</div>'}
+        <div class="psNombrePremio">${escaparHTML(nombre)}</div>
+        ${detalle ? `<div class="psDetalle">${escaparHTML(detalle)}</div>` : ''}
+        <div class="psCliente">¡Enhorabuena, ${escaparHTML(c.nombre)}!</div>
+        <div class="psCaja2">Recoge tu premio en caja · Cash Lojo</div>
+      </div>
+    </div>`;
+  $('tv').appendChild(ov);
+  void ov.offsetWidth;
+  try {
+    // 1) SIRENAS y luces de policía
+    ov.classList.add('ver', 'sirena');
+    sirena(3.2); sacudir(10, 600); ovacion(1.6);
+    await espera(3000);
+    // 2) REDOBLE DE TAMBOR: el regalo tiembla cada vez más
+    ov.classList.remove('sirena'); ov.classList.add('redoble');
+    ov.querySelector('.psSub').innerHTML = `¿Qué se lleva <b>${escaparHTML(c.nombre)}</b>…?`;
+    nivelPublico(.02, .3);
+    redobleFinal(2.6);
+    await espera(2650);
+    // 3) ¡PLATILLAZO! y aparece el premio
+    ov.classList.remove('redoble'); ov.classList.add('revela');
+    platillazo(); fanfarria(); setTimeout(fanfarria, 1100);
+    sacudir(20, 800); ovacion(2.6); confeti(); setTimeout(confeti, 1500);
+    sonido.regalo(); tintineo(16); monedasLluvia();
+    const w = fx.width / devicePixelRatio, h = fx.height / devicePixelRatio;
+    emitir(w / 2, h / 2, 220, 'confeti'); emitir(w / 2, h / 2, 90, 'chispa');
+    fuegosArtificiales(5200);
+    setTimeout(() => { platillazo(); sirena(1.4); }, 2600);
+    await espera(5600);
+  } finally {
+    ov.classList.remove('ver');
+    await espera(400);
+    ov.remove();
+  }
+  nivelPublico(.025, 1.5);
+}
 
 // ===================== COMODÍN: tirada extra regalada por José Luis o Rafa =====================
 let COMODIN = MODO_TV ? null : { nombres: 'charcutería', cajas: 3 };
@@ -3418,6 +3547,7 @@ function tiradaDePrueba(pos, dado, eventos = [], hasta = null) {
   const cont = document.querySelector('.controles'); if (!cont) return;
   const nuevo = (txt, fn) => { const b = document.createElement('button'); b.className = 'prin'; b.textContent = txt; b.onclick = () => { audio(); fn(); }; cont.prepend(b); };
   nuevo('🃏 Simular: comodín (José Luis o Rafa regala tirada)', () => tiradaDePrueba(10, 3, [{ tipo: 'comodin', frase: 'Has comprado mucha charcutería… ¡te regalo una tirada extra!' }]));
+  nuevo('🎁 Simular: cae en casilla de premio (escena grande)', () => tiradaDePrueba(7, 3, [{ tipo: 'premio', casilla: 10, premio: { texto: '1 caja de Cruzcampo gratis' } }]));
   nuevo('🚩 Simular: pasa la casilla 32 (premio de la mitad)', () => tiradaDePrueba(29, 4, [{ tipo: 'mitad', premio: { texto: '1 caja de Cruzcampo' } }]));
   nuevo('🚦 Simular: sale de la casilla 1 y saca un 4', () => tiradaDePrueba(1, 4));
   nuevo('👴 Simular: tormenta con «¡Coco! ¡Coco!» del Jubilado', () => tormentaConRisa('jubilado'));
