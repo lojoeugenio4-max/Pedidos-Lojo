@@ -705,6 +705,25 @@ export default function StorePage() {
       }
     }
 
+    // BINGO con el plazo agotado (cartón caducado o completo): ya no se puede
+    // sacar bola, así que se le quitan las bolas pendientes a este QR (para
+    // que no se quede en «QR pendientes») y no se ofrece el Bingo en caja.
+    // Migración: migracion_bingo_sin_bolas_plazo_agotado.sql.
+    if (!unifiedError && unified?.ok && unified.bingo_available && unified.order_id) {
+      try {
+        const { data: quitadas, error: quitadasError } = await supabase.rpc(
+          "bingo_quitar_bolas_caducadas_pedido",
+          { p_order_id: String(unified.order_id) }
+        );
+        if (quitadasError) throw quitadasError;
+        if (quitadas?.quitadas) {
+          unified = { ...unified, bingo_available: false, bingo_remaining: 0, bingo_plazo_agotado: true };
+        }
+      } catch (err) {
+        console.warn("No se pudo comprobar el plazo del Bingo de este cliente:", err);
+      }
+    }
+
     // LojoPoly va en su propia tabla (lojopoly_pedidos): se pregunta aparte
     // si a este QR le quedan tiradas. Un fallo aquí nunca bloquea el resto.
     const estadoLojoPoly = await consultarLojoPoly(code);
@@ -844,6 +863,13 @@ export default function StorePage() {
       // Pedido que solo traía Cliente del mes: no hay nada más que jugar.
       if (juegosDisponibles === 0 && (unified.cliente_mes_available || resultadoClienteMes?.sumado)) {
         seguirTrasCelebracion("cliente-mes", resultadoClienteMes);
+        return;
+      }
+
+      // Solo traía bolas de Bingo y su plazo ya terminó: no hay nada que jugar.
+      if (juegosDisponibles === 0 && unified.bingo_plazo_agotado) {
+        setMensaje("El plazo del Bingo de este cliente ha terminado: este QR ya no tiene bolas.");
+        setEstado("used");
         return;
       }
 

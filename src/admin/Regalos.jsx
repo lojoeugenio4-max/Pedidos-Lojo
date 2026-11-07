@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { usePremiosBingo, construirRegalos, cargarNombresRegalos } from "./PremiosBingo";
 
-// Regalos ganados en los juegos (Bingo + LojoPoly).
+// Regalos ganados en los juegos (Bingo, LojoPoly y La Loca Carrera).
 //
 // · Pestañas Pendientes (por defecto) / Entregados / Todos.
 // · Se usa en el Admin de Almacén ("Pedidos recibidos" → 🎁 Regalos) y en el
@@ -713,8 +713,8 @@ export function RegalosVista({ datos, modoAlmacen = false, conValoracion = false
                           </div>
                         </td>
                         <td style={td}>
-                          <span style={badge(r.origen === "bingo" ? "azul" : "verde")}>
-                            {r.origen === "bingo" ? "🎱 Bingo" : "🎲 LojoPoly"}
+                          <span style={badge(r.origen === "bingo" ? "azul" : r.origen === "carrera" ? "dorado" : "verde")}>
+                            {r.origen === "bingo" ? "🎱 Bingo" : r.origen === "carrera" ? "🏁 Loca Carrera" : "🎲 LojoPoly"}
                           </span>
                         </td>
                         <td style={td}>

@@ -200,6 +200,11 @@ function combinarConCarrera(filas, filasCarrera) {
 
 // Pide las listas (Bingo/Ruleta, Sorteo, Cliente del mes, LojoPoly y Carrera) y las une.
 async function cargarTodasLasListas() {
+  // Antes de listar, se quitan las bolas de Bingo de los clientes cuyo plazo
+  // ya terminó (no se pueden jugar y dejarían el QR pendiente para siempre).
+  // Migración: migracion_bingo_sin_bolas_plazo_agotado.sql.
+  const limpieza = await supabase.rpc("bingo_anular_bolas_caducadas");
+  if (limpieza.error) console.warn("QR pendientes: no se pudieron quitar las bolas de Bingo caducadas:", limpieza.error);
   const [principal, sorteo, clienteMes, lojopoly, carrera] = await Promise.all([
     supabase.rpc("admin_listar_qr_pendientes"),
     supabase.rpc("admin_listar_qr_pendientes_sorteo"),
