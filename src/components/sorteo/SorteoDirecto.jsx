@@ -340,9 +340,20 @@ export default function SorteoDirecto({
                   {premio && <div style={{ ...estilos.premio, fontSize: 20 }}>🎁 {premio}</div>}
                 </>
               ) : (
-                <div style={{ ...estilos.subtitulo, fontSize: 16 }}>
-                  El número premiado es el <strong>{String(numeroFinal).padStart(2, "0")}</strong>. ¡Suerte en el próximo sorteo!
-                </div>
+                <>
+                  <div style={{ ...estilos.subtitulo, fontSize: 16 }}>
+                    El número premiado es el <strong>{String(numeroFinal).padStart(2, "0")}</strong>
+                  </div>
+                  <div style={{ ...estilos.ganador, fontSize: 26 }}>
+                    🏆 {ganador?.cliente_nombre || "¡Ya tenemos ganador!"}
+                  </div>
+                  {premio && <div style={{ ...estilos.premio, fontSize: 17 }}>🎁 {premio}</div>}
+                  <div style={{ ...estilos.subtitulo, fontSize: 14 }}>
+                    {misNumeros.length > 0
+                      ? "¡Suerte en el próximo sorteo!"
+                      : "Consigue tus números con tus pedidos y participa en el próximo sorteo."}
+                  </div>
+                </>
               )}
             </div>
           )}

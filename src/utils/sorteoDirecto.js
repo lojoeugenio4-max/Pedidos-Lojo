@@ -70,7 +70,8 @@ function normalizarEdicion(fila) {
 }
 
 // modo "tv": mira TODAS las cuadrículas (pantalla grande).
-// modo "cliente": solo las cuadrículas donde el cliente (token) tiene números.
+// modo "cliente": TODAS las cuadrículas también (cualquier cliente puede ver
+//   el sorteo en directo), marcando los números que tiene ese cliente.
 //
 // Devuelve:
 //   directo   -> cuadrícula que se está sorteando ahora mismo (o null)
@@ -142,23 +143,51 @@ export function useSorteoDirecto({ modo = "cliente", token = "", habilitado = tr
       let filas = [];
       let ahoraServidor = null;
 
+      const desde = new Date(Date.now() - 120000).toISOString();
+      const consultarCuadriculas = () =>
+        supabase
+          .from("sorteo_editions")
+          .select("*")
+          .or(`estado.neq.resuelta,sorteo_inicio_at.gt.${desde}`);
+
       if (modo === "cliente") {
         if (!token) {
           edicionesRef.current = [];
           recalcular();
           return;
         }
-        const { data, error } = await supabase.rpc("sorteo_avisos_cliente", { p_token: token });
-        if (error) throw error;
-        ahoraServidor = aMs(data?.ahora);
-        filas = Array.isArray(data?.ediciones) ? data.ediciones : [];
+        // TODOS los clientes ven el sorteo en directo, aunque no tengan
+        // números: se leen todas las cuadrículas (igual que la TV) y, de
+        // sorteo_avisos_cliente, solo se toman "sus números" para marcarlos.
+        const [avisos, cuadriculas] = await Promise.all([
+          supabase.rpc("sorteo_avisos_cliente", { p_token: token }),
+          consultarCuadriculas(),
+        ]);
+        if (avisos.error) console.error("No se pudieron cargar los números del cliente para el Sorteo:", avisos.error);
+        ahoraServidor = aMs(avisos.data?.ahora);
+        const filasCliente = Array.isArray(avisos.data?.ediciones) ? avisos.data.ediciones : [];
+
+        if (cuadriculas.error) {
+          // Si no se pudieran leer todas, al menos las del cliente.
+          console.error("No se pudieron cargar las cuadrículas del Sorteo:", cuadriculas.error);
+          if (avisos.error) throw avisos.error;
+          filas = filasCliente;
+        } else {
+          const numerosPorEdicion = new Map(
+            filasCliente.map((f) => [String(f.edition_id ?? f.id), f.mis_numeros])
+          );
+          filas = (cuadriculas.data || []).map((fila) => ({
+            ...fila,
+            mis_numeros: numerosPorEdicion.get(String(fila.id)) || [],
+          }));
+          if (!ahoraServidor) {
+            const { data: ahora } = await supabase.rpc("sorteo_ahora");
+            ahoraServidor = aMs(ahora);
+          }
+        }
       } else {
-        const desde = new Date(Date.now() - 120000).toISOString();
         const [{ data, error }, { data: ahora }] = await Promise.all([
-          supabase
-            .from("sorteo_editions")
-            .select("*")
-            .or(`estado.neq.resuelta,sorteo_inicio_at.gt.${desde}`),
+          consultarCuadriculas(),
           supabase.rpc("sorteo_ahora"),
         ]);
         if (error) throw error;

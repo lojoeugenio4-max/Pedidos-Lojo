@@ -34,6 +34,7 @@ import CelebracionPremio from "./components/sorteo/CelebracionPremio";
 import SorteoDirecto from "./components/sorteo/SorteoDirecto";
 import AvisoSorteo from "./components/sorteo/AvisoSorteo";
 import MisNumerosSorteo from "./components/sorteo/MisNumerosSorteo";
+import { AvisoUltimoGanador, ListaGanadoresSorteo, useGanadoresSorteo } from "./components/sorteo/GanadoresSorteo";
 import LojoPolyJuego from "./components/lojopoly/LojoPolyJuego";
 import CarreraClienteMes from "./components/clienteMes/CarreraClienteMes";
 import PremioClienteMes from "./components/clienteMes/PremioClienteMes";
@@ -938,7 +939,10 @@ export default function App() {
   // el cliente y, a esa hora, pantalla con la rotación de números.
   const [revisionPremioSorteo, setRevisionPremioSorteo] = useState(0);
   const sorteoDirectoAbiertoRef = useRef(false);
-  const sorteoActivoParaCliente = Boolean(configuracionSorteoCliente) && !esComodin;
+  // Ver el sorteo en directo y quién ha ganado: TODOS los clientes
+  // identificados, aunque no tengan números (ni jueguen al Sorteo).
+  const sorteoVisibleParaCliente = Boolean(clienteIdentificado?.token) && !esComodin;
+  const [revisionGanadoresSorteo, setRevisionGanadoresSorteo] = useState(0);
   // CLIENTE DEL MES: carrera de puntos (5 / 3 / 1 por pedido, con turbo, 1 por día de preparación).
   const [mostrarClienteMes, setMostrarClienteMes] = useState(false);
   const clienteMes = useClasificacionClienteMes({
@@ -982,19 +986,24 @@ export default function App() {
   const sorteoEnDirecto = useSorteoDirecto({
     modo: "cliente",
     token: clienteIdentificado?.token || "",
-    habilitado: sorteoActivoParaCliente,
+    habilitado: sorteoVisibleParaCliente,
     // Si el sorteo se resuelve y la pantalla en directo ya no está abierta
     // (el cliente la cerró antes), se comprueba enseguida si ha ganado.
     onResuelta: () => {
+      setRevisionGanadoresSorteo((n) => n + 1);
       if (!sorteoDirectoAbiertoRef.current) setRevisionPremioSorteo((n) => n + 1);
     },
   });
   sorteoDirectoAbiertoRef.current = Boolean(sorteoEnDirecto.directo);
+  const ganadoresSorteo = useGanadoresSorteo({
+    habilitado: sorteoVisibleParaCliente,
+    revision: revisionGanadoresSorteo,
+  });
   // El móvil solo deja sonar el audio si el cliente ha tocado la pantalla
   // (sobre todo el iPhone). Con el primer toque en la app se deja el audio
   // despierto, para que cuando empiece el sorteo en directo ya pueda sonar.
   useEffect(() => {
-    if (!sorteoActivoParaCliente) return undefined;
+    if (!sorteoVisibleParaCliente) return undefined;
     const eventos = ["touchend", "pointerup", "click", "keydown"];
     const despertar = () => {
       desbloquearAudioSorteo().then((ok) => {
@@ -1003,7 +1012,7 @@ export default function App() {
     };
     eventos.forEach((evento) => window.addEventListener(evento, despertar, true));
     return () => eventos.forEach((evento) => window.removeEventListener(evento, despertar, true));
-  }, [sorteoActivoParaCliente]);
+  }, [sorteoVisibleParaCliente]);
   const idSorteoDirectoPrevio = useRef(null);
   useEffect(() => {
     // Al cerrarse la pantalla del sorteo (botón o fin automático) se
@@ -1012,6 +1021,7 @@ export default function App() {
     const idActual = sorteoEnDirecto.directo?.id ?? null;
     if (idSorteoDirectoPrevio.current !== null && idActual === null) {
       setRevisionPremioSorteo((n) => n + 1);
+      setRevisionGanadoresSorteo((n) => n + 1);
     }
     idSorteoDirectoPrevio.current = idActual;
   }, [sorteoEnDirecto.directo?.id]);
@@ -5011,7 +5021,7 @@ export default function App() {
         <CelebracionPremio premio={premioSorteoPendiente} onCerrar={cerrarCelebracionPremioSorteo} />
       )}
 
-      {sorteoActivoParaCliente && sorteoEnDirecto.directo && (
+      {sorteoVisibleParaCliente && sorteoEnDirecto.directo && (
         <SorteoDirecto
           key={`${sorteoEnDirecto.directo.id}-${sorteoEnDirecto.directo.inicioAt}`}
           edicion={sorteoEnDirecto.directo}
@@ -5363,6 +5373,8 @@ export default function App() {
               {!cargandoSorteo && !errorSorteo && numerosSorteoCliente.length > 0 && (
                 <MisNumerosSorteo numeros={numerosSorteoCliente} proximas={sorteoEnDirecto.proximas} fechasSorteo={fechasSorteoCliente} />
               )}
+
+              {!cargandoSorteo && <ListaGanadoresSorteo ganadores={ganadoresSorteo} />}
             </div>
           </div>
         </div>
@@ -5530,12 +5542,15 @@ export default function App() {
                       Juegos
                     </button>
                   )}
-                  {sorteoActivoParaCliente && sorteoEnDirecto.proximas.length > 0 && (
+                  {sorteoVisibleParaCliente && sorteoEnDirecto.proximas.length > 0 && (
                     <AvisoSorteo
                       proximas={sorteoEnDirecto.proximas}
                       getAhora={sorteoEnDirecto.getAhora}
-                      onAbrir={abrirMiSorteo}
+                      onAbrir={configuracionSorteoCliente ? abrirMiSorteo : null}
                     />
+                  )}
+                  {sorteoVisibleParaCliente && !sorteoEnDirecto.directo && (
+                    <AvisoUltimoGanador ganadores={ganadoresSorteo} getAhora={sorteoEnDirecto.getAhora} />
                   )}
                   {cargandoFavoritos && <small>Cargando favoritos...</small>}
                   {errorFavoritos && <small style={styles.favoritesError}>{errorFavoritos}</small>}
