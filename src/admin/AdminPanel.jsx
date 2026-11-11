@@ -160,7 +160,13 @@ export default function AdminPanel() {
           </div>
         </div>
 
-        <section style={card(esMovil, esBajo)}>
+        {/* En Artículos la tarjeta no recorta (overflow visible) para que el
+            buscador pueda quedarse fijo arriba al hacer scroll. */}
+        <section
+          style={
+            opcion === "articulos" ? { ...card(esMovil, esBajo), overflow: "visible" } : card(esMovil, esBajo)
+          }
+        >
           <div style={cardInner}>
             {opcion === "articulos" && <Articulos />}
             {opcion === "departamentos" && <Departamentos />}

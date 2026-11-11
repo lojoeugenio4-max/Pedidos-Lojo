@@ -7,6 +7,8 @@ export default function TablaArticulos({
   onDesactivar,
   onActivar,
   onEliminar,
+  // Artículo que se está editando (se resalta su fila).
+  editandoId = null,
   // Selección múltiple (para asignar departamento o ubicación a muchos artículos a la vez)
   seleccionable = false,
   seleccionados = new Set(),
@@ -96,7 +98,7 @@ export default function TablaArticulos({
         <thead>
           <tr>
             {seleccionable && (
-              <th style={{ ...th, width: "44px", textAlign: "center" }}>
+              <th style={{ ...th, width: "40px", textAlign: "center" }}>
                 <input
                   type="checkbox"
                   style={casilla}
@@ -105,120 +107,132 @@ export default function TablaArticulos({
                     if (el) el.indeterminate = algunoMarcado && !todosMarcados;
                   }}
                   onChange={(e) => marcarTodos(e.target.checked)}
-                  title="Marcar / desmarcar todos los de la lista"
+                  title="Marcar / desmarcar todos los de la lista (Mayúsculas + clic marca un rango)"
                 />
               </th>
             )}
-            <th style={{ ...th, width: "78px" }}>Foto</th>
-            <th style={{ ...th, width: "80px" }}>Código</th>
-            <th style={{ ...th, width: "100px" }}>Cód. Lojo</th>
+            <th style={{ ...th, width: "60px" }}>Foto</th>
             <th style={th}>Artículo</th>
-            <th style={{ ...th, width: "140px" }}>Departamento / Ubicación</th>
-            <th style={{ ...th, width: "90px" }}>Precio</th>
-            <th style={{ ...th, minWidth: "260px" }}>Oferta</th>
+            <th style={{ ...th, width: "190px" }}>Departamento · Ubicación</th>
+            <th style={{ ...th, width: "100px", textAlign: "right" }}>Precio</th>
             <th style={{ ...th, width: "110px" }}>Estado</th>
-            <th style={{ ...th, width: "150px" }}>Acciones</th>
+            <th style={{ ...th, width: "200px", textAlign: "right" }}>Acciones</th>
           </tr>
         </thead>
 
         <tbody>
           {articulos.map((articulo, indice) => {
-            const tieneOferta =
-              Array.isArray(articulo.ofertas) && articulo.ofertas.length > 0;
-
+            const tieneOferta = Array.isArray(articulo.ofertas) && articulo.ofertas.length > 0;
             const oferta = tieneOferta ? articulo.ofertas[0] : null;
-            const textoOferta = oferta?.texto || "";
             const estadoOferta = obtenerEstadoOferta(oferta);
             const precioFormateado = formatearPrecio(articulo.precio);
+            const marcado = seleccionados.has(articulo.id);
+            const enEdicion = editandoId !== undefined && editandoId !== null && editandoId === articulo.id;
+            const departamento = articulo.departamentos;
+
+            let fondoFila = estiloFila(articulo);
+            if (marcado) fondoFila = { ...fondoFila, background: "#ecfdf5" };
+            if (enEdicion) fondoFila = { ...fondoFila, background: "#eef2ff", boxShadow: "inset 4px 0 0 #4f46e5" };
 
             return (
               <tr
                 key={articulo.id}
-                style={
-                  seleccionados.has(articulo.id)
-                    ? { ...estiloFila(articulo), background: "#ecfdf5" }
-                    : estiloFila(articulo)
-                }
+                style={fondoFila}
+                onClick={(e) => {
+                  // Clic en la fila = editar (salvo en casillas y botones).
+                  if (e.target.closest("button, input, a, label")) return;
+                  onEditar(articulo);
+                }}
+                title="Clic para editar"
               >
                 {seleccionable && (
                   <td
                     style={{ ...td, textAlign: "center", cursor: "pointer" }}
                     onClick={(e) => {
+                      e.stopPropagation();
                       if (e.target.tagName !== "INPUT") alternarArticulo(indice, e);
                     }}
                   >
                     <input
                       type="checkbox"
                       style={casilla}
-                      checked={seleccionados.has(articulo.id)}
+                      checked={marcado}
                       onChange={() => {}}
                       onClick={(e) => alternarArticulo(indice, e)}
                     />
                   </td>
                 )}
+
                 <td style={td}>
                   {articulo.foto ? (
-                    <img src={obtenerFoto(articulo)} alt="" style={img} />
+                    <img src={obtenerFoto(articulo)} alt="" style={img} loading="lazy" />
                   ) : (
-                    <span style={noPhoto}>Sin foto</span>
-                  )}
-                </td>
-
-                <td style={td}>
-                  <strong style={code}>{articulo.codigo}</strong>
-                </td>
-
-                <td style={td}>
-                  {articulo.codigo_lojo ? (
-                    <span style={code}>{articulo.codigo_lojo}</span>
-                  ) : (
-                    <span style={noPhoto}>—</span>
+                    <div style={sinFoto} title="Sin foto">📷</div>
                   )}
                 </td>
 
                 <td style={td}>
                   <div style={productName}>{articulo.nombre}</div>
-
-                  <div style={badgesRow}>
-                    {articulo.novedad && (
-                      <span style={newBadge}>⭐ Novedad</span>
+                  <div style={lineaCodigos}>
+                    <span>Cód. {articulo.codigo}</span>
+                    <span style={separador}>·</span>
+                    {articulo.codigo_lojo ? (
+                      <span>
+                        Lojo <b>{articulo.codigo_lojo}</b>
+                      </span>
+                    ) : (
+                      <span style={{ color: "#b45309", fontWeight: 800 }}>⚠️ Sin código Lojo</span>
                     )}
-
-                    {tieneOferta && (
-                      <span style={offerMiniBadge}>🏷 Oferta</span>
-                    )}
-
-                    {articulo.oculto && (
-                      <span style={hiddenNameBadge}>🙈 Oculto</span>
-                    )}
-
-                    {!articulo.activo && (
-                      <span style={inactiveMiniBadge}>⛔ Inactivo</span>
+                    {Array.isArray(articulo.eans) && articulo.eans.length > 0 && (
+                      <>
+                        <span style={separador}>·</span>
+                        <span title={articulo.eans.join("\n")}>
+                          ▥ {articulo.eans.length} EAN
+                        </span>
+                      </>
                     )}
                   </div>
+                  {(articulo.novedad || tieneOferta) && (
+                    <div style={badgesRow}>
+                      {articulo.novedad && <span style={newBadge}>⭐ Novedad</span>}
+                      {tieneOferta && (
+                        <span
+                          style={
+                            estadoOferta === "caducada"
+                              ? offerExpiredBadge
+                              : estadoOferta === "programada"
+                                ? offerProgrammedBadge
+                                : offerMiniBadge
+                          }
+                          title={oferta?.texto || ""}
+                        >
+                          🏷 {oferta?.texto || "Oferta"}
+                          {estadoOferta === "caducada" ? " (caducada)" : estadoOferta === "programada" ? " (programada)" : ""}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </td>
 
                 <td style={td}>
-                  {articulo.departamentos?.nombre ? (
-                    <span style={departmentBadge}>
-                      {articulo.departamentos.cod !== null &&
-                      articulo.departamentos.cod !== undefined &&
-                      String(articulo.departamentos.cod).trim() !== ""
-                        ? `${articulo.departamentos.cod} · `
+                  {departamento?.nombre ? (
+                    <div style={departmentText}>
+                      {departamento.cod !== null &&
+                      departamento.cod !== undefined &&
+                      String(departamento.cod).trim() !== ""
+                        ? `${departamento.cod} · `
                         : ""}
-                      {articulo.departamentos.nombre}
-                    </span>
+                      {departamento.nombre}
+                    </div>
                   ) : (
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#b45309" }}>
-                      🗂️ Sin departamento
-                    </span>
+                    <div style={{ ...departmentText, color: "#b45309" }}>🗂️ Sin departamento</div>
                   )}
                   <div
                     style={{
-                      marginTop: 6,
+                      marginTop: 3,
                       fontSize: 12,
                       fontWeight: 700,
-                      color: articulo.ubicacion ? "#0f766e" : "#9ca3af",
+                      color: articulo.ubicacion ? "#0f766e" : "#94a3b8",
                     }}
                     title={articulo.ubicacion?.nombre || "Sin ubicación"}
                   >
@@ -226,81 +240,45 @@ export default function TablaArticulos({
                   </div>
                 </td>
 
-                <td style={td}>
+                <td style={{ ...td, textAlign: "right" }}>
                   {precioFormateado ? (
-                    <span style={priceBadge}>{precioFormateado} €</span>
+                    <span style={priceText}>{precioFormateado} €</span>
                   ) : (
-                    <span style={emptyOffer}>—</span>
+                    <span style={sinPrecio}>Sin precio</span>
                   )}
                 </td>
 
                 <td style={td}>
-                  {tieneOferta ? (
-                    <div>
-                      <div style={offerBadge}>🏷️ {textoOferta}</div>
-
-                      {estadoOferta === "activa" && (
-                        <div style={offerActiveBadge}>✅ Oferta activa</div>
-                      )}
-
-                      {estadoOferta === "caducada" && (
-                        <div style={offerExpiredBadge}>⏰ Oferta caducada</div>
-                      )}
-
-                      {estadoOferta === "programada" && (
-                        <div style={offerProgrammedBadge}>
-                          📅 Oferta programada
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <span style={emptyOffer}>—</span>
-                  )}
-                </td>
-
-                <td style={td}>
-                  {articulo.activo ? (
-                    <span style={activeBadge}>Activo</span>
-                  ) : (
+                  {!articulo.activo ? (
                     <span style={inactiveBadge}>Inactivo</span>
+                  ) : articulo.oculto ? (
+                    <span style={hiddenBadge}>Oculto</span>
+                  ) : (
+                    <span style={activeBadge}>Activo</span>
                   )}
-
-                  <div style={{ marginTop: "6px" }}>
-                    {articulo.oculto ? (
+                  {!articulo.activo && articulo.oculto && (
+                    <div style={{ marginTop: 4 }}>
                       <span style={hiddenBadge}>Oculto</span>
-                    ) : (
-                      <span style={visibleBadge}>Visible</span>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </td>
 
-                <td style={td}>
+                <td style={{ ...td, textAlign: "right" }}>
                   <div style={actions}>
                     <button style={editBtn} onClick={() => onEditar(articulo)}>
                       ✏️ Editar
                     </button>
-
                     {articulo.activo ? (
-                      <button
-                        style={offBtn}
-                        onClick={() => onDesactivar(articulo)}
-                      >
-                        ❌ Desactivar
+                      <button style={iconBtn} onClick={() => onDesactivar(articulo)} title="Desactivar">
+                        ⛔
                       </button>
                     ) : (
-                      <button
-                        style={activeBtn}
-                        onClick={() => onActivar(articulo)}
-                      >
-                        ✅ Activar
+                      <button style={iconBtnVerde} onClick={() => onActivar(articulo)} title="Activar">
+                        ✅
                       </button>
                     )}
-
-                    <button
-                      style={deleteBtn}
-                      onClick={() => onEliminar(articulo)}
-                    >
-                      🗑️ Eliminar
+                    <button style={iconBtnRojo} onClick={() => onEliminar(articulo)} title="Eliminar">
+                      🗑️
                     </button>
                   </div>
                 </td>
@@ -316,276 +294,139 @@ export default function TablaArticulos({
 const tableCard = {
   overflowX: "auto",
   border: "1px solid #e5e7eb",
-  borderRadius: "18px",
+  borderRadius: "16px",
   background: "#fff",
-  boxShadow: "0 10px 28px rgba(0,0,0,0.06)",
 };
 
 const table = {
   width: "100%",
+  minWidth: "860px",
   borderCollapse: "separate",
   borderSpacing: 0,
 };
 
 const th = {
-  background: "#f8fafc",
-  color: "#475569",
   textAlign: "left",
-  padding: "13px 14px",
+  padding: "10px 10px",
   fontSize: "12px",
-  fontWeight: "900",
+  fontWeight: 900,
+  color: "#64748b",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  background: "#f8fafc",
   borderBottom: "1px solid #e5e7eb",
   whiteSpace: "nowrap",
-  textTransform: "uppercase",
-  letterSpacing: "0.03em",
-};
-
-const tr = {
-  background: "#ffffff",
-};
-
-const hiddenRow = {
-  background: "#f9fafb",
-};
-
-const inactiveRow = {
-  background: "#fff1f2",
 };
 
 const td = {
-  padding: "12px 14px",
+  padding: "8px 10px",
+  borderBottom: "1px solid #f1f5f9",
   verticalAlign: "middle",
   fontSize: "14px",
-  borderBottom: "1px solid #f1f5f9",
+  color: "#0f172a",
 };
+
+const tr = { background: "#fff", cursor: "pointer" };
+const inactiveRow = { background: "#fef2f2", cursor: "pointer", opacity: 0.85 };
+const hiddenRow = { background: "#f8fafc", cursor: "pointer" };
+
+const casilla = { width: "18px", height: "18px", cursor: "pointer" };
 
 const img = {
-  width: "56px",
-  height: "56px",
+  width: "48px",
+  height: "48px",
   objectFit: "contain",
+  borderRadius: "10px",
+  background: "#f8fafc",
   border: "1px solid #e5e7eb",
-  borderRadius: "14px",
-  background: "#fff",
+  display: "block",
 };
 
-const noPhoto = {
-  color: "#94a3b8",
-  fontSize: "12px",
-  fontWeight: "700",
-};
-
-const code = {
-  color: "#111827",
-  fontSize: "14px",
+const sinFoto = {
+  width: "48px",
+  height: "48px",
+  borderRadius: "10px",
+  background: "#f1f5f9",
+  border: "1px dashed #cbd5e1",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: "18px",
+  opacity: 0.6,
 };
 
 const productName = {
-  fontWeight: "800",
-  color: "#111827",
-  marginBottom: "6px",
-  lineHeight: "1.25",
+  fontSize: "15px",
+  fontWeight: 900,
+  color: "#0f172a",
+  lineHeight: 1.25,
 };
 
-const badgesRow = {
+const lineaCodigos = {
   display: "flex",
   flexWrap: "wrap",
-  gap: "5px",
-};
-
-const newBadge = {
-  display: "inline-block",
-  background: "#fef3c7",
-  color: "#92400e",
-  padding: "3px 8px",
-  borderRadius: "999px",
-  fontSize: "11px",
-  fontWeight: "800",
-};
-
-const offerMiniBadge = {
-  display: "inline-block",
-  background: "#ffedd5",
-  color: "#9a3412",
-  padding: "3px 8px",
-  borderRadius: "999px",
-  fontSize: "11px",
-  fontWeight: "800",
-};
-
-const hiddenNameBadge = {
-  display: "inline-block",
-  background: "#e5e7eb",
-  color: "#374151",
-  padding: "3px 8px",
-  borderRadius: "999px",
-  fontSize: "11px",
-  fontWeight: "800",
-};
-
-const inactiveMiniBadge = {
-  display: "inline-block",
-  background: "#fee2e2",
-  color: "#991b1b",
-  padding: "3px 8px",
-  borderRadius: "999px",
-  fontSize: "11px",
-  fontWeight: "800",
-};
-
-const departmentBadge = {
-  background: "#eef2ff",
-  color: "#3730a3",
-  padding: "6px 10px",
-  borderRadius: "999px",
+  gap: "4px",
+  marginTop: "3px",
   fontSize: "12px",
-  fontWeight: "800",
+  fontWeight: 700,
+  color: "#64748b",
+};
+
+const separador = { color: "#cbd5e1" };
+
+const badgesRow = { display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "5px" };
+
+const badgeBase = {
   display: "inline-block",
-  maxWidth: "120px",
+  borderRadius: "999px",
+  padding: "2px 8px",
+  fontSize: "11px",
+  fontWeight: 900,
+  maxWidth: "320px",
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
 };
 
-const priceBadge = {
-  background: "#ecfdf5",
-  color: "#047857",
-  padding: "6px 10px",
-  borderRadius: "999px",
-  fontSize: "12px",
-  fontWeight: "900",
-  display: "inline-block",
+const newBadge = { ...badgeBase, background: "#fef9c3", color: "#854d0e" };
+const offerMiniBadge = { ...badgeBase, background: "#ffedd5", color: "#9a3412" };
+const offerExpiredBadge = { ...badgeBase, background: "#f1f5f9", color: "#64748b" };
+const offerProgrammedBadge = { ...badgeBase, background: "#e0f2fe", color: "#075985" };
+
+const departmentText = { fontSize: "13px", fontWeight: 800, color: "#3730a3" };
+
+const priceText = { fontSize: "15px", fontWeight: 900, color: "#166534", whiteSpace: "nowrap" };
+const sinPrecio = { fontSize: "12px", fontWeight: 800, color: "#b45309", whiteSpace: "nowrap" };
+
+const activeBadge = { ...badgeBase, background: "#dcfce7", color: "#166534", fontSize: "12px" };
+const inactiveBadge = { ...badgeBase, background: "#fee2e2", color: "#b91c1c", fontSize: "12px" };
+const hiddenBadge = { ...badgeBase, background: "#e2e8f0", color: "#334155", fontSize: "12px" };
+
+const actions = { display: "flex", gap: "6px", justifyContent: "flex-end", alignItems: "center" };
+
+const editBtn = {
+  border: "none",
+  borderRadius: "10px",
+  padding: "8px 14px",
+  background: "#4f46e5",
+  color: "#fff",
+  fontSize: "13px",
+  fontWeight: 900,
+  cursor: "pointer",
   whiteSpace: "nowrap",
 };
 
-const offerBadge = {
-  background: "#fff7ed",
-  color: "#9a3412",
-  padding: "8px 11px",
-  borderRadius: "12px",
-  fontSize: "12px",
-  fontWeight: "800",
-  display: "inline-block",
-  maxWidth: "340px",
-  lineHeight: "1.35",
-};
-
-const offerActiveBadge = {
-  marginTop: "6px",
-  display: "inline-block",
-  background: "#dcfce7",
-  color: "#166534",
-  padding: "4px 8px",
-  borderRadius: "999px",
-  fontSize: "11px",
-  fontWeight: "800",
-};
-
-const offerExpiredBadge = {
-  marginTop: "6px",
-  display: "inline-block",
-  background: "#fee2e2",
-  color: "#991b1b",
-  padding: "4px 8px",
-  borderRadius: "999px",
-  fontSize: "11px",
-  fontWeight: "800",
-};
-
-const offerProgrammedBadge = {
-  marginTop: "6px",
-  display: "inline-block",
-  background: "#dbeafe",
-  color: "#1d4ed8",
-  padding: "4px 8px",
-  borderRadius: "999px",
-  fontSize: "11px",
-  fontWeight: "800",
-};
-
-const emptyOffer = {
-  color: "#cbd5e1",
-  fontWeight: "800",
-};
-
-const activeBadge = {
-  background: "#dcfce7",
-  color: "#166534",
-  padding: "6px 10px",
-  borderRadius: "999px",
-  fontWeight: "900",
-  fontSize: "12px",
-  display: "inline-block",
-};
-
-const inactiveBadge = {
-  background: "#fee2e2",
-  color: "#991b1b",
-  padding: "6px 10px",
-  borderRadius: "999px",
-  fontWeight: "900",
-  fontSize: "12px",
-  display: "inline-block",
-};
-
-const visibleBadge = {
-  background: "#dbeafe",
-  color: "#1d4ed8",
-  padding: "5px 9px",
-  borderRadius: "999px",
-  fontWeight: "900",
-  fontSize: "11px",
-  display: "inline-block",
-};
-
-const hiddenBadge = {
-  background: "#e5e7eb",
-  color: "#374151",
-  padding: "5px 9px",
-  borderRadius: "999px",
-  fontWeight: "900",
-  fontSize: "11px",
-  display: "inline-block",
-};
-
-const actions = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "6px",
-  minWidth: "120px",
-};
-
-const baseBtn = {
-  border: "none",
+const iconBtnBase = {
+  border: "1px solid #e2e8f0",
   borderRadius: "10px",
-  padding: "7px 9px",
+  width: "34px",
+  height: "34px",
+  background: "#fff",
   cursor: "pointer",
-  fontWeight: "900",
-  fontSize: "12px",
-  textAlign: "center",
+  fontSize: "14px",
+  padding: 0,
 };
 
-const editBtn = {
-  ...baseBtn,
-  background: "#dbeafe",
-  color: "#1d4ed8",
-};
-
-const offBtn = {
-  ...baseBtn,
-  background: "#ffedd5",
-  color: "#c2410c",
-};
-
-const activeBtn = {
-  ...baseBtn,
-  background: "#dcfce7",
-  color: "#166534",
-};
-
-const deleteBtn = {
-  ...baseBtn,
-  background: "#fee2e2",
-  color: "#b91c1c",
-};
-
-const casilla = { width: "18px", height: "18px", cursor: "pointer" };
+const iconBtn = { ...iconBtnBase };
+const iconBtnVerde = { ...iconBtnBase, background: "#f0fdf4", borderColor: "#bbf7d0" };
+const iconBtnRojo = { ...iconBtnBase, background: "#fef2f2", borderColor: "#fecaca" };
