@@ -633,9 +633,7 @@ export default function Articulos() {
     const conOferta = articulos.filter(
       (articulo) => Array.isArray(articulo.ofertas) && articulo.ofertas.length > 0
     ).length;
-    const conPrecio = articulos.filter(
-      (articulo) => articulo.precio !== null && articulo.precio !== undefined
-    ).length;
+    const conPrecio = articulos.filter(tienePrecioRelleno).length;
 
     return {
       total: articulos.length,
@@ -676,7 +674,7 @@ export default function Articulos() {
 
   const articulosFiltrados = articulos.filter((articulo) => {
     const tieneOferta = Array.isArray(articulo.ofertas) && articulo.ofertas.length > 0;
-    const tienePrecio = articulo.precio !== null && articulo.precio !== undefined;
+    const tienePrecio = tienePrecioRelleno(articulo);
     const tieneLojo = Boolean(String(articulo.codigo_lojo || "").trim());
 
     if (!coincideBusqueda(articulo)) return false;
@@ -1040,6 +1038,15 @@ function StatCard({ label, value }) {
       <div style={statLabel}>{label}</div>
     </div>
   );
+}
+
+// Un artículo "tiene precio" si el campo está relleno con un número.
+// En blanco, vacío o con texto que no es número = "Sin precio".
+function tienePrecioRelleno(articulo) {
+  const precio = articulo?.precio;
+  if (precio === null || precio === undefined) return false;
+  if (typeof precio === "string" && !precio.trim()) return false;
+  return Number.isFinite(Number(String(precio).replace(",", ".")));
 }
 
 function FiltroSelect({ etiqueta, valor, onChange, deshabilitado = false, children }) {
