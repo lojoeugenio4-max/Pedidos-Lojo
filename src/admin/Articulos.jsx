@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { supabaseStorage } from "../supabaseStorageClient";
 import FormArticulo from "./FormArticulo";
+import ImportarEan from "./ImportarEan";
 import TablaArticulos from "./TablaArticulos";
 import { comprimirImagen } from "../utils/comprimirImagen";
 import { cargarUbicacionesPorArticulo } from "../utils/ordenUbicacionPedido";
@@ -743,9 +744,12 @@ export default function Articulos() {
           </p>
         </div>
 
-        <button onClick={nuevoArticulo} style={newButton}>
-          + Nuevo artículo
-        </button>
+        <div style={botonesCabecera}>
+          <ImportarEan articulos={articulos} eansDisponibles={eansDisponibles} onTerminado={cargarDatos} />
+          <button onClick={nuevoArticulo} style={newButton}>
+            + Nuevo artículo
+          </button>
+        </div>
       </section>
 
       <section style={statsGrid}>
@@ -1130,6 +1134,13 @@ const subtitle = {
   color: "#dbeafe",
   fontSize: "15px",
   maxWidth: "640px",
+};
+
+const botonesCabecera = {
+  display: "flex",
+  gap: "10px",
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
 };
 
 const newButton = {
