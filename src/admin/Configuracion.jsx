@@ -3,6 +3,7 @@ import { supabase } from "../supabaseClient";
 import { supabaseStorage } from "../supabaseStorageClient";
 import appSource from "../App.jsx?raw";
 import hiddenSource from "../hiddenProducts.js?raw";
+import CopiaSeguridad from "./CopiaSeguridad";
 
 const BUCKETS_A_MEDIR = ["productos"];
 
@@ -380,6 +381,8 @@ export default function Configuracion() {
   return (
     <div>
       <h1>⚙️ Configuración</h1>
+
+      <CopiaSeguridad />
 
       <div style={card}>
         <h2>Importación inicial</h2>
