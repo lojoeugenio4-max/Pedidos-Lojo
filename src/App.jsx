@@ -375,11 +375,12 @@ function getPublicPhotoUrl(fileName) {
 function getOfferStatus(offer) {
   if (!offer) return null;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const start = offer.fecha_inicio ? new Date(offer.fecha_inicio) : null;
-  const end = offer.fecha_fin ? new Date(offer.fecha_fin) : null;
+  // Comparamos las fechas como texto "AAAA-MM-DD" en hora local.
+  // Con new Date("2026-11-12") JavaScript usa medianoche UTC y en España
+  // eso desplazaba el día (una oferta que empezaba hoy no salía hasta mañana).
+  const today = getTodayISO();
+  const start = offer.fecha_inicio ? String(offer.fecha_inicio).slice(0, 10) : null;
+  const end = offer.fecha_fin ? String(offer.fecha_fin).slice(0, 10) : null;
 
   if (start && start > today) return "programada";
   if (end && end < today) return "caducada";
@@ -389,10 +390,10 @@ function getOfferStatus(offer) {
 function getActiveOffer(offers) {
   if (!Array.isArray(offers) || offers.length === 0) return null;
 
-  return (
-    offers.find((offer) => getOfferStatus(offer) === "activa") ||
-    offers[0]
-  );
+  // Solo devolvemos una oferta si está activa hoy. Antes, si no había
+  // ninguna activa, se devolvía la primera aunque estuviera caducada o
+  // aún no hubiera empezado, y por eso el texto seguía saliendo en la app.
+  return offers.find((offer) => getOfferStatus(offer) === "activa") || null;
 }
 
 function getTodayISO() {
