@@ -347,6 +347,34 @@ export function useRegalos({ avisarConSonido = false } = {}) {
     };
   }, []);
 
+  // Código Lojo de cada artículo (id → codigo_lojo), para que en Valoración y
+  // en el listado impreso salga el código Lojo del artículo.
+  const [codigosArticulos, setCodigosArticulos] = useState(() => new Map());
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      const mapa = new Map();
+      const TAM = 1000;
+      for (let desde = 0; ; desde += TAM) {
+        const { data, error } = await supabase
+          .from("articulos")
+          .select("id,codigo_lojo")
+          .order("id", { ascending: true })
+          .range(desde, desde + TAM - 1);
+        if (error) {
+          console.warn("No se pudieron leer los códigos Lojo de los artículos:", error);
+          return;
+        }
+        (data || []).forEach((a) => mapa.set(String(a.id), String(a.codigo_lojo ?? "").trim()));
+        if (!data || data.length < TAM) break;
+      }
+      if (!cancelado) setCodigosArticulos(mapa);
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
   const regalos = useMemo(() => {
     const buscarFicha = (token, id, nombre) =>
       (token && fichasClientes.porToken.get(String(token))) ||
@@ -456,13 +484,16 @@ export function useRegalos({ avisarConSonido = false } = {}) {
         original: p,
       });
     });
+    lista.forEach((r) => {
+      if (r.articulo) r.articulo = { ...r.articulo, codigoLojo: codigosArticulos.get(String(r.articulo.id)) || "" };
+    });
     const orden = { pendiente: 0, entregado: 1, caducado: 2 };
     lista.sort((a, b) => {
       if (orden[a.estado] !== orden[b.estado]) return (orden[a.estado] ?? 3) - (orden[b.estado] ?? 3);
       return new Date(b.ganadoEn || 0) - new Date(a.ganadoEn || 0);
     });
     return lista;
-  }, [bingo.regalos, bingo.entregasDisponibles, lojopoly, carrera, clientesBingo, guardados, fichasClientes]);
+  }, [bingo.regalos, bingo.entregasDisponibles, lojopoly, carrera, clientesBingo, guardados, fichasClientes, codigosArticulos]);
 
   const pendientes = useMemo(() => regalos.filter((r) => r.estado === "pendiente" && r.editable), [regalos]);
 
@@ -845,7 +876,8 @@ function ValoracionRegalos({ regalos, busqueda, onCambio }) {
         normalizar(r.clienteNombre).includes(q) ||
         normalizar(r.codigoLojo).includes(q) ||
         normalizar(r.regalo).includes(q) ||
-        normalizar(r.articulo?.codigo).includes(q)
+        normalizar(r.articulo?.codigo).includes(q) ||
+        normalizar(r.articulo?.codigoLojo).includes(q)
       );
     });
   }, [entregados, filtro, desde, hasta, busqueda]);
@@ -1009,7 +1041,7 @@ function ValoracionRegalos({ regalos, busqueda, onCambio }) {
                 <th style={th}>Entregado</th>
                 <th style={th}>Cliente</th>
                 <th style={th}>Juego</th>
-                <th style={th}>Código</th>
+                <th style={th}>Cód. Lojo</th>
                 <th style={th}>Artículo</th>
                 <th style={{ ...th, textAlign: "right" }}>Cantidad</th>
                 <th style={th}>Estado</th>
@@ -1036,7 +1068,7 @@ function ValoracionRegalos({ regalos, busqueda, onCambio }) {
                     {r.juego}
                     <div style={textoPequeno}>{r.etiqueta}</div>
                   </td>
-                  <td style={{ ...td, fontWeight: 800 }}>{r.articulo?.codigo || "—"}</td>
+                  <td style={{ ...td, fontWeight: 800 }}>{r.articulo?.codigoLojo || "—"}</td>
                   <td style={td}>
                     {r.articulo?.nombre || r.regalo || "—"}
                     {!r.articulo && <div style={{ ...textoPequeno, color: "#b45309" }}>⚠️ Sin artículo asignado</div>}
@@ -1145,7 +1177,7 @@ function htmlListado(lista, { filtro, desde, hasta }) {
   lista.forEach((r) => {
     const k = r.articulo ? `a:${r.articulo.id}` : `t:${r.regalo}`;
     const actual = resumen.get(k) || {
-      codigo: r.articulo?.codigo || "",
+      codigo: r.articulo?.codigoLojo || "",
       nombre: r.articulo?.nombre || r.regalo || "(sin artículo)",
       sinArticulo: !r.articulo,
       cajas: 0,
@@ -1173,7 +1205,7 @@ function htmlListado(lista, { filtro, desde, hasta }) {
         <td>${escapar(r.codigoLojo || "")}</td>
         <td>${escapar(r.clienteNombre || "")}</td>
         <td>${escapar(r.juego)} · ${escapar(r.etiqueta)}</td>
-        <td class="cod">${escapar(r.articulo?.codigo || "—")}</td>
+        <td class="cod">${escapar(r.articulo?.codigoLojo || "—")}</td>
         <td>${escapar(r.articulo?.nombre || r.regalo || "—")}</td>
         <td class="num">${escapar(cantidadConFormato(r.cantidad, r.formato))}</td>
         <td>${r.valoradoEn ? "Valorado" : "No valorado"}</td>
@@ -1197,11 +1229,11 @@ function htmlListado(lista, { filtro, desde, hasta }) {
 <h1>Cash Lojo · ${escapar(tituloListado)}</h1>
 <p class="sub">${escapar(periodo)} · ${lista.length} regalo(s) · Impreso el ${escapar(fechaHora(new Date().toISOString()))}</p>
 <h2>Resumen por artículo</h2>
-<table><thead><tr><th>Código</th><th>Artículo</th><th class="num">Regalos</th><th class="num">Cajas</th><th class="num">Unidades</th></tr></thead>
+<table><thead><tr><th>Cód. Lojo</th><th>Artículo</th><th class="num">Regalos</th><th class="num">Cajas</th><th class="num">Unidades</th></tr></thead>
 <tbody>${filasResumen}</tbody>
 <tfoot><tr><td colspan="2">Total</td><td class="num">${lista.length}</td><td class="num">${escapar(cantidadTexto(totalCajas))}</td><td class="num">${escapar(cantidadTexto(totalUnidades))}</td></tr></tfoot></table>
 <h2>Detalle</h2>
-<table><thead><tr><th>Entregado</th><th>Cód. Lojo</th><th>Cliente</th><th>Juego</th><th>Código</th><th>Artículo</th><th class="num">Cantidad</th><th>Estado</th></tr></thead>
+<table><thead><tr><th>Entregado</th><th>Cód. Lojo</th><th>Cliente</th><th>Juego</th><th>Cód. Lojo art.</th><th>Artículo</th><th class="num">Cantidad</th><th>Estado</th></tr></thead>
 <tbody>${filas}</tbody></table>
 </body></html>`;
 }
