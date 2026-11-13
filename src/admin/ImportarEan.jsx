@@ -1,34 +1,18 @@
 // Importar CSV del programa de gestión (Admin > Artículos > "Importar CSV").
 //
-// Se elige qué se importa:
-//   - Códigos de barras (EAN): se AÑADEN los códigos nuevos a cada artículo.
-//     Nunca se borra ninguno.
-//   - Precios (PVP): se pone el precio del CSV en el campo "precio".
+// Un único CSV con Código Lojo, código de barras (EAN) y PVP:
+//   - Códigos de barras: se AÑADEN los códigos nuevos a cada artículo.
+//     Nunca se borra ninguno. Si un artículo tiene varios EAN, sale en varias
+//     filas y se añaden todos.
+//   - Precio (PVP): se pone en el campo "precio" (vale la última fila con precio).
 //
-// En los dos casos solo se tocan los artículos cuyo Código Lojo coincide con
-// el código del CSV (sin espacios ni ceros a la izquierda). Nunca se crean
-// artículos nuevos. Antes de guardar se enseña un resumen para confirmar.
+// Solo se tocan los artículos cuyo Código Lojo coincide con el código del CSV
+// (sin espacios ni ceros a la izquierda). Nunca se crean artículos nuevos.
+// Antes de guardar se enseña un resumen para confirmar.
 import { useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 
 const ACTUALIZACIONES_A_LA_VEZ = 8;
-
-const TIPOS = {
-  ean: {
-    titulo: "Códigos de barras (EAN)",
-    icono: "▥",
-    descripcion: "Añade los códigos de barras nuevos. No borra ninguno.",
-    columnaValor: "Columna del código de barras",
-    detectarValor: (c) => /barra|ean/.test(c),
-  },
-  precio: {
-    titulo: "Precios (PVP)",
-    icono: "💶",
-    descripcion: "Pone el precio del CSV en el campo Precio del artículo.",
-    columnaValor: "Columna del precio",
-    detectarValor: (c) => /pvp|p\.v\.p|precio|tarifa|importe/.test(c),
-  },
-};
 
 function normalizarCodigoLojo(valor) {
   return String(valor ?? "").trim().replace(/^0+(?=.)/, "");
@@ -136,16 +120,42 @@ function leerCsv(texto) {
   return { cabecera, datos };
 }
 
-function detectarColumnas(cabecera, tipo) {
+function detectarColumnas(cabecera, datos) {
   const normal = cabecera.map(sinTildes);
   let lojo = normal.findIndex((c) => /lojo/.test(c));
-  if (lojo === -1) lojo = normal.findIndex((c) => /cod/.test(c) && /art/.test(c) && !/barra/.test(c));
+  if (lojo === -1) lojo = normal.findIndex((c) => /cod/.test(c) && /art/.test(c) && !/barra|ean/.test(c));
   if (lojo === -1) lojo = normal.findIndex((c) => /^cod|codigo/.test(c) && !/barra|ean/.test(c));
-  let valor = normal.findIndex((c, i) => i !== lojo && TIPOS[tipo].detectarValor(c));
-  // Mismo orden que el export de EAN del programa (Cod. Art. 3ª, Cód. Barras 5ª).
+
+  let ean = normal.findIndex((c, i) => i !== lojo && /barra|ean/.test(c));
+  let pvp = normal.findIndex((c, i) => i !== lojo && i !== ean && /pvp|p\.v\.p|precio|tarifa|importe/.test(c));
+
+  // Sin cabecera: mismo orden que el export del programa (Cod. Art. 3ª, Cód. Barras 5ª).
   if (lojo === -1) lojo = Math.min(2, cabecera.length - 1);
-  if (valor === -1) valor = tipo === "ean" && cabecera.length > 4 ? 4 : Math.min(lojo + 1, cabecera.length - 1);
-  return { lojo, valor };
+  if (ean === -1) {
+    // La columna con más valores tipo código de barras (8 a 14 cifras).
+    ean = mejorColumna(cabecera.length, datos, [lojo], (v) => /^\d{8,14}$/.test(limpiarCodigoBarras(v)));
+  }
+  if (pvp === -1) {
+    // La columna con más valores tipo precio ("2,35", "12.50").
+    pvp = mejorColumna(cabecera.length, datos, [lojo, ean], (v) => /^\d{1,6}[.,]\d{1,4}\s*€?$/.test(String(v).trim()));
+  }
+  return { lojo, ean, pvp };
+}
+
+// Devuelve el índice de la columna donde más filas cumplen la condición, o -1.
+function mejorColumna(numColumnas, datos, excluir, cumple) {
+  const muestra = datos.slice(0, 200);
+  let mejor = -1;
+  let mejorCuenta = 0;
+  for (let i = 0; i < numColumnas; i += 1) {
+    if (excluir.includes(i)) continue;
+    const cuenta = muestra.filter((f) => f[i] && cumple(f[i])).length;
+    if (cuenta > mejorCuenta) {
+      mejor = i;
+      mejorCuenta = cuenta;
+    }
+  }
+  return mejorCuenta >= Math.max(1, muestra.length * 0.3) ? mejor : -1;
 }
 
 function mapaPorCodigoLojo(articulos) {
@@ -161,103 +171,71 @@ function ordenarCodigos(lista) {
   return [...lista].sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
 }
 
-// ---- Plan de importación de códigos de barras ----
-function planEan(datos, colLojo, colValor, articulos) {
+// ---- Plan de importación: códigos de barras + precios desde el mismo CSV ----
+// Cada fila: Código Lojo, código de barras y PVP. Si un artículo tiene varios
+// códigos de barras sale en varias filas: se AÑADEN todos (nunca se borra
+// ninguno) y para el precio vale la última fila que lo traiga.
+function planImportacion(datos, cols, articulos, opciones) {
+  const { lojo: colLojo, ean: colEan, pvp: colPvp } = cols;
+  const { cambiarExistentes, rellenarBlancos } = opciones;
   const porCodigo = mapaPorCodigoLojo(articulos);
-  const nuevosPorArticulo = new Map();
-  const sinArticulo = new Set();
-  let yaEstaban = 0;
-  let estropeados = 0;
+  const porId = new Map(articulos.map((a) => [a.id, a]));
 
-  datos.forEach((fila) => {
-    const codigoLojo = normalizarCodigoLojo(fila[colLojo]);
-    const codigoBarras = limpiarCodigoBarras(fila[colValor]);
-    if (!codigoLojo || !codigoBarras) return;
-    if (/e\+/i.test(codigoBarras)) {
-      estropeados += 1;
-      return;
-    }
-    if (!/\d/.test(codigoBarras)) return;
-    const articulo = porCodigo.get(codigoLojo);
-    if (!articulo) {
-      sinArticulo.add(codigoLojo);
-      return;
-    }
-    const actuales = articulo.eans || [];
-    const nuevos = nuevosPorArticulo.get(articulo.id) || new Set();
-    if (actuales.includes(codigoBarras)) {
-      yaEstaban += 1;
-      return;
-    }
-    nuevos.add(codigoBarras);
-    nuevosPorArticulo.set(articulo.id, nuevos);
-  });
-
-  const cambios = [...nuevosPorArticulo.entries()].map(([id, nuevos]) => {
-    const a = articulos.find((x) => x.id === id);
-    return {
-      id,
-      codigoLojo: a?.codigo_lojo || "",
-      nombre: a?.nombre || "",
-      detalle: [...nuevos].join(", "),
-      datos: { eans: [...new Set([...(a?.eans || []), ...nuevos])] },
-    };
-  });
-
-  return {
-    cambios,
-    cifras: [
-      { numero: cambios.reduce((s, c) => s + c.datos.eans.length - (articulos.find((a) => a.id === c.id)?.eans || []).length, 0), texto: "códigos nuevos", verde: true },
-      { numero: cambios.length, texto: "artículos a actualizar" },
-      { numero: yaEstaban, texto: "ya estaban guardados" },
-      { numero: sinArticulo.size, texto: "códigos Lojo sin artículo" },
-    ],
-    sinArticulo: ordenarCodigos(sinArticulo),
-    avisos: estropeados
-      ? [
-          `${estropeados} códigos venían estropeados por Excel (tipo "8,41E+12") y no se han cogido. Exporta el CSV directamente del programa, sin abrirlo y guardarlo con Excel.`,
-        ]
-      : [],
-  };
-}
-
-// ---- Plan de importación de precios ----
-function planPrecio(datos, colLojo, colValor, articulos, cambiarExistentes, rellenarBlancos) {
-  const porCodigo = mapaPorCodigoLojo(articulos);
+  const eansNuevosPorArticulo = new Map();
   const precioPorArticulo = new Map();
   const sinArticulo = new Set();
-  const noValidos = [];
+  const preciosNoValidos = [];
+  let eansYaEstaban = 0;
+  let eansEstropeados = 0;
 
   datos.forEach((fila) => {
     const codigoLojo = normalizarCodigoLojo(fila[colLojo]);
     if (!codigoLojo) return;
-    const precio = leerPrecio(fila[colValor]);
-    if (precio === null) return;
-    if (Number.isNaN(precio) || precio < 0) {
-      noValidos.push(`${codigoLojo}: "${fila[colValor]}"`);
-      return;
-    }
     const articulo = porCodigo.get(codigoLojo);
-    if (!articulo) {
-      sinArticulo.add(codigoLojo);
-      return;
+
+    // Código de barras
+    if (colEan > -1) {
+      const codigoBarras = limpiarCodigoBarras(fila[colEan]);
+      if (codigoBarras && /e\+/i.test(codigoBarras)) {
+        eansEstropeados += 1;
+      } else if (codigoBarras && /\d/.test(codigoBarras)) {
+        if (!articulo) sinArticulo.add(codigoLojo);
+        else if ((articulo.eans || []).includes(codigoBarras)) eansYaEstaban += 1;
+        else {
+          const nuevos = eansNuevosPorArticulo.get(articulo.id) || new Set();
+          nuevos.add(codigoBarras);
+          eansNuevosPorArticulo.set(articulo.id, nuevos);
+        }
+      }
     }
-    // Si el código sale varias veces en el CSV, vale la última línea.
-    precioPorArticulo.set(articulo.id, precio);
+
+    // Precio
+    if (colPvp > -1) {
+      const precio = leerPrecio(fila[colPvp]);
+      if (precio !== null) {
+        if (Number.isNaN(precio) || precio < 0) {
+          preciosNoValidos.push(`${codigoLojo}: "${fila[colPvp]}"`);
+        } else if (!articulo) {
+          sinArticulo.add(codigoLojo);
+        } else {
+          precioPorArticulo.set(articulo.id, precio);
+        }
+      }
+    }
   });
 
-  let nuevos = 0;
-  let cambian = 0;
-  let iguales = 0;
+  // Decidir qué precios se cambian.
+  let preciosCambian = 0;
+  let preciosNuevos = 0;
+  let preciosIguales = 0;
   let conPrecioSinTocar = 0;
   let enBlancoSinTocar = 0;
-  const cambios = [];
+  const precioFinal = new Map(); // id -> { antes, precio }
 
   precioPorArticulo.forEach((precio, id) => {
-    const a = articulos.find((x) => x.id === id);
-    const antes = precioActual(a);
+    const antes = precioActual(porId.get(id));
     if (antes !== null && Math.abs(antes - precio) < 0.00005) {
-      iguales += 1;
+      preciosIguales += 1;
       return;
     }
     if (antes !== null && !cambiarExistentes) {
@@ -268,48 +246,87 @@ function planPrecio(datos, colLojo, colValor, articulos, cambiarExistentes, rell
       enBlancoSinTocar += 1;
       return;
     }
-    if (antes === null) nuevos += 1;
-    else cambian += 1;
-    cambios.push({
+    if (antes === null) preciosNuevos += 1;
+    else preciosCambian += 1;
+    precioFinal.set(id, { antes, precio });
+  });
+
+  // Juntar en un solo cambio por artículo.
+  const ids = new Set([...eansNuevosPorArticulo.keys(), ...precioFinal.keys()]);
+  let eansNuevosTotal = 0;
+  const cambios = [...ids].map((id) => {
+    const a = porId.get(id);
+    const datosCambio = {};
+    const detalle = [];
+    const nuevos = eansNuevosPorArticulo.get(id);
+    if (nuevos?.size) {
+      datosCambio.eans = [...new Set([...(a?.eans || []), ...nuevos])];
+      eansNuevosTotal += nuevos.size;
+      detalle.push(`▥ + ${[...nuevos].join(", ")}`);
+    }
+    const p = precioFinal.get(id);
+    if (p) {
+      datosCambio.precio = p.precio;
+      detalle.push(`💶 ${formatoEuros(p.antes)} → ${formatoEuros(p.precio)}`);
+    }
+    return {
       id,
       codigoLojo: a?.codigo_lojo || "",
       nombre: a?.nombre || "",
-      detalle: `${formatoEuros(antes)} → ${formatoEuros(precio)}`,
-      datos: { precio },
-    });
+      detalle: detalle.join(" · "),
+      datos: datosCambio,
+    };
   });
+  cambios.sort((x, y) => String(x.codigoLojo).localeCompare(String(y.codigoLojo), "es", { numeric: true }));
 
-  const cifras = [
-    { numero: cambian, texto: "cambian de precio", verde: cambian > 0 },
-    { numero: nuevos, texto: "en blanco que reciben precio", verde: nuevos > 0 },
-    { numero: iguales, texto: "ya tenían ese precio" },
-    { numero: sinArticulo.size, texto: "códigos Lojo sin artículo" },
-  ];
-  if (conPrecioSinTocar) cifras.push({ numero: conPrecioSinTocar, texto: "con precio que no se tocan" });
-  if (enBlancoSinTocar) cifras.push({ numero: enBlancoSinTocar, texto: "en blanco que no se tocan" });
+  const cifras = [{ numero: cambios.length, texto: "artículos a actualizar", verde: cambios.length > 0 }];
+  if (colEan > -1) {
+    cifras.push({ numero: eansNuevosTotal, texto: "códigos de barras nuevos", verde: eansNuevosTotal > 0 });
+    cifras.push({ numero: eansYaEstaban, texto: "códigos ya guardados" });
+  }
+  if (colPvp > -1) {
+    cifras.push({ numero: preciosCambian, texto: "cambian de precio", verde: preciosCambian > 0 });
+    cifras.push({ numero: preciosNuevos, texto: "en blanco que reciben precio", verde: preciosNuevos > 0 });
+    cifras.push({ numero: preciosIguales, texto: "ya tenían ese precio" });
+    if (conPrecioSinTocar) cifras.push({ numero: conPrecioSinTocar, texto: "con precio que no se tocan" });
+    if (enBlancoSinTocar) cifras.push({ numero: enBlancoSinTocar, texto: "en blanco que no se tocan" });
+  }
+  cifras.push({ numero: sinArticulo.size, texto: "códigos Lojo sin artículo" });
+
+  const avisos = [];
+  if (eansEstropeados) {
+    avisos.push(
+      `${eansEstropeados} códigos de barras venían estropeados por Excel (tipo "8,41E+12") y no se han cogido. Exporta el CSV directamente del programa, sin abrirlo y guardarlo con Excel.`
+    );
+  }
+  if (preciosNoValidos.length) {
+    avisos.push(
+      `${preciosNoValidos.length} precios no se entienden y no se han cogido: ${preciosNoValidos.slice(0, 8).join(" · ")}${preciosNoValidos.length > 8 ? "…" : ""}`
+    );
+  }
 
   return {
     cambios,
     cifras,
-    cambian,
-    nuevos,
+    eansNuevosTotal,
+    articulosConEans: eansNuevosPorArticulo.size,
+    preciosCambian,
+    preciosNuevos,
     sinArticulo: ordenarCodigos(sinArticulo),
-    avisos: noValidos.length
-      ? [`${noValidos.length} precios no se entienden y no se han cogido: ${noValidos.slice(0, 8).join(" · ")}${noValidos.length > 8 ? "…" : ""}`]
-      : [],
+    avisos,
   };
 }
 
 export default function ImportarCsv({ articulos, eansDisponibles, onTerminado }) {
   const inputRef = useRef(null);
   const [abierto, setAbierto] = useState(false);
-  // tipo | elegir | revisar | guardando | hecho
-  const [fase, setFase] = useState("tipo");
-  const [tipo, setTipo] = useState(null);
+  // elegir | revisar | guardando | hecho
+  const [fase, setFase] = useState("elegir");
   const [nombreArchivo, setNombreArchivo] = useState("");
   const [csv, setCsv] = useState(null);
   const [colLojo, setColLojo] = useState(0);
-  const [colValor, setColValor] = useState(0);
+  const [colEan, setColEan] = useState(-1);
+  const [colPvp, setColPvp] = useState(-1);
   const [cambiarExistentes, setCambiarExistentes] = useState(true);
   const [rellenarBlancos, setRellenarBlancos] = useState(false);
   const [error, setError] = useState("");
@@ -317,17 +334,22 @@ export default function ImportarCsv({ articulos, eansDisponibles, onTerminado })
   const [fallos, setFallos] = useState([]);
   const [hechos, setHechos] = useState(0);
 
+  // Si la columna eans no existe aún en Supabase, no se importan códigos de barras.
+  const colEanEfectiva = eansDisponibles ? colEan : -1;
+
   const plan = useMemo(() => {
-    if (!csv || !tipo) return null;
-    return tipo === "ean"
-      ? planEan(csv.datos, colLojo, colValor, articulos)
-      : planPrecio(csv.datos, colLojo, colValor, articulos, cambiarExistentes, rellenarBlancos);
-  }, [csv, tipo, colLojo, colValor, articulos, cambiarExistentes, rellenarBlancos]);
+    if (!csv) return null;
+    return planImportacion(
+      csv.datos,
+      { lojo: colLojo, ean: colEanEfectiva, pvp: colPvp },
+      articulos,
+      { cambiarExistentes, rellenarBlancos }
+    );
+  }, [csv, colLojo, colEanEfectiva, colPvp, articulos, cambiarExistentes, rellenarBlancos]);
 
   function abrir() {
     setAbierto(true);
-    setFase("tipo");
-    setTipo(null);
+    setFase("elegir");
     setCsv(null);
     setError("");
     setFallos([]);
@@ -342,13 +364,6 @@ export default function ImportarCsv({ articulos, eansDisponibles, onTerminado })
     setAbierto(false);
   }
 
-  function elegirTipo(nuevoTipo) {
-    setTipo(nuevoTipo);
-    setCsv(null);
-    setError("");
-    setFase("elegir");
-  }
-
   async function alElegirArchivo(evento) {
     const archivo = evento.target.files?.[0];
     evento.target.value = "";
@@ -361,13 +376,15 @@ export default function ImportarCsv({ articulos, eansDisponibles, onTerminado })
         setError("El archivo no tiene filas con datos.");
         return;
       }
-      const columnas = detectarColumnas(leido.cabecera, tipo);
+      const columnas = detectarColumnas(leido.cabecera, leido.datos);
       setColLojo(columnas.lojo);
-      setColValor(columnas.valor);
+      setColEan(columnas.ean);
+      setColPvp(columnas.pvp);
       setCsv(leido);
       setFase("revisar");
     } catch (e) {
       setError(e.message || "No se pudo leer el archivo.");
+      setFase("elegir");
     }
   }
 
@@ -375,13 +392,13 @@ export default function ImportarCsv({ articulos, eansDisponibles, onTerminado })
     if (!plan?.cambios.length) return;
 
     // Confirmación antes de guardar.
-    const lineas =
-      tipo === "precio"
-        ? [
-            plan.cambian ? `• Cambiar el precio de ${plan.cambian} artículos que ya tienen PRECIO` : null,
-            plan.nuevos ? `• Añadir precio a ${plan.nuevos} artículos que están en BLANCO` : null,
-          ].filter(Boolean)
-        : [`• Añadir códigos de barras a ${plan.cambios.length} artículos`];
+    const lineas = [
+      plan.eansNuevosTotal
+        ? `• Añadir ${plan.eansNuevosTotal} códigos de barras nuevos a ${plan.articulosConEans} artículos`
+        : null,
+      plan.preciosCambian ? `• Cambiar el precio de ${plan.preciosCambian} artículos que ya tienen PRECIO` : null,
+      plan.preciosNuevos ? `• Añadir precio a ${plan.preciosNuevos} artículos que están en BLANCO` : null,
+    ].filter(Boolean);
     if (!window.confirm(`Se va a:\n\n${lineas.join("\n")}\n\n¿Seguro que quieres continuar?`)) return;
 
     setFase("guardando");
@@ -409,6 +426,7 @@ export default function ImportarCsv({ articulos, eansDisponibles, onTerminado })
   }
 
   const ejemplo = (col) => {
+    if (col < 0) return "";
     const valores = (csv?.datos || [])
       .map((f) => f[col])
       .filter((v) => v)
@@ -416,13 +434,24 @@ export default function ImportarCsv({ articulos, eansDisponibles, onTerminado })
     return valores.length ? ` (ej.: ${valores.join(", ")})` : "";
   };
 
+  const selectorColumna = (valor, alCambiar, permitirNinguna) => (
+    <select value={valor} onChange={(e) => alCambiar(Number(e.target.value))} style={selector}>
+      {permitirNinguna && <option value={-1}>— No importar —</option>}
+      {csv.cabecera.map((nombre, i) => (
+        <option key={i} value={i}>
+          {nombre}
+        </option>
+      ))}
+    </select>
+  );
+
   return (
     <>
       <button
         type="button"
         onClick={abrir}
         style={botonAbrir}
-        title="Importar códigos de barras o precios desde un CSV del programa de gestión"
+        title="Importar códigos de barras y precios desde el CSV del programa de gestión"
       >
         📥 Importar CSV
       </button>
@@ -433,49 +462,26 @@ export default function ImportarCsv({ articulos, eansDisponibles, onTerminado })
         <div style={fondo} onClick={cerrar}>
           <div style={ventana} onClick={(e) => e.stopPropagation()}>
             <div style={cabeceraVentana}>
-              <h2 style={titulo}>{tipo ? `Importar ${TIPOS[tipo].titulo}` : "Importar CSV"}</h2>
+              <h2 style={titulo}>Importar CSV de artículos</h2>
               <button type="button" onClick={cerrar} style={botonCerrar} disabled={fase === "guardando"}>
                 ✕
               </button>
             </div>
 
-            {fase === "tipo" && (
-              <>
-                <p style={texto}>¿Qué quieres importar? Solo se tocan los artículos cuyo <b>Código Lojo</b> coincide.</p>
-                <div style={opcionesTipo}>
-                  {Object.entries(TIPOS).map(([clave, t]) => {
-                    const desactivado = clave === "ean" && !eansDisponibles;
-                    return (
-                      <button
-                        key={clave}
-                        type="button"
-                        style={{ ...opcionTipo, opacity: desactivado ? 0.5 : 1 }}
-                        onClick={() => elegirTipo(clave)}
-                        disabled={desactivado}
-                      >
-                        <span style={opcionIcono}>{t.icono}</span>
-                        <span style={opcionTitulo}>{t.titulo}</span>
-                        <span style={opcionTexto}>
-                          {desactivado ? "Ejecuta antes supabase/migracion_eans.sql en Supabase." : t.descripcion}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-
             {fase === "elegir" && (
               <>
                 <p style={texto}>
-                  Elige el CSV exportado del programa de gestión. Tiene que tener una columna con el{" "}
-                  <b>código del artículo (Código Lojo)</b> y otra con{" "}
-                  <b>{tipo === "ean" ? "el código de barras" : "el precio"}</b>.
+                  Elige el CSV exportado del programa de gestión con el <b>Código Lojo</b>, el <b>código de barras (EAN)</b>{" "}
+                  y el <b>PVP</b>. Se añaden los códigos de barras nuevos (nunca se borra ninguno) y se actualiza el precio.
+                  Solo se tocan los artículos cuyo Código Lojo coincide; nunca se crean artículos nuevos.
                 </p>
+                {!eansDisponibles && (
+                  <div style={cajaAviso}>
+                    ⚠️ Los códigos de barras no se importarán hasta ejecutar supabase/migracion_eans.sql en Supabase. Los
+                    precios sí.
+                  </div>
+                )}
                 <div style={botones}>
-                  <button type="button" style={botonBlanco} onClick={() => setFase("tipo")}>
-                    ← Atrás
-                  </button>
                   <button type="button" style={botonVerde} onClick={() => inputRef.current?.click()}>
                     Elegir archivo CSV
                   </button>
@@ -491,29 +497,26 @@ export default function ImportarCsv({ articulos, eansDisponibles, onTerminado })
                 <div style={columnasGrid}>
                   <label style={campo}>
                     <span style={etiqueta}>Columna del Código Lojo</span>
-                    <select value={colLojo} onChange={(e) => setColLojo(Number(e.target.value))} style={selector}>
-                      {csv.cabecera.map((nombre, i) => (
-                        <option key={i} value={i}>
-                          {nombre}
-                        </option>
-                      ))}
-                    </select>
+                    {selectorColumna(colLojo, setColLojo, false)}
                     <span style={ejemploTexto}>{ejemplo(colLojo)}</span>
                   </label>
                   <label style={campo}>
-                    <span style={etiqueta}>{TIPOS[tipo].columnaValor}</span>
-                    <select value={colValor} onChange={(e) => setColValor(Number(e.target.value))} style={selector}>
-                      {csv.cabecera.map((nombre, i) => (
-                        <option key={i} value={i}>
-                          {nombre}
-                        </option>
-                      ))}
-                    </select>
-                    <span style={ejemploTexto}>{ejemplo(colValor)}</span>
+                    <span style={etiqueta}>Columna del código de barras</span>
+                    {eansDisponibles ? (
+                      selectorColumna(colEan, setColEan, true)
+                    ) : (
+                      <span style={ejemploTexto}>No disponible (falta migracion_eans.sql)</span>
+                    )}
+                    <span style={ejemploTexto}>{ejemplo(colEanEfectiva)}</span>
+                  </label>
+                  <label style={campo}>
+                    <span style={etiqueta}>Columna del PVP</span>
+                    {selectorColumna(colPvp, setColPvp, true)}
+                    <span style={ejemploTexto}>{ejemplo(colPvp)}</span>
                   </label>
                 </div>
 
-                {tipo === "precio" && (
+                {colPvp > -1 && (
                   <div style={casillas}>
                     <label style={casilla}>
                       <input
@@ -521,7 +524,7 @@ export default function ImportarCsv({ articulos, eansDisponibles, onTerminado })
                         checked={cambiarExistentes}
                         onChange={(e) => setCambiarExistentes(e.target.checked)}
                       />
-                      Cambiar solo los artículos que ya tienen PRECIO
+                      Cambiar el precio de los artículos que ya tienen PRECIO
                     </label>
                     <label style={casilla}>
                       <input
@@ -582,6 +585,7 @@ export default function ImportarCsv({ articulos, eansDisponibles, onTerminado })
                     {plan.cambios.length ? `Actualizar ${plan.cambios.length} artículos` : "No hay nada que cambiar"}
                   </button>
                 </div>
+                {error && <div style={cajaError}>{error}</div>}
               </>
             )}
 
@@ -639,7 +643,7 @@ const fondo = {
 
 const ventana = {
   width: "100%",
-  maxWidth: "660px",
+  maxWidth: "720px",
   maxHeight: "90vh",
   overflowY: "auto",
   background: "#fff",
@@ -663,24 +667,8 @@ const botonCerrar = {
   flex: "0 0 auto",
 };
 const texto = { fontSize: "15px", color: "#334155", lineHeight: 1.5 };
-const opcionesTipo = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" };
-const opcionTipo = {
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "flex-start",
-  gap: "6px",
-  textAlign: "left",
-  border: "2px solid #e2e8f0",
-  borderRadius: "18px",
-  background: "#f8fafc",
-  padding: "16px",
-  cursor: "pointer",
-};
-const opcionIcono = { fontSize: "26px" };
-const opcionTitulo = { fontSize: "16px", fontWeight: 950, color: "#0f172a" };
-const opcionTexto = { fontSize: "13px", fontWeight: 700, color: "#64748b" };
 const archivo = { fontSize: "14px", fontWeight: 800, color: "#475569", marginBottom: "12px" };
-const columnasGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px", marginBottom: "12px" };
+const columnasGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "12px", marginBottom: "12px" };
 const campo = { display: "flex", flexDirection: "column", gap: "4px" };
 const etiqueta = { fontSize: "13px", fontWeight: 900, color: "#334155" };
 const selector = {
