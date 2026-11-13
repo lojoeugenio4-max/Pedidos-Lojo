@@ -22,7 +22,8 @@ function limpiarCodigoBarras(valor) {
   return String(valor ?? "").replace(/\s/g, "");
 }
 
-// "1.234,56 €" -> 1234.56 · "2,35" -> 2.35 · "2.35" -> 2.35 · "" -> null
+// Precios con IVA incluido, siempre redondeados a 2 decimales:
+// "1.234,56 €" -> 1234.56 · "2,35" -> 2.35 · "0,59565" -> 0.6 · "" -> null
 function leerPrecio(valor) {
   let t = String(valor ?? "")
     .replace(/[€\s]/g, "")
@@ -39,7 +40,7 @@ function leerPrecio(valor) {
     t = t.replace(/\./g, "");
   }
   if (!/^-?\d+(\.\d+)?$/.test(t)) return NaN;
-  return Math.round(Number(t) * 10000) / 10000;
+  return Math.round((Number(t) + Number.EPSILON) * 100) / 100;
 }
 
 function precioActual(articulo) {
@@ -234,7 +235,7 @@ function planImportacion(datos, cols, articulos, opciones) {
 
   precioPorArticulo.forEach((precio, id) => {
     const antes = precioActual(porId.get(id));
-    if (antes !== null && Math.abs(antes - precio) < 0.00005) {
+    if (antes !== null && Math.abs(antes - precio) < 0.005) {
       preciosIguales += 1;
       return;
     }
