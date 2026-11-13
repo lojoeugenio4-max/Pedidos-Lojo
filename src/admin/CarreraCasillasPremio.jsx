@@ -9,6 +9,7 @@ import {
   input,
   fila,
   boton,
+  botonSecundario,
   avisoError,
   avisoOk,
   ayuda,
@@ -73,8 +74,17 @@ function TarjetaCasilla({ casilla, contador, bloqueada, onGuardado }) {
   useEffect(() => setForm(casilla), [casilla]);
 
   const cambiar = (cambios) => setForm((a) => ({ ...a, ...cambios }));
-  const dados = Number(contador?.dados || 0);
-  const maximo = Math.max(0, Number(form.maximo) || 0);
+  // Cada premio lleva su propio contador: dados_antes son los premios que se
+  // dieron con premios anteriores de esta casilla (migración
+  // migracion_carrera_premio_nuevo_contador.sql).
+  const conContadorPropio = casilla.maximo_premio !== undefined;
+  const dadosAntes = conContadorPropio ? Number(casilla.dados_antes || 0) : 0;
+  const dados = Math.max(0, Number(contador?.dados || 0) - dadosAntes);
+  const maximo = Math.max(
+    0,
+    Number(conContadorPropio ? form.maximo_premio ?? Number(form.maximo || 0) - dadosAntes : form.maximo) || 0
+  );
+  const [reiniciando, setReiniciando] = useState(false);
   const sinPremio = !String(form.texto || "").trim() && !form.articulo_id;
   const hoy = new Date().toISOString().slice(0, 10);
 
@@ -97,7 +107,7 @@ function TarjetaCasilla({ casilla, contador, bloqueada, onGuardado }) {
         articulo_id: form.articulo_id ? String(form.articulo_id) : null,
         cantidad: Number(form.cantidad) > 0 ? Number(form.cantidad) : 1,
         formato: form.formato === "cajas" ? "cajas" : "unidades",
-        maximo,
+        ...(conContadorPropio ? { maximo_premio: maximo } : { maximo }),
         fecha_desde: form.fecha_desde || null,
       })
       .eq("id", casilla.id);
@@ -106,7 +116,25 @@ function TarjetaCasilla({ casilla, contador, bloqueada, onGuardado }) {
       setError(`No se ha podido guardar: ${err.message}`);
       return;
     }
-    setMensaje("Guardado.");
+    setMensaje(
+      conContadorPropio && String(form.articulo_id || "") !== String(casilla.articulo_id || "") && form.articulo_id
+        ? "Guardado. Artículo nuevo: su contador empieza de cero."
+        : "Guardado."
+    );
+    onGuardado?.();
+  }
+
+  async function empezarDeCero() {
+    setMensaje("");
+    setError("");
+    setReiniciando(true);
+    const { error: err } = await supabase.rpc("admin_carrera_reiniciar_contador_casilla", { p_id: String(casilla.id) });
+    setReiniciando(false);
+    if (err) {
+      setError(`No se ha podido poner el contador a cero: ${err.message}`);
+      return;
+    }
+    setMensaje("Contador a cero: este premio vuelve a estar disponible.");
     onGuardado?.();
   }
 
@@ -121,6 +149,9 @@ function TarjetaCasilla({ casilla, contador, bloqueada, onGuardado }) {
         <span style={{ fontSize: 13, color: "#374151", fontWeight: 700 }}>
           Dados: {dados} de {maximo}
         </span>
+        {dadosAntes > 0 && (
+          <span style={{ fontSize: 12, color: "#6b7280" }}>(+{dadosAntes} dados antes con otros premios)</span>
+        )}
       </div>
 
       {error && <div style={avisoError}>{error}</div>}
@@ -147,8 +178,16 @@ function TarjetaCasilla({ casilla, contador, bloqueada, onGuardado }) {
 
       <div style={fila}>
         <label style={campo}>
-          <span>Número máximo de veces</span>
-          <input id={`lc-premio-${casilla.casilla}-maximo`} style={input} type="number" min={0} value={form.maximo} disabled={bloqueada} onChange={(e) => cambiar({ maximo: e.target.value })} />
+          <span>Número máximo de veces (de este premio)</span>
+          <input
+            id={`lc-premio-${casilla.casilla}-maximo`}
+            style={input}
+            type="number"
+            min={0}
+            value={conContadorPropio ? form.maximo_premio ?? maximo : form.maximo}
+            disabled={bloqueada}
+            onChange={(e) => cambiar(conContadorPropio ? { maximo_premio: e.target.value } : { maximo: e.target.value })}
+          />
         </label>
         <label style={campo}>
           <span>Se puede caer a partir del</span>
@@ -156,10 +195,36 @@ function TarjetaCasilla({ casilla, contador, bloqueada, onGuardado }) {
         </label>
       </div>
 
+      {!conContadorPropio && (
+        <div style={avisoError}>
+          Falta aplicar en Supabase la migración migracion_carrera_premio_nuevo_contador.sql: sin ella, al cambiar el artículo la
+          casilla sigue contando los premios del anterior.
+        </div>
+      )}
+
       {!bloqueada && (
-        <button type="button" style={boton} onClick={guardar} disabled={guardando}>
-          {guardando ? "Guardando..." : `Guardar casilla ${casilla.casilla}`}
-        </button>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <button type="button" style={boton} onClick={guardar} disabled={guardando}>
+            {guardando ? "Guardando..." : `Guardar casilla ${casilla.casilla}`}
+          </button>
+          {conContadorPropio && dados > 0 && (
+            <button
+              type="button"
+              style={botonSecundario}
+              onClick={empezarDeCero}
+              disabled={reiniciando}
+              title="Para cuando pones un premio nuevo cambiando solo el texto: el contador vuelve a 0"
+            >
+              {reiniciando ? "Poniendo a cero..." : "♻️ Empezar de cero con este premio"}
+            </button>
+          )}
+        </div>
+      )}
+      {conContadorPropio && dados >= maximo && maximo > 0 && !bloqueada && (
+        <p style={{ ...ayuda, margin: 0 }}>
+          ¿Has puesto un premio nuevo en esta casilla? Al cambiar el artículo el contador empieza de cero solo; si solo has cambiado
+          el texto, pulsa «♻️ Empezar de cero con este premio».
+        </p>
       )}
     </div>
   );
