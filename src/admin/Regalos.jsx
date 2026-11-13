@@ -307,10 +307,56 @@ export function useRegalos({ avisarConSonido = false } = {}) {
     };
   }, [tokensBingo]);
 
+  // Fichas de TODOS los clientes (id, token, nombre, código Lojo). Las listas
+  // de La Loca Carrera (y a veces LojoPoly) no traen el código Lojo ni el
+  // token: se completan desde aquí buscando por token, por id o por nombre.
+  const [fichasClientes, setFichasClientes] = useState(() => ({ porToken: new Map(), porId: new Map(), porNombre: new Map() }));
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      const filas = [];
+      const TAM = 1000;
+      for (let desde = 0; ; desde += TAM) {
+        const { data, error } = await supabase
+          .from("clientes")
+          .select("id,token,nombre,codigo_lojo")
+          .order("id", { ascending: true })
+          .range(desde, desde + TAM - 1);
+        if (error) {
+          console.warn("No se pudieron leer las fichas de clientes para Regalos:", error);
+          return;
+        }
+        filas.push(...(data || []));
+        if (!data || data.length < TAM) break;
+      }
+      if (cancelado) return;
+      const porToken = new Map();
+      const porId = new Map();
+      const nombres = new Map();
+      filas.forEach((c) => {
+        if (c.token) porToken.set(String(c.token), c);
+        if (c.id != null) porId.set(String(c.id), c);
+        const n = normalizar(c.nombre);
+        if (n) nombres.set(n, nombres.has(n) ? null : c); // null = nombre repetido
+      });
+      const porNombre = new Map([...nombres].filter(([, c]) => c));
+      setFichasClientes({ porToken, porId, porNombre });
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
   const regalos = useMemo(() => {
+    const buscarFicha = (token, id, nombre) =>
+      (token && fichasClientes.porToken.get(String(token))) ||
+      (id != null && id !== "" && (fichasClientes.porId.get(String(id)) || fichasClientes.porToken.get(String(id)))) ||
+      (nombre && fichasClientes.porNombre.get(normalizar(nombre))) ||
+      null;
     const lista = [];
     bingo.regalos.forEach((r) => {
-      const cliente = clientesBingo.get(String(r.customer_token || ""));
+      const cliente =
+        clientesBingo.get(String(r.customer_token || "")) || buscarFicha(r.customer_token, null, r.customer_name);
       const guardado = guardados.get(`bingo:${r.clave}|${r.tipo}`);
       const articulo = guardado?.articulo_id
         ? { id: guardado.articulo_id, codigo: guardado.articulo_codigo || "", nombre: guardado.articulo_nombre || "" }
@@ -353,14 +399,15 @@ export function useRegalos({ avisarConSonido = false } = {}) {
         p.tipo === "grupo"
           ? `GRUPO ${String(p.grupo_nombre || "").toUpperCase()}`.trim()
           : ETIQUETA_LOJOPOLY[p.tipo_casilla] || "PREMIO";
+      const ficha = buscarFicha(p.cliente_token, p.cliente_id, p.cliente_nombre);
       lista.push({
         id: `lojopoly:${p.id}`,
         origen: "lojopoly",
         clave: String(p.id),
         juego: "LojoPoly",
-        clienteNombre: p.cliente_nombre || "",
-        clienteToken: p.cliente_token || "",
-        codigoLojo: p.cliente_codigo_lojo || "",
+        clienteNombre: p.cliente_nombre || ficha?.nombre || "",
+        clienteToken: p.cliente_token || ficha?.token || "",
+        codigoLojo: p.cliente_codigo_lojo || ficha?.codigo_lojo || "",
         etiqueta,
         grupoColor: p.tipo === "grupo" ? p.grupo_color : null,
         detalle: p.caduca_el ? `Recoger antes del ${soloFecha(`${p.caduca_el}T12:00:00`)}` : "",
@@ -387,14 +434,15 @@ export function useRegalos({ avisarConSonido = false } = {}) {
     ].forEach((p) => {
       const etiqueta =
         p.tipo === "final" ? "🏆 META (PREMIO FINAL)" : p.tipo === "mitad" ? "🚩 MITAD (casilla 32)" : `🎁 CASILLA ${p.casilla ?? ""}`.trim();
+      const ficha = buscarFicha(tokenPremioCarrera(p), p.cliente_id, p.cliente_nombre);
       lista.push({
         id: `carrera:${p.id}`,
         origen: "carrera",
         clave: String(p.id),
         juego: "Loca Carrera",
-        clienteNombre: p.cliente_nombre || "",
-        clienteToken: tokenPremioCarrera(p),
-        codigoLojo: p.cliente_codigo_lojo || p.codigo_lojo || "",
+        clienteNombre: p.cliente_nombre || ficha?.nombre || "",
+        clienteToken: tokenPremioCarrera(p) || ficha?.token || "",
+        codigoLojo: p.cliente_codigo_lojo || p.codigo_lojo || ficha?.codigo_lojo || "",
         etiqueta,
         detalle: "",
         regalo: p.texto || p.articulo_nombre || "Premio sorpresa",
@@ -414,7 +462,7 @@ export function useRegalos({ avisarConSonido = false } = {}) {
       return new Date(b.ganadoEn || 0) - new Date(a.ganadoEn || 0);
     });
     return lista;
-  }, [bingo.regalos, bingo.entregasDisponibles, lojopoly, carrera, clientesBingo, guardados]);
+  }, [bingo.regalos, bingo.entregasDisponibles, lojopoly, carrera, clientesBingo, guardados, fichasClientes]);
 
   const pendientes = useMemo(() => regalos.filter((r) => r.estado === "pendiente" && r.editable), [regalos]);
 
@@ -756,14 +804,18 @@ function ValoracionRegalos({ regalos, busqueda, onCambio }) {
   const [mensaje, setMensaje] = useState("");
 
   const cargar = useCallback(async () => {
-    const { data, error: err } = await supabase.rpc("admin_listar_regalos_valorados");
+    // migracion_regalos_valoracion_v2.sql: tabla nueva válida para Bingo,
+    // LojoPoly y La Loca Carrera (la antigua no guardaba los de la Carrera).
+    const { data, error: err } = await supabase.rpc("admin_listar_regalos_valoracion");
     if (err) {
       console.warn("Valoración no disponible:", err);
       setDisponible(false);
-      return;
+      return null;
     }
     setDisponible(true);
-    setValorados(new Map((data || []).map((v) => [`${v.origen}:${v.clave}`, v.valorado_at])));
+    const mapa = new Map((data || []).map((v) => [`${v.origen}:${v.clave}`, v.valorado_at]));
+    setValorados(mapa);
+    return mapa;
   }, []);
 
   useEffect(() => {
@@ -831,18 +883,27 @@ function ValoracionRegalos({ regalos, busqueda, onCambio }) {
     setError("");
     setMensaje("");
     setOcupado(true);
-    const { error: err } = await supabase.rpc("admin_marcar_regalos_valorados", {
-      p_items: lista.map((r) => ({ origen: r.origen, clave: r.clave })),
+    const { error: err } = await supabase.rpc("admin_marcar_regalos_valoracion", {
+      p_items: lista.map((r) => ({ origen: r.origen, clave: String(r.clave) })),
       p_valorado: valorado,
     });
-    setOcupado(false);
     if (err) {
+      setOcupado(false);
       setError(`No se ha podido guardar: ${err.message}`);
+      return;
+    }
+    const mapa = await cargar();
+    setOcupado(false);
+    // Comprobar que de verdad se han guardado
+    const fallan = mapa ? lista.filter((r) => Boolean(mapa.get(r.id)) !== valorado) : [];
+    if (fallan.length) {
+      setError(
+        `${fallan.length} regalo(s) no se han podido marcar (${[...new Set(fallan.map((r) => r.juego))].join(", ")}).`
+      );
       return;
     }
     setMensaje(`${lista.length} regalo(s) marcados como ${valorado ? "VALORADOS" : "NO VALORADOS"}.`);
     setSeleccion(new Set());
-    cargar();
   }
 
   function imprimir() {
@@ -862,7 +923,7 @@ function ValoracionRegalos({ regalos, busqueda, onCambio }) {
   if (!disponible) {
     return (
       <div style={cajaAviso}>
-        Para la valoración de regalos hay que ejecutar en Supabase <strong>migracion_regalos.sql</strong>.
+        Para la valoración de regalos hay que ejecutar en Supabase <strong>migracion_regalos_valoracion_v2.sql</strong>.
       </div>
     );
   }
