@@ -21,7 +21,9 @@ import {
 // migracion_carrera_favoritos_premios.sql):
 //  · con su casilla a tiro, cae en ella;
 //  · mientras tanto, no se pasa de su casilla ni cae en otro premio;
-//  · cuando ya ha ganado su premio, no gana más premios de casilla.
+//  · cuando ya ha ganado su premio, no gana más premios de casilla;
+//  · una casilla asignada a unos favoritos queda RESERVADA para ellos: nadie
+//    más (favorito o no) puede caer en ella.
 // En la TV y en el TPV la tirada se ve normal.
 
 const NIVELES = [50, 75, 100];
@@ -161,6 +163,15 @@ export default function CarreraFavoritos({ edicion, onGuardado }) {
     return m;
   }, [asignaciones, ganadoPorToken]);
 
+  // Reparto: para cada casilla, los clientes a los que está reservada.
+  const reservadaPara = useMemo(() => {
+    const m = {};
+    asignaciones.forEach((a) => {
+      if (a.casilla != null) (m[a.casilla] = m[a.casilla] || []).push(a.token);
+    });
+    return m;
+  }, [asignaciones]);
+
   const enLista = useMemo(() => new Set(asignaciones.map((a) => a.token)), [asignaciones]);
 
   const resultados = useMemo(() => {
@@ -195,7 +206,9 @@ export default function CarreraFavoritos({ edicion, onGuardado }) {
     const j = jugadorPorToken.get(a.token);
     const pos = j ? Number(j.casilla) || 1 : 1;
     if (a.casilla == null) {
-      const aTiro = [...infoCasilla.values()].find((c) => !c.problema && c.casilla > pos && c.casilla <= pos + distancia);
+      const aTiro = [...infoCasilla.values()].find(
+        (c) => !c.problema && !reservadaPara[c.casilla] && c.casilla > pos && c.casilla <= pos + distancia
+      );
       if (aTiro) return { icono: "🎯", texto: `Tiene a tiro la casilla ${aTiro.casilla}`, color: "#166534" };
       return { icono: "🎲", texto: j ? "Esperando a tener un premio a tiro" : "Aún no ha tirado", color: "#6b7280" };
     }
@@ -270,7 +283,9 @@ export default function CarreraFavoritos({ edicion, onGuardado }) {
       </label>
 
       <p style={ayuda}>
-        Cada favorito se lleva <strong>un</strong> premio: el que elijas en la lista. Mientras no lo tenga a tiro, el dado no le deja
+        Cada favorito se lleva <strong>un</strong> premio: el que elijas en la lista. Un premio asignado a unos clientes queda{" "}
+        <strong>reservado solo para ellos</strong>: nadie más, sea favorito o no, puede caer en esa casilla. Los favoritos con «cualquier
+        premio» solo ganan premios que no estén reservados. Mientras no lo tenga a tiro, el dado no le deja
         pasarse de su casilla ni caer en otro premio; cuando lo tiene a 1-{distancia} casillas, cae en él. Cuando ya lo ha ganado, no gana
         más premios de casilla. Se respetan el máximo de veces y la fecha de cada casilla. En la TV y en el TPV la tirada se ve normal.
       </p>
@@ -284,6 +299,54 @@ export default function CarreraFavoritos({ edicion, onGuardado }) {
           en «Casillas de premio» o cambia el premio de alguno.
         </div>
       ))}
+
+      {/* REPARTO DE PREMIOS */}
+      <div style={{ display: "grid", gap: 6 }}>
+        <strong style={{ fontSize: 15, color: "#111827" }}>🎁 Reparto de premios</strong>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ borderCollapse: "collapse", fontSize: 14, width: "100%", minWidth: 620 }}>
+            <thead>
+              <tr>
+                <th style={th}>Casilla</th>
+                <th style={th}>Premio</th>
+                <th style={th}>Quedan</th>
+                <th style={th}>Quién puede llevárselo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {opcionesCasilla.map((op) => {
+                const tokens = reservadaPara[op.casilla] || [];
+                const nombres = tokens.map((t) => {
+                  const nombre = clientePorClave.get(t)?.nombre || jugadorPorToken.get(t)?.cliente_nombre || "Cliente";
+                  const g = ganadoPorToken.get(t);
+                  return `${nombre}${g && Number(g.casilla) === op.casilla ? " 🏆" : ""}`;
+                });
+                return (
+                  <tr key={op.casilla}>
+                    <td style={td}>
+                      <strong>{op.casilla}</strong>
+                    </td>
+                    <td style={td}>
+                      {op.texto || "—"}
+                      {op.problema && <div style={{ fontSize: 12, color: "#b91c1c", fontWeight: 700 }}>⚠️ {op.problema}</div>}
+                    </td>
+                    <td style={td}>{op.quedan}</td>
+                    <td style={td}>
+                      {tokens.length ? (
+                        <span style={{ color: "#7c2d12", fontWeight: 700 }}>🔒 Solo: {nombres.join(", ")}</span>
+                      ) : (
+                        <span style={{ color: "#6b7280" }}>
+                          Libre · {form.soloElegidos ? "favoritos con «cualquier premio»" : "cualquier cliente"}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* LISTA DE FAVORITOS */}
       <div style={{ overflowX: "auto" }}>
@@ -325,7 +388,7 @@ export default function CarreraFavoritos({ edicion, onGuardado }) {
                       disabled={bloqueada || ganado}
                       onChange={(e) => asignarPremio(a.token, e.target.value)}
                     >
-                      <option value="">🎲 Cualquier premio (el primero que tenga a tiro)</option>
+                      <option value="">🎲 Cualquier premio libre (no reservado)</option>
                       {opcionesCasilla.map((op) => (
                         <option key={op.casilla} value={op.casilla}>
                           🎁 Casilla {op.casilla} · {op.texto || "sin premio"}
