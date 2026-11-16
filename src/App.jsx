@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import BuscarPorFoto from "./components/BuscarPorFoto";
 import EscanerEan from "./components/EscanerEan";
-import { buscarArticulosPorEan } from "./utils/buscarPorEan";
+import { buscarPorEanDetalle, motivoNoDisponible } from "./utils/buscarPorEan";
 import { precargarBusquedaPorFoto } from "./utils/buscarPorFoto";
 import { supabase } from "./supabaseClient";
 import { supabaseStorage } from "./supabaseStorageClient";
@@ -4415,14 +4415,22 @@ export default function App() {
     const codigo = String(texto || "").trim();
     setAvisoPistolaEan("");
     try {
-      const encontrados = await buscarArticulosPorEan(codigo, productosVisibles);
-      if (!encontrados.length && codigo.length < 8 && !esEanTipico(codigo)) {
+      const { encontrados, noDisponibles } = await buscarPorEanDetalle(codigo, productosVisibles);
+      if (!encontrados.length && !noDisponibles.length && codigo.length < 8 && !esEanTipico(codigo)) {
         // No es un código de barras: se queda como búsqueda normal.
         searchInputRef.current?.blur();
         return;
       }
       setSearchInput("");
       setSearch("");
+      if (!encontrados.length && noDisponibles.length) {
+        const articulo = noDisponibles[0];
+        setAvisoPistolaEan(
+          `El código ${codigo} es de "${articulo.nombre}", que está ${motivoNoDisponible(articulo)} en la app.`
+        );
+        setTimeout(() => searchInputRef.current?.focus(), 60);
+        return;
+      }
       if (!encontrados.length) {
         setAvisoPistolaEan(`No hay ningún artículo con el código ${codigo}.`);
         setTimeout(() => searchInputRef.current?.focus(), 60);

@@ -11,6 +11,7 @@
 // Antes de guardar se enseña un resumen para confirmar.
 import { useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { normalizarEan } from "../utils/buscarPorEan";
 
 const ACTUALIZACIONES_A_LA_VEZ = 8;
 
@@ -18,8 +19,14 @@ function normalizarCodigoLojo(valor) {
   return String(valor ?? "").trim().replace(/^0+(?=.)/, "");
 }
 
+// Solo letras y números: fuera espacios, puntos, guiones y caracteres
+// invisibles (si no, el escáner no encuentra el código).
 function limpiarCodigoBarras(valor) {
-  return String(valor ?? "").replace(/\s/g, "");
+  const texto = String(valor ?? "");
+  // Códigos estropeados por Excel ("8,41E+12"): se dejan tal cual para
+  // que el importador los detecte y avise.
+  if (/e\+/i.test(texto)) return texto.trim();
+  return normalizarEan(texto);
 }
 
 // Precios con IVA incluido, siempre redondeados a 2 decimales:

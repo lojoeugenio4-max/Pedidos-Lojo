@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { normalizarEan } from "../utils/buscarPorEan";
 
 export default function FormArticulo({
   form,
@@ -22,7 +23,7 @@ export default function FormArticulo({
   const eanActivo = eans.includes(eanSeleccionado) ? eanSeleccionado : eans[0] || "";
 
   function anadirEan() {
-    const limpio = eanNuevo.replace(/\s/g, "");
+    const limpio = normalizarEan(eanNuevo);
     if (!limpio) {
       setErrorEan("Escribe el código de barras.");
       return;

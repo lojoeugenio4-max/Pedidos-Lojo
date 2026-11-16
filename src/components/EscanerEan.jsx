@@ -11,13 +11,18 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Camera, ScanBarcode, X } from "lucide-react";
-import { buscarArticulosPorEan, normalizarEan } from "../utils/buscarPorEan";
+import { buscarPorEanDetalle, digitoControlValido, motivoNoDisponible, normalizarEan } from "../utils/buscarPorEan";
 
 // Se leen todos los tipos de código de barras habituales en alimentación:
 // EAN-13/EAN-8 (unidad), ITF-14 (cajas), GS1-128 / Code 128, Code 39, UPC.
 const FORMATOS_NATIVOS = ["ean_13", "ean_8", "upc_a", "upc_e", "itf", "code_128", "code_39"];
 // Códigos más cortos que esto se toman como lecturas falsas.
 const LONGITUD_MINIMA = 4;
+// Formatos con dígito de control: la lectura solo vale si el número cuadra.
+const FORMATOS_CON_CONTROL = ["ean_13", "ean_8", "upc_a", "itf"];
+// Para el resto (Code 128, Code 39, UPC-E...) hay que leer lo mismo dos veces
+// seguidas, para no quedarse con una lectura falsa.
+const MS_CONFIRMAR_LECTURA = 1500;
 // Cada cuánto mira el lector nativo un fotograma del vídeo.
 const INTERVALO_NATIVO_MS = 120;
 
@@ -49,6 +54,7 @@ export default function EscanerEan({
   const [fase, setFase] = useState("escaneando");
   const [eanLeido, setEanLeido] = useState("");
   const [varios, setVarios] = useState([]);
+  const [noDisponibles, setNoDisponibles] = useState([]);
   const [intento, setIntento] = useState(0);
 
   // Arranca la cámara y el lector. Se vuelve a arrancar con "Escanear otro".
@@ -56,10 +62,27 @@ export default function EscanerEan({
     let cancelado = false;
     leidoRef.current = false;
 
-    async function alLeer(codigo) {
+    // Última lectura sin confirmar (para los formatos sin dígito de control).
+    let candidato = { codigo: "", momento: 0 };
+
+    // ¿Es buena esta lectura? Evita lecturas falsas (p. ej. un EAN-13 leído
+    // como si fuera un código de caja ITF con otro número).
+    function lecturaValida(ean, formato) {
+      if (ean.length < LONGITUD_MINIMA) return false;
+      if (FORMATOS_CON_CONTROL.includes(formato)) {
+        if (formato === "itf" && ean.length !== 14) return false;
+        return digitoControlValido(ean);
+      }
+      const ahora = Date.now();
+      if (candidato.codigo === ean && ahora - candidato.momento < MS_CONFIRMAR_LECTURA) return true;
+      candidato = { codigo: ean, momento: ahora };
+      return false;
+    }
+
+    async function alLeer(codigo, formato = "") {
       if (leidoRef.current || cancelado) return;
       const ean = normalizarEan(codigo);
-      if (ean.length < LONGITUD_MINIMA) return;
+      if (!lecturaValida(ean, String(formato || "").toLowerCase())) return;
       leidoRef.current = true;
       pararRef.current();
       try {
@@ -70,13 +93,18 @@ export default function EscanerEan({
       setEanLeido(ean);
       setFase("buscando");
       try {
-        const encontrados = await buscarArticulosPorEan(ean, productos);
+        const resultado = await buscarPorEanDetalle(ean, productos);
         if (cancelado) return;
+        const { encontrados } = resultado;
         if (encontrados.length === 1) {
           onElegir(encontrados[0].id);
         } else if (encontrados.length > 1) {
           setVarios(encontrados);
           setFase("varios");
+        } else if (resultado.noDisponibles.length) {
+          // El código existe, pero el artículo está oculto o desactivado.
+          setNoDisponibles(resultado.noDisponibles);
+          setFase("noDisponible");
         } else {
           setFase("noEncontrado");
         }
@@ -111,7 +139,10 @@ export default function EscanerEan({
             try {
               if (video.readyState >= 2) {
                 const codigos = await detector.detect(video);
-                if (codigos?.length) return alLeer(codigos[0].rawValue);
+                for (const leido of codigos || []) {
+                  await alLeer(leido.rawValue, leido.format);
+                  if (leidoRef.current) return;
+                }
               }
             } catch {
               // fotograma no válido, se sigue
@@ -151,7 +182,7 @@ export default function EscanerEan({
           },
           video,
           (resultado) => {
-            if (resultado) alLeer(resultado.getText());
+            if (resultado) alLeer(resultado.getText(), BarcodeFormat[resultado.getBarcodeFormat()]);
           }
         );
         if (cancelado) {
@@ -176,6 +207,7 @@ export default function EscanerEan({
 
   const escanearOtro = () => {
     setVarios([]);
+    setNoDisponibles([]);
     setEanLeido("");
     setIntento((n) => n + 1);
   };
@@ -229,6 +261,24 @@ export default function EscanerEan({
                     <Camera size={18} strokeWidth={2.6} /> {txt("Buscar con una foto", "拍照查找")}
                   </button>
                   <button type="button" style={estilos.botonBlanco} onClick={escanearOtro}>
+                    {txt("Escanear otro", "再扫一个")}
+                  </button>
+                </>
+              )}
+
+              {fase === "noDisponible" && (
+                <>
+                  <div style={estilos.textoTarjeta}>
+                    {txt("Este artículo no está disponible ahora en la app:", "该商品目前无法在应用中订购：")}
+                  </div>
+                  {noDisponibles.map((articulo) => (
+                    <div key={articulo.id} style={estilos.ean}>
+                      {articulo.nombre}
+                      <div style={estilos.motivo}>({motivoNoDisponible(articulo)})</div>
+                    </div>
+                  ))}
+                  <div style={estilos.codigoPequeno}>{eanLeido}</div>
+                  <button type="button" style={estilos.botonVerde} onClick={escanearOtro}>
                     {txt("Escanear otro", "再扫一个")}
                   </button>
                 </>
@@ -401,6 +451,8 @@ const estilos = {
     gap: "12px",
   },
   textoTarjeta: { fontSize: "16px", fontWeight: 800, color: "#1f2937", textAlign: "center" },
+  motivo: { fontSize: "13px", fontWeight: 800, color: "#b45309", letterSpacing: 0, marginTop: "2px" },
+  codigoPequeno: { fontSize: "13px", fontWeight: 700, color: "#64748b", textAlign: "center" },
   ean: { fontSize: "20px", fontWeight: 900, letterSpacing: "1px", textAlign: "center", color: "#111827" },
   ruedita: {
     alignSelf: "center",
