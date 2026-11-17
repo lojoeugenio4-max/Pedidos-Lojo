@@ -470,27 +470,39 @@ function Listado({ listado, soloTrabajador, onVolver }) {
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
+  // Hoja de RECUENTO en el orden de la ubicación:
+  // Código Lojo · Nombre · Cantidad (raya corta para escribir a mano).
   function imprimir() {
     const esc = (t) =>
       String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(listado.nombre)}</title>
+    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(listado.nombre)} · Recuento</title>
       <style>
         body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
-        h1 { font-size: 20px; margin: 0 0 4px; } p { margin: 0 0 14px; color: #444; font-size: 13px; }
-        table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        th, td { border-bottom: 1px solid #ccc; padding: 5px 6px; text-align: left; }
-        th { background: #eee; } td.n { width: 40px; font-weight: bold; }
+        h1 { font-size: 20px; margin: 0 0 4px; }
+        p { margin: 0 0 14px; color: #444; font-size: 13px; }
+        table { width: auto; border-collapse: collapse; font-size: 13px; }
+        th, td { padding: 9px 6px; text-align: left; vertical-align: bottom; border-bottom: 1px solid #ddd; }
+        th { background: #eee; font-size: 12px; }
+        td.cod { font-weight: bold; white-space: nowrap; padding-right: 14px; }
+        td.nom { padding-right: 14px; }
+        th.cant, td.cant { width: 75px; }
+        .raya { display: inline-block; width: 65px; border-bottom: 1.5px solid #111; height: 16px; }
+        tr { page-break-inside: avoid; }
+        @media print { body { margin: 10mm; } }
       </style></head><body>
-      <h1>📍 ${esc(listado.nombre)}</h1>
+      <h1>📍 ${esc(listado.nombre)} · Hoja de recuento</h1>
       <p>Cash Lojo · ${filas.length} artículos · Impreso el ${esc(formatoFecha(new Date().toISOString(), true))}</p>
-      <table><thead><tr><th>Orden</th><th>Cód. Lojo</th><th>Artículo</th><th>EAN</th></tr></thead><tbody>
+      <table>
+        <thead><tr><th>Código Lojo</th><th>Nombre</th><th class="cant">Cantidad</th></tr></thead>
+        <tbody>
       ${filas
         .map(
-          (f, i) =>
-            `<tr><td class="n">${i + 1}</td><td>${esc(f.articulos?.codigo_lojo)}</td><td>${esc(f.articulos?.nombre)}</td><td>${esc(f.ean)}</td></tr>`
+          (f) =>
+            `<tr><td class="cod">${esc(f.articulos?.codigo_lojo)}</td><td class="nom">${esc(f.articulos?.nombre)}</td><td class="cant"><span class="raya"></span></td></tr>`
         )
         .join("")}
-      </tbody></table>
+        </tbody>
+      </table>
       <script>window.onload = function () { window.print(); };<\/script></body></html>`;
     const ventana = window.open("", "_blank");
     if (!ventana) return window.alert("El navegador ha bloqueado la ventana de impresión.");
