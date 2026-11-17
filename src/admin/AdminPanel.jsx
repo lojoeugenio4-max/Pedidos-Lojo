@@ -14,10 +14,9 @@ import Clientes from "./Clientes";
 import PedidosExportar from "./PedidosExportar";
 import ClienteMes from "./ClienteMes";
 import ModuloInventario from "./ModuloInventario";
-import AccesoAdmin, {
+import {
   AccesoInventario,
   claveTrabajadorSigueValida,
-  haySesionAdmin,
   leerClaveTrabajador,
   olvidarClaveTrabajador,
 } from "./AccesoAdmin";
@@ -55,16 +54,13 @@ function leerParametrosURL() {
 }
 
 // Entrada del Admin:
-//   ?admin                       -> pide la contraseña del Admin al empezar la sesión.
-//   ?admin&...&modo=almacen      -> Pedidos recibidos del almacén, SIN contraseña.
+//   ?admin                       -> Admin completo, directo (como siempre).
+//   ?admin&...&modo=almacen      -> Pedidos recibidos del almacén.
 //   ?admin&modo=inventario       -> trabajadores: clave del inventario y solo Inventario.
 export default function AdminPanel() {
-  const [{ modoAlmacen, modoInventario }] = useState(leerParametrosURL);
-  const [sesionAdmin, setSesionAdmin] = useState(haySesionAdmin);
+  const [{ modoInventario }] = useState(leerParametrosURL);
 
-  if (modoAlmacen) return <PanelAdmin />;
   if (modoInventario) return <PanelTrabajadores />;
-  if (!sesionAdmin) return <AccesoAdmin onEntrar={() => setSesionAdmin(true)} />;
   return <PanelAdmin />;
 }
 
