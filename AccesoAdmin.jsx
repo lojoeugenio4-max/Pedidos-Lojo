@@ -1,8 +1,6 @@
 // Accesos con contraseña (ver supabase/migracion_inventario.sql).
 //
-//  - AccesoAdmin: el Admin de siempre (?admin) pide la contraseña del dueño
-//    al empezar la sesión (se vuelve a pedir al cerrar el navegador).
-//    La primera vez se crea.
+//  - AccesoAdmin: ya no pide contraseña (el Admin entra directo).
 //  - AccesoInventario: enlace de los trabajadores (?admin&modo=inventario).
 //    Piden la clave que el dueño define en Admin > Inventario.
 //  - ClaveTrabajadores: tarjeta de Admin > Inventario para definir esa clave.
@@ -63,109 +61,13 @@ export function olvidarClaveTrabajador() {
 // Admin de siempre: contraseña del dueño
 // =====================================================================
 export default function AccesoAdmin({ onEntrar }) {
-  const [clave, setClave] = useState("");
-  const [repetir, setRepetir] = useState("");
-  // null = comprobando · true/false = ¿ya hay contraseña creada?
-  const [configurada, setConfigurada] = useState(null);
-  const [error, setError] = useState("");
-  const [comprobando, setComprobando] = useState(false);
-
+  // El Admin ya NO pide contraseña: entra directo.
   useEffect(() => {
-    supabase.rpc("admin_clave_configurada").then(({ data, error: errorRpc }) => {
-      if (errorRpc) {
-        setError("Falta ejecutar supabase/migracion_inventario.sql en Supabase.");
-        setConfigurada(true);
-        return;
-      }
-      setConfigurada(Boolean(data));
-    });
+    abrirSesionAdmin();
+    onEntrar?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  async function entrar(e) {
-    e.preventDefault();
-    if (!clave) return;
-    setError("");
-    setComprobando(true);
-
-    if (configurada === false) {
-      if (clave.length < 6) {
-        setComprobando(false);
-        return setError("La contraseña tiene que tener al menos 6 caracteres.");
-      }
-      if (clave !== repetir) {
-        setComprobando(false);
-        return setError("Las dos contraseñas no coinciden.");
-      }
-      const { data, error: errorRpc } = await supabase.rpc("admin_crear_clave", { p_clave: clave });
-      setComprobando(false);
-      if (errorRpc) return setError(`No se pudo crear: ${errorRpc.message}`);
-      if (!data) {
-        setConfigurada(true);
-        return setError("Ya hay una contraseña creada. Entra con ella.");
-      }
-      abrirSesionAdmin();
-      onEntrar();
-      return;
-    }
-
-    const { data, error: errorRpc } = await supabase.rpc("admin_comprobar_clave", { p_clave: clave });
-    if (errorRpc) {
-      setComprobando(false);
-      return setError(`No se pudo comprobar: ${errorRpc.message}`);
-    }
-    if (data) {
-      abrirSesionAdmin();
-      onEntrar();
-      return;
-    }
-    await esperar(800);
-    setComprobando(false);
-    setError("Contraseña incorrecta.");
-  }
-
-  return (
-    <Pantalla titulo="Admin" subtitulo="Cash Lojo">
-      {configurada === null ? (
-        <div style={cargando}>Cargando…</div>
-      ) : (
-        <form onSubmit={entrar} style={formulario}>
-          {configurada === false && (
-            <div style={cajaInfo}>Primera vez: crea la contraseña del Admin (mínimo 6 caracteres).</div>
-          )}
-          <label style={campo}>
-            <span style={etiqueta}>Contraseña</span>
-            <input
-              type="password"
-              value={clave}
-              onChange={(e) => {
-                setClave(e.target.value);
-                setError("");
-              }}
-              autoFocus
-              autoComplete={configurada === false ? "new-password" : "current-password"}
-              style={entrada}
-            />
-          </label>
-          {configurada === false && (
-            <label style={campo}>
-              <span style={etiqueta}>Repítela</span>
-              <input
-                type="password"
-                value={repetir}
-                onChange={(e) => setRepetir(e.target.value)}
-                autoComplete="new-password"
-                style={entrada}
-              />
-            </label>
-          )}
-          {error && <div style={cajaError}>{error}</div>}
-          <button type="submit" style={botonEntrar} disabled={comprobando || !clave}>
-            {comprobando ? "Comprobando…" : configurada === false ? "Crear y entrar" : "Entrar"}
-          </button>
-        </form>
-      )}
-    </Pantalla>
-  );
+  return null;
 }
 
 // =====================================================================
