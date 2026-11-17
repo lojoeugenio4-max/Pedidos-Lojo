@@ -53,8 +53,22 @@ function formatoFecha(iso, conHora = false) {
     : fecha.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+// 1234567 -> "1.234.567" (con punto de miles también en números de 4 cifras).
 function formatoUnidades(n) {
-  return Number(n || 0).toLocaleString("es-ES");
+  const numero = Math.trunc(Number(n || 0));
+  const signo = numero < 0 ? "-" : "";
+  return signo + String(Math.abs(numero)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+// Lo que se escribe en la casilla de cantidad: solo cifras, con puntos de miles.
+function formatearEntrada(texto) {
+  const cifras = String(texto || "").replace(/\D/g, "").replace(/^0+(?=\d)/, "").slice(0, 9);
+  return cifras ? formatoUnidades(Number(cifras)) : "";
+}
+
+function leerEntrada(texto) {
+  const cifras = String(texto || "").replace(/\D/g, "");
+  return cifras ? Number(cifras) : NaN;
 }
 
 function sinTildes(texto) {
@@ -347,6 +361,10 @@ function Contar({ inventario }) {
   const [ubicaciones, setUbicaciones] = useState([]);
   // nada | camara | buscando | cantidad | elegir | noEncontrado
   const [modo, setModo] = useState("nada");
+  // La cámara se queda encendida mientras se escribe la cantidad.
+  const [camaraAbierta, setCamaraAbierta] = useState(false);
+  // sumar | restar (para corregir un error)
+  const [operacion, setOperacion] = useState("sumar");
   const [codigoLeido, setCodigoLeido] = useState("");
   const [articulo, setArticulo] = useState(null);
   const [opciones, setOpciones] = useState([]);
@@ -398,6 +416,8 @@ function Contar({ inventario }) {
     setArticulo(art);
     setOpciones([]);
     setCantidad("");
+    setOperacion("sumar");
+    setError("");
     const tieneCodigo = codigoPendiente && variantesCodigo(codigoPendiente).some((v) => (art.eans || []).includes(v));
     setGuardarCodigo(Boolean(codigoPendiente) && !tieneCodigo);
     setYaContado({ total: 0, detalle: [] });
@@ -454,7 +474,14 @@ function Contar({ inventario }) {
     setCodigoAnterior("");
     setError("");
     setOpciones([]);
+    setCamaraAbierta(true);
     setModo("camara");
+  }
+
+  function cerrarCamara() {
+    desdeCamaraRef.current = false;
+    setCamaraAbierta(false);
+    setModo("nada");
   }
 
   function cancelar() {
@@ -466,17 +493,22 @@ function Contar({ inventario }) {
   }
 
   async function guardarCantidad() {
-    const unidades = Number(String(cantidad).replace(",", "."));
-    if (!Number.isInteger(unidades) || unidades < 0) {
-      setError("Escribe las unidades (número entero).");
+    const unidades = leerEntrada(cantidad);
+    if (!Number.isInteger(unidades) || unidades <= 0) {
+      setError("Escribe las unidades.");
       return;
     }
+    if (operacion === "restar" && unidades > yaContado.total) {
+      setError(`No se pueden restar ${formatoUnidades(unidades)}: solo hay ${formatoUnidades(yaContado.total)} uds contadas.`);
+      return;
+    }
+    const movimiento = operacion === "restar" ? -unidades : unidades;
     setGuardando(true);
     setError("");
     const { error: errorGuardar } = await supabase.from("inventario_lineas").insert({
       inventario_id: inventario.id,
       articulo_id: articulo.id,
-      cantidad: unidades,
+      cantidad: movimiento,
       ubicacion: ubicacion || null,
       ean: codigoLeido || null,
       contado_por: quien.trim() || null,
@@ -494,8 +526,8 @@ function Contar({ inventario }) {
       if (errorEan) console.warn("No se pudo guardar el EAN en el artículo:", errorEan.message);
     }
 
-    const total = yaContado.total + unidades;
-    const texto = `✓ ${formatoUnidades(unidades)} uds · ${articulo.nombre} (total ${formatoUnidades(total)})`;
+    const total = yaContado.total + movimiento;
+    const texto = `${movimiento < 0 ? "➖" : "✓"} ${movimiento < 0 ? "" : "+"}${formatoUnidades(movimiento)} uds · ${articulo.nombre} (total ${formatoUnidades(total)})`;
     setAviso(texto);
     setUltimas((lista) =>
       [{ id: Date.now(), texto, ubicacion, hora: new Date().toISOString() }, ...lista].slice(0, 15)
@@ -578,25 +610,16 @@ function Contar({ inventario }) {
         )}
       </section>
 
-      {modo === "camara" && (
+      {camaraAbierta && (
         <LectorCamara
           titulo={`Inventario${ubicacion ? ` · 📍 ${ubicacion}` : ""}`}
           aviso={aviso}
           ignorarCodigo={codigoAnterior}
+          activo={modo === "camara"}
           onLeido={alLeerCodigo}
-          onCerrar={() => {
-            desdeCamaraRef.current = false;
-            setModo("nada");
-          }}
+          onCerrar={cerrarCamara}
         >
-          <button
-            type="button"
-            style={botonPieCamara}
-            onClick={() => {
-              desdeCamaraRef.current = false;
-              setModo("nada");
-            }}
-          >
+          <button type="button" style={botonPieCamara} onClick={cerrarCamara}>
             ⌨️ No tiene código: buscar a mano
           </button>
         </LectorCamara>
@@ -675,7 +698,7 @@ function Contar({ inventario }) {
                   </div>
 
                   <div style={cajaYaContado}>
-                    {yaContado.total > 0 ? (
+                    {yaContado.total !== 0 || yaContado.detalle.length ? (
                       <>
                         Ya contado: <b>{formatoUnidades(yaContado.total)} uds</b>
                         <div style={{ fontSize: "12px", marginTop: "2px" }}>
@@ -687,23 +710,46 @@ function Contar({ inventario }) {
                     )}
                   </div>
 
-                  <label style={campo}>
-                    <span style={etiqueta}>
-                      Unidades {ubicacion ? `en 📍 ${ubicacion}` : ""} {yaContado.total > 0 ? "(se suman)" : ""}
+
+                  <div style={campo}>
+                    <span style={filaEtiquetaCantidad}>
+                      <span style={etiqueta}>
+                        {operacion === "restar" ? "Unidades a RESTAR" : "Unidades"} {ubicacion ? `en 📍 ${ubicacion}` : ""}
+                        {operacion === "sumar" && yaContado.total > 0 ? " (se suman)" : ""}
+                      </span>
+                      {/* Por defecto se suma. "Restar" pone el número en negativo y en rojo. */}
+                      {yaContado.total > 0 && (
+                        <button
+                          type="button"
+                          style={botonRestar(operacion === "restar")}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setOperacion((o) => (o === "restar" ? "sumar" : "restar"));
+                            setError("");
+                          }}
+                        >
+                          ➖ Restar
+                        </button>
+                      )}
                     </span>
                     <input
-                      type="number"
+                      type="text"
                       inputMode="numeric"
-                      min="0"
-                      step="1"
-                      value={cantidad}
-                      onChange={(e) => setCantidad(e.target.value)}
+                      value={operacion === "restar" && cantidad ? `-${cantidad}` : cantidad}
+                      onChange={(e) => {
+                        setCantidad(formatearEntrada(e.target.value));
+                        setError("");
+                      }}
                       onKeyDown={(e) => e.key === "Enter" && !guardando && guardarCantidad()}
-                      style={campoCantidad}
+                      style={{
+                        ...campoCantidad,
+                        ...(operacion === "restar" ? { border: "2px solid #dc2626", color: "#dc2626", background: "#fef2f2" } : null),
+                      }}
                       autoFocus
+                      autoComplete="off"
                       placeholder="0"
                     />
-                  </label>
+                  </div>
 
                   {codigoLeido && guardarCodigo !== null && !variantesCodigo(codigoLeido).some((v) => (articulo.eans || []).includes(v)) && (
                     <label style={casilla}>
@@ -724,11 +770,16 @@ function Contar({ inventario }) {
                     </button>
                     <button
                       type="button"
-                      style={{ ...botonVerde, flex: 1, opacity: cantidad === "" || guardando ? 0.6 : 1 }}
+                      style={{
+                        ...botonVerde,
+                        ...(operacion === "restar" ? { background: "#dc2626" } : null),
+                        flex: 1,
+                        opacity: cantidad === "" || guardando ? 0.6 : 1,
+                      }}
                       onClick={guardarCantidad}
                       disabled={cantidad === "" || guardando}
                     >
-                      {guardando ? "Guardando…" : "Guardar"}
+                      {guardando ? "Guardando…" : operacion === "restar" ? "Restar" : "Guardar"}
                     </button>
                   </div>
                 </>
@@ -868,9 +919,9 @@ function Resumen({ inventario }) {
   }, [sinContar, articulos, busqueda]);
 
   async function cambiarLinea(linea, nuevaCantidad) {
-    const unidades = Number(nuevaCantidad);
-    if (!Number.isInteger(unidades) || unidades < 0) {
-      window.alert("Escribe un número entero de unidades.");
+    const unidades = Number(String(nuevaCantidad).replace(/\./g, ""));
+    if (!Number.isInteger(unidades) || unidades === 0) {
+      window.alert("Escribe un número entero de unidades (para quitar la lectura, bórrala con 🗑️).");
       return false;
     }
     const { error: errorCambio } = await supabase
@@ -1136,7 +1187,7 @@ function FilaResumen({ articulo, abierto, onAbrir, onCambiar, onBorrar, editando
                 </span>
               ) : (
                 <span style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
-                  <b>{formatoUnidades(l.cantidad)}</b>
+                  <b style={{ color: l.cantidad < 0 ? "#dc2626" : undefined }}>{formatoUnidades(l.cantidad)}</b>
                   <button
                     type="button"
                     style={botonBlancoPeq}
@@ -1207,6 +1258,7 @@ const campoCantidad = {
   textAlign: "center",
   padding: "14px",
   border: "2px solid #4f46e5",
+  outline: "none",
 };
 const botonBase = {
   border: "none",
@@ -1357,6 +1409,18 @@ const cajaYaContado = {
 };
 const casilla = { display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 800, color: "#334155" };
 const filaBotonesModal = { display: "flex", gap: "8px" };
+const filaEtiquetaCantidad = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" };
+const botonRestar = (activo) => ({
+  border: activo ? "2px solid #dc2626" : "1px solid #fecaca",
+  background: activo ? "#dc2626" : "#fff",
+  color: activo ? "#fff" : "#dc2626",
+  borderRadius: "10px",
+  padding: "6px 12px",
+  fontSize: "14px",
+  fontWeight: 900,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+});
 const listaOpciones = { display: "flex", flexDirection: "column", gap: "6px", maxHeight: "50vh", overflowY: "auto" };
 const opcion = {
   display: "flex",

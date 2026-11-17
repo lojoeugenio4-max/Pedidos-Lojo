@@ -1,6 +1,8 @@
 // Lector de códigos de barras con la cámara del móvil, para el Admin
 // (Inventario). Abre la cámara en directo y, en cuanto lee un código
-// válido, para la cámara y llama a onLeido(codigo).
+// válido, llama a onLeido(codigo) y deja de leer (activo = false) hasta que
+// el Inventario lo vuelve a activar. La cámara NO se apaga entre lectura y
+// lectura: así el móvil no vuelve a avisar de "acceso a la cámara".
 //   - Android (Chrome): lector nativo del móvil (BarcodeDetector).
 //   - iPhone y el resto: librería ZXing (se carga al abrir el lector).
 // Solo se dan por buenas las lecturas válidas (dígito de control correcto,
@@ -34,6 +36,7 @@ export default function LectorCamara({
   titulo = "Leer código de barras",
   aviso = "",
   ignorarCodigo = "",
+  activo = true,
   onLeido,
   onCerrar,
   children,
@@ -43,15 +46,27 @@ export default function LectorCamara({
   const leidoRef = useRef(false);
   const onLeidoRef = useRef(onLeido);
   onLeidoRef.current = onLeido;
+  const activoRef = useRef(activo);
+  const ignorarRef = useRef(ignorarCodigo);
+  const activadoEnRef = useRef(Date.now());
+  const candidatoRef = useRef({ codigo: "", momento: 0 });
   const [error, setError] = useState("");
   const [intento, setIntento] = useState(0);
+
+  // Al volver a activarse (después de guardar o cancelar), se lee de nuevo.
+  useEffect(() => {
+    activoRef.current = activo;
+    if (activo) {
+      ignorarRef.current = ignorarCodigo;
+      activadoEnRef.current = Date.now();
+      candidatoRef.current = { codigo: "", momento: 0 };
+      leidoRef.current = false;
+    }
+  }, [activo, ignorarCodigo]);
 
   useEffect(() => {
     let cancelado = false;
     leidoRef.current = false;
-    let candidato = { codigo: "", momento: 0 };
-    const abiertoEn = Date.now();
-    const codigoIgnorado = normalizarEan(ignorarCodigo);
 
     function lecturaValida(codigo, formato) {
       if (codigo.length < LONGITUD_MINIMA) return false;
@@ -60,18 +75,19 @@ export default function LectorCamara({
         return digitoControlValido(codigo);
       }
       const ahora = Date.now();
+      const candidato = candidatoRef.current;
       if (candidato.codigo === codigo && ahora - candidato.momento < MS_CONFIRMAR_LECTURA) return true;
-      candidato = { codigo, momento: ahora };
+      candidatoRef.current = { codigo, momento: ahora };
       return false;
     }
 
     function alLeer(texto, formato = "") {
-      if (leidoRef.current || cancelado) return;
+      if (leidoRef.current || cancelado || !activoRef.current) return;
       const codigo = normalizarEan(texto);
-      if (codigoIgnorado && codigo === codigoIgnorado && Date.now() - abiertoEn < MS_IGNORAR_AL_ABRIR) return;
+      const codigoIgnorado = normalizarEan(ignorarRef.current);
+      if (codigoIgnorado && codigo === codigoIgnorado && Date.now() - activadoEnRef.current < MS_IGNORAR_AL_ABRIR) return;
       if (!lecturaValida(codigo, String(formato || "").toLowerCase())) return;
       leidoRef.current = true;
-      pararRef.current();
       try {
         navigator.vibrate?.(80);
       } catch {
@@ -101,13 +117,13 @@ export default function LectorCamara({
           });
           let temporizador = null;
           const mirar = async () => {
-            if (cancelado || leidoRef.current) return;
+            if (cancelado) return;
             try {
-              if (video.readyState >= 2) {
+              if (video.readyState >= 2 && activoRef.current && !leidoRef.current) {
                 const codigos = await detector.detect(video);
                 for (const leido of codigos || []) {
                   alLeer(leido.rawValue, leido.format);
-                  if (leidoRef.current) return;
+                  if (leidoRef.current) break;
                 }
               }
             } catch {
@@ -181,7 +197,7 @@ export default function LectorCamara({
 
       <div style={zonaVideo}>
         <video ref={videoRef} style={video} playsInline muted autoPlay />
-        {!error && (
+        {!error && activo && (
           <>
             <div style={marco}>
               <div style={linea} className="lojo-lector-linea" />
