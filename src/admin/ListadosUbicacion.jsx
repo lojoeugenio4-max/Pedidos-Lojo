@@ -6,7 +6,10 @@
 // leído ocupa el siguiente puesto del listado. No se meten unidades.
 //   - Se ven los últimos artículos leídos, para saber por dónde se va.
 //   - "Insertar" permite meter artículos entre otros (si se pasó alguno).
-//   - Un artículo puede estar en varios listados, pero solo una vez en cada uno.
+//   - Un artículo puede estar en varios listados. Si se repite en el mismo,
+//     se pregunta si se quiere añadir otra posición (y entonces sale dos veces).
+//   - Al leer: ✓ verde grande 2 s si el código existe; ✗ roja y
+//     "Código No Existe" si no.
 // Son independientes de las Ubicaciones del Admin que ordenan los pedidos.
 //
 // Tablas: listados_ubicacion y listado_ubicacion_articulos
@@ -223,6 +226,10 @@ function Listado({ listado, soloTrabajador, onVolver }) {
   const [insercion, setInsercion] = useState(null);
   const [ultimoId, setUltimoId] = useState(null);
   const [busqueda, setBusqueda] = useState("");
+  // Artículo repetido pendiente de confirmar: { articulo, codigo, guardarCodigo, puesto }
+  const [repetido, setRepetido] = useState(null);
+  // Señal grande en pantalla: { tipo: "ok" | "error", id }
+  const [destello, setDestello] = useState(null);
   const desdeCamaraRef = useRef(false);
   const finalRef = useRef(null);
   const filasRef = useRef(filas);
@@ -275,12 +282,18 @@ function Listado({ listado, soloTrabajador, onVolver }) {
     return siguiente ? (lista[i].posicion + siguiente.posicion) / 2 : lista[i].posicion + 1;
   }
 
-  async function agregar(articulo, codigo = "", guardarCodigoEnArticulo = false) {
+  function mostrarDestello(tipo) {
+    setDestello({ tipo, id: Date.now() });
+  }
+
+  // Devuelve "ok", "repetido" (hay que preguntar) o "error".
+  async function agregar(articulo, codigo = "", guardarCodigoEnArticulo = false, permitirRepetido = false) {
     const lista = filasRef.current;
     const yaEsta = lista.findIndex((f) => String(f.articulo_id) === String(articulo.id));
-    if (yaEsta !== -1) {
-      setAviso({ tipo: "aviso", texto: `⚠️ Ya está en el puesto ${yaEsta + 1}: ${articulo.nombre}` });
-      return false;
+    if (yaEsta !== -1 && !permitirRepetido) {
+      setRepetido({ articulo, codigo, guardarCodigo: guardarCodigoEnArticulo, puesto: yaEsta + 1 });
+      setModo("repetido");
+      return "repetido";
     }
     const posicion = calcularPosicion();
     const { data, error: errorGuardar } = await supabase
@@ -295,13 +308,14 @@ function Listado({ listado, soloTrabajador, onVolver }) {
       .select("id, articulo_id, posicion, ean, leido_por, creado_en")
       .single();
     if (errorGuardar) {
-      const duplicado = errorGuardar.code === "23505";
       setAviso({
-        tipo: duplicado ? "aviso" : "error",
-        texto: duplicado ? `⚠️ ${articulo.nombre} ya estaba en esta ubicación` : `No se pudo guardar: ${errorGuardar.message}`,
+        tipo: "error",
+        texto:
+          errorGuardar.code === "23505"
+            ? "Falta volver a ejecutar supabase/migracion_inventario.sql para poder repetir artículos."
+            : `No se pudo guardar: ${errorGuardar.message}`,
       });
-      if (duplicado) cargar();
-      return false;
+      return "error";
     }
 
     if (guardarCodigoEnArticulo && codigo) {
@@ -321,7 +335,19 @@ function Listado({ listado, soloTrabajador, onVolver }) {
     setAviso({ tipo: "ok", texto: `✓ ${puesto}. ${articulo.nombre}${insercion ? " (insertado)" : ""}` });
     // Si se está insertando, el siguiente va detrás del que se acaba de meter.
     if (insercion) setInsercion({ despuesDe: nueva.id });
-    return true;
+    mostrarDestello("ok");
+    return "ok";
+  }
+
+  async function confirmarRepetido(si) {
+    const pendiente = repetido;
+    setRepetido(null);
+    if (si && pendiente) {
+      await agregar(pendiente.articulo, pendiente.codigo, pendiente.guardarCodigo, true);
+    } else if (pendiente) {
+      setAviso({ tipo: "aviso", texto: `No añadido: ${pendiente.articulo.nombre} (ya está en el puesto ${pendiente.puesto})` });
+    }
+    volverDespues();
   }
 
   async function alLeerCodigo(codigo) {
@@ -331,17 +357,22 @@ function Listado({ listado, soloTrabajador, onVolver }) {
     try {
       const encontrados = await buscarArticulosPorCodigo(codigo);
       if (encontrados.length === 1) {
-        await agregar(encontrados[0], codigo);
-        setCodigoAnterior(codigo);
-        setModo("camara");
+        const resultado = await agregar(encontrados[0], codigo);
+        if (resultado !== "repetido") {
+          setCodigoAnterior(codigo);
+          setModo("camara");
+        }
       } else if (encontrados.length > 1) {
         setOpciones(encontrados);
         setModo("elegir");
       } else {
+        // ✗ roja y, a continuación, el aviso "Código No Existe".
+        mostrarDestello("error");
         setTextoManual("");
         setOpciones([]);
         setError("");
-        setModo("noEncontrado");
+        setModo("pausa");
+        setTimeout(() => setModo((m) => (m === "pausa" ? "noEncontrado" : m)), 1200);
       }
     } catch (e) {
       setAviso({ tipo: "error", texto: `No se pudo buscar: ${e.message}` });
@@ -352,9 +383,9 @@ function Listado({ listado, soloTrabajador, onVolver }) {
 
   async function elegirDeOpciones(articulo, conCodigo) {
     const yaTiene = variantesCodigo(codigoLeido).some((v) => (articulo.eans || []).includes(v));
-    await agregar(articulo, conCodigo ? codigoLeido : "", conCodigo && !yaTiene);
     setOpciones([]);
-    volverDespues();
+    const resultado = await agregar(articulo, conCodigo ? codigoLeido : "", conCodigo && !yaTiene);
+    if (resultado !== "repetido") volverDespues();
   }
 
   function volverDespues() {
@@ -521,9 +552,9 @@ function Listado({ listado, soloTrabajador, onVolver }) {
             opciones={opciones}
             onElegir={async (a) => {
               desdeCamaraRef.current = false;
-              await agregar(a);
               setOpciones([]);
               setTextoManual("");
+              await agregar(a);
             }}
           />
         )}
@@ -646,7 +677,9 @@ function Listado({ listado, soloTrabajador, onVolver }) {
         </LectorCamara>
       )}
 
-      {["buscando", "elegir", "noEncontrado"].includes(modo) &&
+      <Destello destello={destello} />
+
+      {["buscando", "elegir", "noEncontrado", "repetido"].includes(modo) &&
         createPortal(
           <div style={fondoModal}>
             <div style={ventanaModal}>
@@ -662,11 +695,35 @@ function Listado({ listado, soloTrabajador, onVolver }) {
                 </>
               )}
 
+              {modo === "repetido" && repetido && (
+                <>
+                  <div style={{ fontSize: "44px", textAlign: "center" }}>⚠️</div>
+                  <h3 style={{ ...tituloSeccion, textAlign: "center", fontSize: "20px" }}>Artículo ya introducido</h3>
+                  <div style={{ textAlign: "center", fontWeight: 900, color: "#0f172a" }}>{repetido.articulo.nombre}</div>
+                  <div style={{ textAlign: "center", fontWeight: 700, color: "#64748b", fontSize: "14px" }}>
+                    Ya está en el puesto {repetido.puesto} de {listado.nombre}.
+                  </div>
+                  <div style={{ textAlign: "center", fontWeight: 900, color: "#334155", fontSize: "16px" }}>
+                    ¿Quieres añadir otra posición dentro de esta ubicación?
+                  </div>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button type="button" style={{ ...botonBlanco, flex: 1, padding: "16px", fontSize: "17px" }} onClick={() => confirmarRepetido(false)}>
+                      No
+                    </button>
+                    <button type="button" style={{ ...botonVerde, flex: 1, padding: "16px", fontSize: "17px" }} onClick={() => confirmarRepetido(true)}>
+                      Sí, añadir
+                    </button>
+                  </div>
+                </>
+              )}
+
               {modo === "noEncontrado" && (
                 <>
-                  <h3 style={tituloSeccion}>Ningún artículo tiene el código {codigoLeido}</h3>
+                  <div style={{ fontSize: "44px", textAlign: "center", color: "#dc2626", fontWeight: 950, lineHeight: 1 }}>✗</div>
+                  <h3 style={{ ...tituloSeccion, textAlign: "center", fontSize: "22px", color: "#dc2626" }}>Código No Existe</h3>
+                  <div style={{ textAlign: "center", fontWeight: 800, color: "#64748b" }}>{codigoLeido}</div>
                   <p style={{ margin: 0, color: "#475569", fontWeight: 700, fontSize: "14px" }}>
-                    Búscalo por nombre o código Lojo. Al elegirlo se le guarda este código para la próxima vez.
+                    Si sabes qué artículo es, búscalo por nombre o código Lojo: se le guarda este código para la próxima vez.
                   </p>
                   <div style={fila}>
                     <input
@@ -694,6 +751,31 @@ function Listado({ listado, soloTrabajador, onVolver }) {
           document.body
         )}
     </div>
+  );
+}
+
+// Señal grande en el centro de la pantalla: ✓ verde (2 s) o ✗ roja (1,2 s).
+function Destello({ destello }) {
+  const [visible, setVisible] = useState(null);
+  useEffect(() => {
+    if (!destello) return undefined;
+    setVisible(destello);
+    const t = setTimeout(() => setVisible(null), destello.tipo === "ok" ? 2000 : 1200);
+    return () => clearTimeout(t);
+  }, [destello]);
+  if (!visible) return null;
+  const ok = visible.tipo === "ok";
+  return createPortal(
+    <div style={capaDestello}>
+      <div key={visible.id} style={circuloDestello(ok)} className="lojo-destello">
+        {ok ? "✓" : "✗"}
+      </div>
+      <style>{`
+        @keyframes lojoDestello { 0% { transform: scale(0.4); opacity: 0; } 15% { transform: scale(1.08); opacity: 1; } 25% { transform: scale(1); } 85% { opacity: 1; } 100% { opacity: 0; } }
+        .lojo-destello { animation: lojoDestello ${ok ? 2 : 1.2}s ease-out forwards; }
+      `}</style>
+    </div>,
+    document.body
   );
 }
 
@@ -879,6 +961,28 @@ const ultimosCamara = {
   padding: "8px 12px",
   marginBottom: "10px",
 };
+const capaDestello = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 9700,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  pointerEvents: "none",
+};
+const circuloDestello = (ok) => ({
+  width: "180px",
+  height: "180px",
+  borderRadius: "999px",
+  background: ok ? "rgba(22,163,74,0.95)" : "rgba(220,38,38,0.95)",
+  color: "#fff",
+  fontSize: "120px",
+  fontWeight: 950,
+  lineHeight: "180px",
+  textAlign: "center",
+  boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
+  fontFamily: "Arial, sans-serif",
+});
 const fondoModal = {
   position: "fixed",
   inset: 0,
