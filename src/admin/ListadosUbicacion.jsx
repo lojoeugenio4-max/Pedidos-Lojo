@@ -477,17 +477,18 @@ function Listado({ listado, soloTrabajador, onVolver }) {
       String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
     const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(listado.nombre)} · Recuento</title>
       <style>
-        body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
-        h1 { font-size: 20px; margin: 0 0 4px; }
-        p { margin: 0 0 14px; color: #444; font-size: 13px; }
-        table { width: auto; border-collapse: collapse; font-size: 13px; }
-        th, td { padding: 9px 6px; text-align: left; vertical-align: bottom; border-bottom: 1px solid #ddd; }
-        th { background: #eee; font-size: 12px; }
-        td.cod { font-weight: bold; white-space: nowrap; padding-right: 14px; }
-        td.nom { padding-right: 14px; }
-        th.cant, td.cant { width: 75px; }
+        /* Letra y espacios a la mitad para que quepan más artículos por hoja. */
+        body { font-family: Arial, sans-serif; margin: 12px; color: #111; }
+        h1 { font-size: 11px; margin: 0 0 2px; }
+        p { margin: 0 0 6px; color: #444; font-size: 7px; }
+        table { width: auto; border-collapse: collapse; font-size: 7px; line-height: 1.15; }
+        th, td { padding: 2px 4px; text-align: left; vertical-align: bottom; border-bottom: 0.5px solid #ccc; }
+        th { background: #eee; font-size: 6.5px; }
+        td.cod { font-weight: bold; white-space: nowrap; padding-right: 8px; }
+        td.nom { padding-right: 8px; }
+        th.cant, td.cant { width: 40px; }
         tr { page-break-inside: avoid; }
-        @media print { body { margin: 10mm; } }
+        @media print { body { margin: 6mm; } }
       </style></head><body>
       <h1>📍 ${esc(listado.nombre)} · Hoja de recuento</h1>
       <p>Cash Lojo · ${filas.length} artículos · Impreso el ${esc(formatoFecha(new Date().toISOString(), true))}</p>
