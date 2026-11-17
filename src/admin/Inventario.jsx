@@ -492,6 +492,37 @@ function Contar({ inventario }) {
     setModo(desdeCamaraRef.current ? "camara" : "nada");
   }
 
+  function pulsarTecla(tecla) {
+    setError("");
+    if (tecla === "C") return setCantidad("");
+    if (tecla === "⌫") return setCantidad((actual) => formatearEntrada(String(actual).replace(/\D/g, "").slice(0, -1)));
+    setCantidad((actual) => formatearEntrada(`${actual}${tecla}`));
+  }
+
+  // En el ordenador también se puede escribir con el teclado normal.
+  useEffect(() => {
+    if (modo !== "cantidad") return undefined;
+    const alPulsar = (e) => {
+      if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+      if (/^\d$/.test(e.key)) {
+        e.preventDefault();
+        pulsarTecla(e.key);
+      } else if (e.key === "Backspace") {
+        e.preventDefault();
+        pulsarTecla("⌫");
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (!guardando && cantidad) guardarCantidad();
+      } else if (e.key === "Escape") {
+        cancelar();
+      } else if (e.key === "-" && yaContado.total > 0) {
+        setOperacion((o) => (o === "restar" ? "sumar" : "restar"));
+      }
+    };
+    window.addEventListener("keydown", alPulsar);
+    return () => window.removeEventListener("keydown", alPulsar);
+  });
+
   async function guardarCantidad() {
     const unidades = leerEntrada(cantidad);
     if (!Number.isInteger(unidades) || unidades <= 0) {
@@ -732,23 +763,31 @@ function Contar({ inventario }) {
                         </button>
                       )}
                     </span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={operacion === "restar" && cantidad ? `-${cantidad}` : cantidad}
-                      onChange={(e) => {
-                        setCantidad(formatearEntrada(e.target.value));
-                        setError("");
-                      }}
-                      onKeyDown={(e) => e.key === "Enter" && !guardando && guardarCantidad()}
+                    {/* Pantalla de la cantidad + teclado numérico propio: se escribe
+                        directamente, sin tocar ninguna casilla ni abrir el teclado del móvil. */}
+                    <div
                       style={{
                         ...campoCantidad,
                         ...(operacion === "restar" ? { border: "2px solid #dc2626", color: "#dc2626", background: "#fef2f2" } : null),
+                        ...(cantidad ? null : { color: "#cbd5e1" }),
                       }}
-                      autoFocus
-                      autoComplete="off"
-                      placeholder="0"
-                    />
+                      aria-live="polite"
+                    >
+                      {cantidad ? (operacion === "restar" ? `-${cantidad}` : cantidad) : "0"}
+                    </div>
+                  </div>
+
+                  <div style={tecladoNumerico}>
+                    {["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "⌫"].map((tecla) => (
+                      <button
+                        key={tecla}
+                        type="button"
+                        style={tecla === "C" || tecla === "⌫" ? teclaEspecial : tecla === "0" ? teclaCero : teclaNumero}
+                        onClick={() => pulsarTecla(tecla)}
+                      >
+                        {tecla}
+                      </button>
+                    ))}
                   </div>
 
                   {codigoLeido && guardarCodigo !== null && !variantesCodigo(codigoLeido).some((v) => (articulo.eans || []).includes(v)) && (
@@ -1253,12 +1292,14 @@ const campoTexto = {
 };
 const campoCantidad = {
   ...campoTexto,
-  fontSize: "32px",
+  fontSize: "34px",
   fontWeight: 950,
   textAlign: "center",
-  padding: "14px",
+  padding: "8px 14px",
   border: "2px solid #4f46e5",
   outline: "none",
+  minHeight: "58px",
+  boxSizing: "border-box",
 };
 const botonBase = {
   border: "none",
@@ -1409,6 +1450,21 @@ const cajaYaContado = {
 };
 const casilla = { display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 800, color: "#334155" };
 const filaBotonesModal = { display: "flex", gap: "8px" };
+const tecladoNumerico = { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" };
+const teclaBase = {
+  border: "1px solid #e2e8f0",
+  borderRadius: "14px",
+  height: "56px",
+  fontSize: "26px",
+  fontWeight: 900,
+  cursor: "pointer",
+  touchAction: "manipulation",
+  userSelect: "none",
+  WebkitTapHighlightColor: "transparent",
+};
+const teclaNumero = { ...teclaBase, background: "#f8fafc", color: "#0f172a" };
+const teclaCero = teclaNumero;
+const teclaEspecial = { ...teclaBase, background: "#e2e8f0", color: "#334155", fontSize: "22px" };
 const filaEtiquetaCantidad = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" };
 const botonRestar = (activo) => ({
   border: activo ? "2px solid #dc2626" : "1px solid #fecaca",
