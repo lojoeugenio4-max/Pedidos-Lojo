@@ -42,7 +42,9 @@ export function borrarAcceso() {
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export default function AccesoAdmin({ onEntrar }) {
+// soloInventario: pantalla del enlace de los trabajadores (?admin&modo=inventario).
+// Solo vale la contraseña de trabajadores; no se puede entrar al Admin completo.
+export default function AccesoAdmin({ onEntrar, soloInventario = false }) {
   const [clave, setClave] = useState("");
   const [recordar, setRecordar] = useState(true);
   const [error, setError] = useState("");
@@ -54,6 +56,10 @@ export default function AccesoAdmin({ onEntrar }) {
   const [repetir, setRepetir] = useState("");
 
   useEffect(() => {
+    if (soloInventario) {
+      setConfigurada(true);
+      return;
+    }
     supabase.rpc("admin_clave_configurada").then(({ data, error: errorRpc }) => {
       if (errorRpc) {
         console.warn("Acceso al Admin:", errorRpc.message);
@@ -78,6 +84,12 @@ export default function AccesoAdmin({ onEntrar }) {
 
     if (texto.toLowerCase() === CLAVE_INVENTARIO) {
       entrar("inventario");
+      return;
+    }
+
+    if (soloInventario) {
+      await esperar(800);
+      setError("Contraseña incorrecta.");
       return;
     }
 
@@ -137,8 +149,8 @@ export default function AccesoAdmin({ onEntrar }) {
     <div style={fondo}>
       <div style={tarjeta}>
         <div style={logo}>L</div>
-        <h1 style={titulo}>Acceso</h1>
-        <p style={subtitulo}>Cash Lojo · Administración</p>
+        <h1 style={titulo}>{soloInventario ? "Inventario" : "Acceso"}</h1>
+        <p style={subtitulo}>{soloInventario ? "Cash Lojo · Trabajadores" : "Cash Lojo · Administración"}</p>
 
         {configurada === null ? (
           <div style={{ textAlign: "center", color: "#64748b", fontWeight: 700 }}>Cargando…</div>

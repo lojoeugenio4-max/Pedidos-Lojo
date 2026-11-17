@@ -43,18 +43,31 @@ function leerParametrosURL() {
     // pensado para un acceso directo de Windows en otro ordenador — abre
     // solo la pantalla de Pedidos recibidos, sin el menú completo del Admin.
     modoAlmacen: parametros.get("modo") === "almacen",
+    // "?admin&modo=inventario": enlace para el móvil de los trabajadores.
+    // Pide la contraseña de trabajadores ("coke") y abre solo el Inventario.
+    modoInventario: parametros.get("modo") === "inventario",
   };
 }
 
 // Puerta de entrada del Admin: pide contraseña.
 //   "coke" -> solo Inventario (trabajadores) · contraseña del dueño -> todo.
 export default function AdminPanel() {
+  const [{ modoAlmacen, modoInventario }] = useState(leerParametrosURL);
   const [acceso, setAcceso] = useState(leerAcceso);
 
   const salir = () => {
     borrarAcceso();
     setAcceso(null);
   };
+
+  // El acceso directo del almacén (Pedidos recibidos) NO pide contraseña.
+  if (modoAlmacen) return <PanelCompleto onSalir={salir} />;
+
+  // Enlace de los trabajadores: solo contraseña "coke" y solo Inventario.
+  if (modoInventario) {
+    if (!acceso) return <AccesoAdmin soloInventario onEntrar={setAcceso} />;
+    return <PanelInventario onSalir={salir} />;
+  }
 
   if (!acceso) return <AccesoAdmin onEntrar={setAcceso} />;
   if (acceso === "inventario") return <PanelInventario onSalir={salir} />;
