@@ -471,7 +471,7 @@ function Listado({ listado, soloTrabajador, onVolver }) {
   }
 
   // Hoja de RECUENTO en el orden de la ubicación:
-  // Código Lojo · Nombre · Cantidad (raya corta para escribir a mano).
+  // Código Lojo · Nombre · Cantidad (hueco en blanco para escribir a mano).
   function imprimir() {
     const esc = (t) =>
       String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -486,7 +486,6 @@ function Listado({ listado, soloTrabajador, onVolver }) {
         td.cod { font-weight: bold; white-space: nowrap; padding-right: 14px; }
         td.nom { padding-right: 14px; }
         th.cant, td.cant { width: 75px; }
-        .raya { display: inline-block; width: 65px; border-bottom: 1.5px solid #111; height: 16px; }
         tr { page-break-inside: avoid; }
         @media print { body { margin: 10mm; } }
       </style></head><body>
@@ -498,7 +497,7 @@ function Listado({ listado, soloTrabajador, onVolver }) {
       ${filas
         .map(
           (f) =>
-            `<tr><td class="cod">${esc(f.articulos?.codigo_lojo)}</td><td class="nom">${esc(f.articulos?.nombre)}</td><td class="cant"><span class="raya"></span></td></tr>`
+            `<tr><td class="cod">${esc(f.articulos?.codigo_lojo)}</td><td class="nom">${esc(f.articulos?.nombre)}</td><td class="cant"></td></tr>`
         )
         .join("")}
         </tbody>
