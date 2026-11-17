@@ -1018,7 +1018,7 @@ function Resumen({ inventario }) {
       .map(
         (a) => `<tr>
           <td class="cod">${esc(a.codigoLojo)}</td>
-          <td>${esc(a.nombre)}</td>
+          <td class="nom">${esc(a.nombre)}</td>
           <td class="cant"><span class="raya"></span></td>
         </tr>`
       )
@@ -1028,12 +1028,13 @@ function Resumen({ inventario }) {
         body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
         h1 { font-size: 20px; margin: 0 0 4px; }
         p { margin: 0 0 14px; color: #444; font-size: 13px; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        table { width: auto; border-collapse: collapse; font-size: 13px; }
         th, td { padding: 9px 6px; text-align: left; vertical-align: bottom; border-bottom: 1px solid #ddd; }
         th { background: #eee; font-size: 12px; }
         td.cod { width: 90px; font-weight: bold; white-space: nowrap; }
-        th.cant, td.cant { width: 150px; }
-        .raya { display: inline-block; width: 130px; border-bottom: 1.5px solid #111; height: 16px; }
+        td.nom { padding-right: 14px; }
+        th.cant, td.cant { width: 75px; }
+        .raya { display: inline-block; width: 65px; border-bottom: 1.5px solid #111; height: 16px; }
         tr { page-break-inside: avoid; }
         @media print { body { margin: 10mm; } }
       </style></head><body>
