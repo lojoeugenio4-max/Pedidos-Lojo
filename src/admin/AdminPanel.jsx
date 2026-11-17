@@ -13,7 +13,7 @@ import Promociones from "./Promociones";
 import Clientes from "./Clientes";
 import PedidosExportar from "./PedidosExportar";
 import ClienteMes from "./ClienteMes";
-import Inventario from "./Inventario";
+import ModuloInventario from "./ModuloInventario";
 import AccesoAdmin, {
   AccesoInventario,
   claveTrabajadorSigueValida,
@@ -106,7 +106,7 @@ function PanelTrabajadores() {
         </button>
       </div>
       <main style={contenidoAlmacen}>
-        <Inventario soloTrabajador />
+        <ModuloInventario soloTrabajador />
       </main>
     </div>
   );
@@ -249,7 +249,7 @@ function PanelAdmin() {
             {opcion === "premios-bingo" && <Regalos />}
             {opcion === "cliente-mes" && <ClienteMes />}
             {opcion === "pedidos" && <PedidosExportar />}
-            {opcion === "inventario" && <Inventario />}
+            {opcion === "inventario" && <ModuloInventario />}
             {opcion === "configuracion" && <Configuracion />}
           </div>
         </section>

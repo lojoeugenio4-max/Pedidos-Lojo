@@ -20,10 +20,10 @@ import { ClaveTrabajadores } from "./AccesoAdmin";
 
 const TAMANO_PAGINA = 1000;
 const REFRESCO_RESUMEN_MS = 15000;
-const CLAVE_QUIEN = "lojo-inventario-quien";
+export const CLAVE_QUIEN = "lojo-inventario-quien";
 const CLAVE_UBICACION = "lojo-inventario-ubicacion";
 
-function leerLocal(clave) {
+export function leerLocal(clave) {
   try {
     return localStorage.getItem(clave) || "";
   } catch {
@@ -31,7 +31,7 @@ function leerLocal(clave) {
   }
 }
 
-function guardarLocal(clave, valor) {
+export function guardarLocal(clave, valor) {
   try {
     localStorage.setItem(clave, valor);
   } catch {
@@ -39,13 +39,13 @@ function guardarLocal(clave, valor) {
   }
 }
 
-function urlFoto(foto) {
+export function urlFoto(foto) {
   if (!foto) return "";
   if (/^https?:\/\//.test(foto)) return foto;
   return supabaseStorage.storage.from("productos").getPublicUrl(foto).data.publicUrl;
 }
 
-function formatoFecha(iso, conHora = false) {
+export function formatoFecha(iso, conHora = false) {
   if (!iso) return "";
   const fecha = new Date(iso);
   return conHora
@@ -79,7 +79,7 @@ function sinTildes(texto) {
 }
 
 // Carga todas las filas de una consulta, de 1000 en 1000.
-async function cargarTodo(crearConsulta) {
+export async function cargarTodo(crearConsulta) {
   const filas = [];
   for (let desde = 0; ; desde += TAMANO_PAGINA) {
     const { data, error } = await crearConsulta().range(desde, desde + TAMANO_PAGINA - 1);
@@ -92,7 +92,7 @@ async function cargarTodo(crearConsulta) {
 
 const CAMPOS_ARTICULO = "id, codigo, codigo_lojo, nombre, foto, activo, oculto, eans";
 
-async function buscarArticulosPorCodigo(codigo) {
+export async function buscarArticulosPorCodigo(codigo) {
   const variantes = variantesCodigo(codigo);
   if (!variantes.length) return [];
   const { data, error } = await supabase.from("articulos").select(CAMPOS_ARTICULO).overlaps("eans", variantes);
@@ -100,7 +100,7 @@ async function buscarArticulosPorCodigo(codigo) {
   return data || [];
 }
 
-async function buscarArticulosPorTexto(texto) {
+export async function buscarArticulosPorTexto(texto) {
   const limpio = String(texto || "").trim();
   if (!limpio) return [];
   // Código Lojo exacto primero.
@@ -831,7 +831,7 @@ function Contar({ inventario }) {
   );
 }
 
-function ListaOpciones({ opciones, onElegir }) {
+export function ListaOpciones({ opciones, onElegir }) {
   return (
     <div style={listaOpciones}>
       {opciones.map((a) => (

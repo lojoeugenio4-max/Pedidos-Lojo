@@ -82,7 +82,7 @@ export default function MenuAdmin({
       id: "inventario",
       icono: "📋",
       titulo: "Inventario",
-      descripcion: "Contar con la cámara",
+      descripcion: "Contar y ubicaciones",
     },
     {
       id: "configuracion",
