@@ -90,6 +90,20 @@ export default function Carrera() {
         exacto gana el premio final y la edición termina.
       </p>
 
+      <div style={cajaNavidad}>
+        <span>
+          🎄 <strong>Versión de Navidad (beta)</strong> · Solo para probar: la TV grande sigue con la de Halloween. Se
+          abre con clientes inventados y el botón «⚙ Pruebas» para simular villanos, héroes, trineo y villancico.
+        </span>
+        <button
+          type="button"
+          style={{ ...boton, background: "#b91c1c" }}
+          onClick={() => window.open("/loca-carrera/tablero-navidad.html", "_blank", "noopener")}
+        >
+          Abrir tablero de Navidad (beta)
+        </button>
+      </div>
+
       {error && <div style={avisoError}>{error}</div>}
 
       {edicion && (
@@ -153,6 +167,7 @@ export default function Carrera() {
 
 const titulo = { margin: "0 0 8px", fontSize: "22px", color: "#111827" };
 const texto = { margin: "0 0 12px", color: "#6b7280", fontSize: "15px" };
+const cajaNavidad = { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, margin: "0 0 14px", padding: "10px 12px", borderRadius: 10, background: "#ecfdf5", border: "1px solid #a7f3d0", color: "#065f46", fontSize: 14 };
 const avisoError = { margin: "0 0 14px", padding: "10px 12px", borderRadius: 10, background: "#fef2f2", color: "#991b1b", fontSize: 14, fontWeight: 700 };
 const cabeceraEdicion = { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, margin: "0 0 14px", fontSize: 15, color: "#111827" };
 const pastilla = { padding: "3px 10px", borderRadius: 999, fontSize: 12, fontWeight: 800 };

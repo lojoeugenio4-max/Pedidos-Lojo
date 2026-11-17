@@ -1,0 +1,34 @@
+{
+  "_ayuda": "Vídeos de la Loca Carrera de Navidad. Solo se usan los que existan en esta carpeta; si falta uno, sale un cartel.",
+  "villanos": {
+    "ogro": {
+      "solo": ["ogro.mp4"],
+      "heroeGana": [
+        { "heroe": "José Luis y Rafa", "video": "ogro-vs-joseluis-rafa.mp4" },
+        { "heroe": "Valentín", "video": "ogro-vs-valentin.mp4" },
+        { "heroe": "El Mijita", "video": "ogro-vs-mijita.mp4" }
+      ],
+      "heroePierde": []
+    },
+    "tacano": {
+      "solo": ["tacano.mp4"],
+      "heroeGana": [
+        { "heroe": "Papá Noel", "video": "tacano-vs-papa-noel.mp4" },
+        { "heroe": "José Luis y Rafa", "video": "tacano-vs-joseluis-rafa.mp4" },
+        { "heroe": "Valentín", "video": "tacano-vs-valentin.mp4" },
+        { "heroe": "El Mijita", "video": "tacano-vs-mijita.mp4" },
+        { "heroe": "Elías", "video": "tacano-vs-elias.mp4" }
+      ],
+      "heroePierde": []
+    },
+    "lon": {
+      "solo": ["loco-lon.mp4"],
+      "heroeGana": [
+        { "heroe": "El Mijita", "video": "lon-vs-mijita.mp4" }
+      ],
+      "heroePierde": []
+    }
+  },
+  "villancico": "villancico.mp4",
+  "trineo": null
+}
