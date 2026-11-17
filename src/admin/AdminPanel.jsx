@@ -13,6 +13,8 @@ import Promociones from "./Promociones";
 import Clientes from "./Clientes";
 import PedidosExportar from "./PedidosExportar";
 import ClienteMes from "./ClienteMes";
+import Inventario from "./Inventario";
+import AccesoAdmin, { CambiarClaveAdmin, borrarAcceso, leerAcceso } from "./AccesoAdmin";
 
 // Opciones de menú válidas como destino directo por URL, p.ej.
 // "?admin&seccion=pedidos" para abrir el Admin ya en Pedidos recibidos.
@@ -27,6 +29,7 @@ const OPCIONES_VALIDAS = [
   "estadisticas",
   "premios-bingo",
   "pedidos",
+  "inventario",
   "configuracion",
 ];
 
@@ -43,8 +46,47 @@ function leerParametrosURL() {
   };
 }
 
+// Puerta de entrada del Admin: pide contraseña.
+//   "coke" -> solo Inventario (trabajadores) · contraseña del dueño -> todo.
 export default function AdminPanel() {
+  const [acceso, setAcceso] = useState(leerAcceso);
+
+  const salir = () => {
+    borrarAcceso();
+    setAcceso(null);
+  };
+
+  if (!acceso) return <AccesoAdmin onEntrar={setAcceso} />;
+  if (acceso === "inventario") return <PanelInventario onSalir={salir} />;
+  return <PanelCompleto onSalir={salir} />;
+}
+
+// Lo que ven los trabajadores: solo el Inventario.
+function PanelInventario({ onSalir }) {
+  return (
+    <div id="lojo-admin-panel" style={layoutAlmacen}>
+      <div style={{ ...topBarAlmacen, justifyContent: "space-between", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={logoAlmacen}>L</div>
+          <div>
+            <h1 style={tituloAlmacen}>Inventario</h1>
+            <p style={subtituloAlmacen}>Cash Lojo · Trabajadores</p>
+          </div>
+        </div>
+        <button type="button" style={botonSalir} onClick={onSalir}>
+          🔒 Salir
+        </button>
+      </div>
+      <main style={contenidoAlmacen}>
+        <Inventario soloTrabajador />
+      </main>
+    </div>
+  );
+}
+
+function PanelCompleto({ onSalir }) {
   const [{ seccionInicial, modoAlmacen }] = useState(leerParametrosURL);
+  const [cambiandoClave, setCambiandoClave] = useState(false);
   // Al entrar en el Admin se abre siempre en "Pedidos recibidos" (salvo que
   // la URL pida otra sección con "?admin&seccion=...").
   const [opcion, setOpcion] = useState(seccionInicial || "pedidos");
@@ -158,7 +200,16 @@ export default function AdminPanel() {
               </p>
             )}
           </div>
+          <div style={botonesSesion}>
+            <button type="button" style={botonSesion} onClick={() => setCambiandoClave(true)}>
+              🔑 Contraseña
+            </button>
+            <button type="button" style={botonSesion} onClick={onSalir}>
+              🔒 Salir
+            </button>
+          </div>
         </div>
+        {cambiandoClave && <CambiarClaveAdmin onCerrar={() => setCambiandoClave(false)} />}
 
         {/* En Artículos la tarjeta no recorta (overflow visible) para que el
             buscador pueda quedarse fijo arriba al hacer scroll. */}
@@ -180,6 +231,7 @@ export default function AdminPanel() {
             {opcion === "premios-bingo" && <Regalos />}
             {opcion === "cliente-mes" && <ClienteMes />}
             {opcion === "pedidos" && <PedidosExportar />}
+            {opcion === "inventario" && <Inventario />}
             {opcion === "configuracion" && <Configuracion />}
           </div>
         </section>
@@ -246,6 +298,31 @@ const subtitle = {
 
 // Estilos del modo almacén: pantalla mínima sin menú lateral, pensada para
 // el acceso directo que abren los operarios en otro ordenador.
+const botonesSesion = { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" };
+
+const botonSesion = {
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  color: "#334155",
+  borderRadius: "12px",
+  padding: "9px 14px",
+  fontSize: "14px",
+  fontWeight: 800,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const botonSalir = {
+  border: "1px solid rgba(255,255,255,0.35)",
+  background: "transparent",
+  color: "#fff",
+  borderRadius: "12px",
+  padding: "9px 14px",
+  fontSize: "14px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
 const layoutAlmacen = {
   minHeight: "100dvh",
   width: "100%",

@@ -79,6 +79,12 @@ export default function MenuAdmin({
       descripcion: "Exportar pedidos a CSV",
     },
     {
+      id: "inventario",
+      icono: "📋",
+      titulo: "Inventario",
+      descripcion: "Contar con la cámara",
+    },
+    {
       id: "configuracion",
       icono: "⚙️",
       titulo: "Configuración",

@@ -28,7 +28,7 @@ export function digitoControlValido(codigo) {
 }
 
 // Formas en que el mismo código puede estar guardado en la base de datos.
-function variantesCodigo(codigo) {
+export function variantesCodigo(codigo) {
   const limpio = normalizarEan(codigo);
   const variantes = new Set([limpio]);
   if (/^\d+$/.test(limpio)) {
