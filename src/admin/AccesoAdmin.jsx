@@ -1,69 +1,79 @@
-// Pantalla "Acceso" del Admin.
-//   - Contraseña "coke" (trabajadores): solo se ve el Inventario.
-//   - Contraseña del Admin completo: se ve todo. Se guarda CIFRADA en
-//     Supabase (tabla admin_acceso, ver supabase/migracion_inventario.sql)
-//     y la crea el dueño la primera vez que entra.
-// "Recordar en este dispositivo" evita volver a escribirla en ese móvil u
-// ordenador hasta que se pulse "Salir".
+// Accesos con contraseña (ver supabase/migracion_inventario.sql).
+//
+//  - AccesoAdmin: el Admin de siempre (?admin) pide la contraseña del dueño
+//    al empezar la sesión (se vuelve a pedir al cerrar el navegador).
+//    La primera vez se crea.
+//  - AccesoInventario: enlace de los trabajadores (?admin&modo=inventario).
+//    Piden la clave que el dueño define en Admin > Inventario.
+//  - ClaveTrabajadores: tarjeta de Admin > Inventario para definir esa clave.
+//
+// Las contraseñas se guardan cifradas en Supabase; desde la app solo se
+// puede comprobar si son correctas.
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { supabase } from "../supabaseClient";
 
-// Contraseña de los trabajadores (da igual mayúsculas o minúsculas).
-const CLAVE_INVENTARIO = "coke";
-const CLAVE_GUARDADA = "lojo-admin-acceso";
-
-export function leerAcceso() {
-  try {
-    const valor = localStorage.getItem(CLAVE_GUARDADA) || sessionStorage.getItem(CLAVE_GUARDADA);
-    return valor === "inventario" || valor === "completo" ? valor : null;
-  } catch {
-    return null;
-  }
-}
-
-function guardarAcceso(rol, recordar) {
-  try {
-    if (recordar) localStorage.setItem(CLAVE_GUARDADA, rol);
-    else sessionStorage.setItem(CLAVE_GUARDADA, rol);
-  } catch {
-    // nada
-  }
-}
-
-export function borrarAcceso() {
-  try {
-    localStorage.removeItem(CLAVE_GUARDADA);
-    sessionStorage.removeItem(CLAVE_GUARDADA);
-  } catch {
-    // nada
-  }
-}
+const SESION_ADMIN = "lojo-admin-sesion";
+const CLAVE_TRABAJADOR = "lojo-inventario-clave";
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// soloInventario: pantalla del enlace de los trabajadores (?admin&modo=inventario).
-// Solo vale la contraseña de trabajadores; no se puede entrar al Admin completo.
-export default function AccesoAdmin({ onEntrar, soloInventario = false }) {
+// ---- Sesión del Admin (dura hasta cerrar el navegador) ----
+export function haySesionAdmin() {
+  try {
+    return sessionStorage.getItem(SESION_ADMIN) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function abrirSesionAdmin() {
+  try {
+    sessionStorage.setItem(SESION_ADMIN, "1");
+  } catch {
+    // nada
+  }
+}
+
+// ---- Clave recordada en el móvil del trabajador ----
+export function leerClaveTrabajador() {
+  try {
+    return localStorage.getItem(CLAVE_TRABAJADOR) || "";
+  } catch {
+    return "";
+  }
+}
+
+function guardarClaveTrabajador(clave) {
+  try {
+    localStorage.setItem(CLAVE_TRABAJADOR, clave);
+  } catch {
+    // nada
+  }
+}
+
+export function olvidarClaveTrabajador() {
+  try {
+    localStorage.removeItem(CLAVE_TRABAJADOR);
+  } catch {
+    // nada
+  }
+}
+
+// =====================================================================
+// Admin de siempre: contraseña del dueño
+// =====================================================================
+export default function AccesoAdmin({ onEntrar }) {
   const [clave, setClave] = useState("");
-  const [recordar, setRecordar] = useState(true);
+  const [repetir, setRepetir] = useState("");
+  // null = comprobando · true/false = ¿ya hay contraseña creada?
+  const [configurada, setConfigurada] = useState(null);
   const [error, setError] = useState("");
   const [comprobando, setComprobando] = useState(false);
-  // null = comprobando · true/false = ¿hay contraseña del Admin completo?
-  const [configurada, setConfigurada] = useState(null);
-  const [faltaSql, setFaltaSql] = useState(false);
-  const [nueva, setNueva] = useState("");
-  const [repetir, setRepetir] = useState("");
 
   useEffect(() => {
-    if (soloInventario) {
-      setConfigurada(true);
-      return;
-    }
     supabase.rpc("admin_clave_configurada").then(({ data, error: errorRpc }) => {
       if (errorRpc) {
-        console.warn("Acceso al Admin:", errorRpc.message);
-        setFaltaSql(true);
+        setError("Falta ejecutar supabase/migracion_inventario.sql en Supabase.");
         setConfigurada(true);
         return;
       }
@@ -71,242 +81,285 @@ export default function AccesoAdmin({ onEntrar, soloInventario = false }) {
     });
   }, []);
 
-  function entrar(rol) {
-    guardarAcceso(rol, recordar);
-    onEntrar(rol);
-  }
-
-  async function alEnviar(e) {
+  async function entrar(e) {
     e.preventDefault();
-    const texto = clave.trim();
-    if (!texto) return;
+    if (!clave) return;
     setError("");
-
-    if (texto.toLowerCase() === CLAVE_INVENTARIO) {
-      entrar("inventario");
-      return;
-    }
-
-    if (soloInventario) {
-      await esperar(800);
-      setError("Contraseña incorrecta.");
-      return;
-    }
-
     setComprobando(true);
-    const { data, error: errorRpc } = await supabase.rpc("admin_comprobar_clave", { p_clave: texto });
+
+    if (configurada === false) {
+      if (clave.length < 6) {
+        setComprobando(false);
+        return setError("La contraseña tiene que tener al menos 6 caracteres.");
+      }
+      if (clave !== repetir) {
+        setComprobando(false);
+        return setError("Las dos contraseñas no coinciden.");
+      }
+      const { data, error: errorRpc } = await supabase.rpc("admin_crear_clave", { p_clave: clave });
+      setComprobando(false);
+      if (errorRpc) return setError(`No se pudo crear: ${errorRpc.message}`);
+      if (!data) {
+        setConfigurada(true);
+        return setError("Ya hay una contraseña creada. Entra con ella.");
+      }
+      abrirSesionAdmin();
+      onEntrar();
+      return;
+    }
+
+    const { data, error: errorRpc } = await supabase.rpc("admin_comprobar_clave", { p_clave: clave });
     if (errorRpc) {
       setComprobando(false);
-      setError(
-        faltaSql
-          ? "Falta ejecutar supabase/migracion_inventario.sql en Supabase."
-          : `No se pudo comprobar: ${errorRpc.message}`
-      );
-      return;
+      return setError(`No se pudo comprobar: ${errorRpc.message}`);
     }
     if (data) {
-      setComprobando(false);
-      entrar("completo");
+      abrirSesionAdmin();
+      onEntrar();
       return;
     }
-    // Pequeña espera para que no se puedan probar contraseñas a lo loco.
     await esperar(800);
     setComprobando(false);
     setError("Contraseña incorrecta.");
   }
 
-  async function crearClave(e) {
-    e.preventDefault();
-    setError("");
-    if (nueva.length < 6) {
-      setError("La contraseña del Admin tiene que tener al menos 6 caracteres.");
-      return;
-    }
-    if (nueva.trim().toLowerCase() === CLAVE_INVENTARIO) {
-      setError(`No puede ser "${CLAVE_INVENTARIO}": esa es la de los trabajadores.`);
-      return;
-    }
-    if (nueva !== repetir) {
-      setError("Las dos contraseñas no coinciden.");
-      return;
-    }
-    setComprobando(true);
-    const { data, error: errorRpc } = await supabase.rpc("admin_crear_clave", { p_clave: nueva });
-    setComprobando(false);
-    if (errorRpc) {
-      setError(`No se pudo crear: ${errorRpc.message}`);
-      return;
-    }
-    if (!data) {
-      setError("Ya había una contraseña creada. Entra con ella.");
-      setConfigurada(true);
-      return;
-    }
-    entrar("completo");
-  }
-
   return (
-    <div style={fondo}>
-      <div style={tarjeta}>
-        <div style={logo}>L</div>
-        <h1 style={titulo}>{soloInventario ? "Inventario" : "Acceso"}</h1>
-        <p style={subtitulo}>{soloInventario ? "Cash Lojo · Trabajadores" : "Cash Lojo · Administración"}</p>
-
-        {configurada === null ? (
-          <div style={{ textAlign: "center", color: "#64748b", fontWeight: 700 }}>Cargando…</div>
-        ) : configurada ? (
-          <form onSubmit={alEnviar} style={formulario}>
+    <Pantalla titulo="Admin" subtitulo="Cash Lojo">
+      {configurada === null ? (
+        <div style={cargando}>Cargando…</div>
+      ) : (
+        <form onSubmit={entrar} style={formulario}>
+          {configurada === false && (
+            <div style={cajaInfo}>Primera vez: crea la contraseña del Admin (mínimo 6 caracteres).</div>
+          )}
+          <label style={campo}>
+            <span style={etiqueta}>Contraseña</span>
+            <input
+              type="password"
+              value={clave}
+              onChange={(e) => {
+                setClave(e.target.value);
+                setError("");
+              }}
+              autoFocus
+              autoComplete={configurada === false ? "new-password" : "current-password"}
+              style={entrada}
+            />
+          </label>
+          {configurada === false && (
             <label style={campo}>
-              <span style={etiqueta}>Contraseña</span>
+              <span style={etiqueta}>Repítela</span>
               <input
                 type="password"
-                value={clave}
-                onChange={(e) => {
-                  setClave(e.target.value);
-                  setError("");
-                }}
-                autoFocus
-                autoCapitalize="none"
-                autoCorrect="off"
-                autoComplete="current-password"
+                value={repetir}
+                onChange={(e) => setRepetir(e.target.value)}
+                autoComplete="new-password"
                 style={entrada}
               />
             </label>
-            <label style={casilla}>
-              <input type="checkbox" checked={recordar} onChange={(e) => setRecordar(e.target.checked)} />
-              Recordar en este dispositivo
-            </label>
-            {error && <div style={cajaError}>{error}</div>}
-            {faltaSql && (
-              <div style={cajaAviso}>
-                Falta ejecutar <b>supabase/migracion_inventario.sql</b> en Supabase → SQL Editor.
-              </div>
-            )}
-            <button type="submit" style={botonEntrar} disabled={comprobando || !clave.trim()}>
-              {comprobando ? "Comprobando…" : "Entrar"}
-            </button>
-          </form>
-        ) : (
-          <>
-            <form onSubmit={alEnviar} style={formulario}>
-              <label style={campo}>
-                <span style={etiqueta}>Contraseña de trabajadores</span>
-                <input
-                  type="password"
-                  value={clave}
-                  onChange={(e) => setClave(e.target.value)}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  style={entrada}
-                />
-              </label>
-              <button type="submit" style={botonSecundario} disabled={!clave.trim()}>
-                Entrar al Inventario
-              </button>
-            </form>
-
-            <div style={separador} />
-
-            <form onSubmit={crearClave} style={formulario}>
-              <div style={cajaInfo}>
-                <b>Primera vez:</b> crea la contraseña del <b>Admin completo</b>. Solo tú debes saberla. Se guarda
-                cifrada y nadie podrá verla.
-              </div>
-              <label style={campo}>
-                <span style={etiqueta}>Nueva contraseña (mínimo 6)</span>
-                <input
-                  type="password"
-                  value={nueva}
-                  onChange={(e) => setNueva(e.target.value)}
-                  autoComplete="new-password"
-                  style={entrada}
-                />
-              </label>
-              <label style={campo}>
-                <span style={etiqueta}>Repítela</span>
-                <input
-                  type="password"
-                  value={repetir}
-                  onChange={(e) => setRepetir(e.target.value)}
-                  autoComplete="new-password"
-                  style={entrada}
-                />
-              </label>
-              <label style={casilla}>
-                <input type="checkbox" checked={recordar} onChange={(e) => setRecordar(e.target.checked)} />
-                Recordar en este dispositivo
-              </label>
-              {error && <div style={cajaError}>{error}</div>}
-              <button type="submit" style={botonEntrar} disabled={comprobando}>
-                {comprobando ? "Guardando…" : "Crear contraseña y entrar"}
-              </button>
-            </form>
-          </>
-        )}
-      </div>
-    </div>
+          )}
+          {error && <div style={cajaError}>{error}</div>}
+          <button type="submit" style={botonEntrar} disabled={comprobando || !clave}>
+            {comprobando ? "Comprobando…" : configurada === false ? "Crear y entrar" : "Entrar"}
+          </button>
+        </form>
+      )}
+    </Pantalla>
   );
 }
 
-// Ventana para cambiar la contraseña del Admin completo.
-export function CambiarClaveAdmin({ onCerrar }) {
-  const [actual, setActual] = useState("");
+// =====================================================================
+// Enlace de los trabajadores: clave del inventario
+// =====================================================================
+export function AccesoInventario({ onEntrar }) {
+  const [clave, setClave] = useState("");
+  const [error, setError] = useState("");
+  const [comprobando, setComprobando] = useState(false);
+
+  async function entrar(e) {
+    e.preventDefault();
+    const texto = clave.trim();
+    if (!texto) return;
+    setError("");
+    setComprobando(true);
+    const { data, error: errorRpc } = await supabase.rpc("inventario_comprobar_clave", { p_clave: texto });
+    if (errorRpc) {
+      setComprobando(false);
+      return setError(`No se pudo comprobar: ${errorRpc.message}`);
+    }
+    if (data) {
+      guardarClaveTrabajador(texto);
+      onEntrar();
+      return;
+    }
+    await esperar(800);
+    setComprobando(false);
+    setError("Clave incorrecta.");
+  }
+
+  return (
+    <Pantalla titulo="Inventario" subtitulo="Cash Lojo">
+      <form onSubmit={entrar} style={formulario}>
+        <label style={campo}>
+          <span style={etiqueta}>Clave</span>
+          <input
+            type="password"
+            value={clave}
+            onChange={(e) => {
+              setClave(e.target.value);
+              setError("");
+            }}
+            autoFocus
+            autoCapitalize="none"
+            autoCorrect="off"
+            style={entrada}
+          />
+        </label>
+        {error && <div style={cajaError}>{error}</div>}
+        <button type="submit" style={botonEntrar} disabled={comprobando || !clave.trim()}>
+          {comprobando ? "Comprobando…" : "Entrar"}
+        </button>
+      </form>
+    </Pantalla>
+  );
+}
+
+// Comprueba en silencio la clave recordada en el móvil (por si el dueño la
+// ha cambiado). Devuelve true / false.
+export async function claveTrabajadorSigueValida() {
+  const clave = leerClaveTrabajador();
+  if (!clave) return false;
+  const { data, error } = await supabase.rpc("inventario_comprobar_clave", { p_clave: clave });
+  if (error) return true; // sin conexión: no echar al trabajador
+  return Boolean(data);
+}
+
+// =====================================================================
+// Admin > Inventario: definir la clave de los trabajadores
+// =====================================================================
+export function ClaveTrabajadores() {
+  const [configurada, setConfigurada] = useState(null);
+  const [abierto, setAbierto] = useState(false);
   const [nueva, setNueva] = useState("");
-  const [repetir, setRepetir] = useState("");
+  const [claveAdmin, setClaveAdmin] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
-  async function cambiar(e) {
+  useEffect(() => {
+    supabase.rpc("inventario_clave_configurada").then(({ data, error: errorRpc }) => {
+      setConfigurada(errorRpc ? null : Boolean(data));
+    });
+  }, []);
+
+  async function guardar(e) {
     e.preventDefault();
     setError("");
-    if (nueva.length < 6) return setError("La nueva contraseña tiene que tener al menos 6 caracteres.");
-    if (nueva.trim().toLowerCase() === CLAVE_INVENTARIO)
-      return setError(`No puede ser "${CLAVE_INVENTARIO}": esa es la de los trabajadores.`);
-    if (nueva !== repetir) return setError("Las dos contraseñas nuevas no coinciden.");
+    setMensaje("");
+    if (nueva.trim().length < 3) return setError("La clave tiene que tener al menos 3 caracteres.");
     setGuardando(true);
-    const { data, error: errorRpc } = await supabase.rpc("admin_cambiar_clave", { p_actual: actual, p_nueva: nueva });
+    const { data, error: errorRpc } = await supabase.rpc("inventario_definir_clave", {
+      p_clave_admin: claveAdmin,
+      p_nueva: nueva.trim(),
+    });
     setGuardando(false);
-    if (errorRpc) return setError(`No se pudo cambiar: ${errorRpc.message}`);
-    if (!data) return setError("La contraseña actual no es correcta.");
-    setMensaje("✓ Contraseña cambiada.");
-    setActual("");
+    if (errorRpc) return setError(`No se pudo guardar: ${errorRpc.message}`);
+    if (!data) return setError("Tu contraseña del Admin no es correcta.");
+    setMensaje(`✓ Clave de los trabajadores guardada: “${nueva.trim()}”. Apúntala para dársela.`);
+    setConfigurada(true);
+    setAbierto(false);
     setNueva("");
-    setRepetir("");
+    setClaveAdmin("");
   }
 
-  return createPortal(
-    <div style={{ ...fondo, position: "fixed", inset: 0, zIndex: 9000, background: "rgba(15,23,42,0.6)" }} onClick={onCerrar}>
-      <form style={tarjeta} onClick={(e) => e.stopPropagation()} onSubmit={cambiar}>
-        <h2 style={{ ...titulo, fontSize: "20px" }}>🔑 Cambiar contraseña del Admin</h2>
-        <label style={campo}>
-          <span style={etiqueta}>Contraseña actual</span>
-          <input type="password" value={actual} onChange={(e) => setActual(e.target.value)} style={entrada} autoFocus />
-        </label>
-        <label style={campo}>
-          <span style={etiqueta}>Nueva contraseña (mínimo 6)</span>
-          <input type="password" value={nueva} onChange={(e) => setNueva(e.target.value)} style={entrada} autoComplete="new-password" />
-        </label>
-        <label style={campo}>
-          <span style={etiqueta}>Repite la nueva</span>
-          <input type="password" value={repetir} onChange={(e) => setRepetir(e.target.value)} style={entrada} autoComplete="new-password" />
-        </label>
-        {error && <div style={cajaError}>{error}</div>}
-        {mensaje && <div style={cajaOk}>{mensaje}</div>}
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button type="button" style={botonSecundario} onClick={onCerrar}>
-            Cerrar
-          </button>
-          <button type="submit" style={{ ...botonEntrar, flex: 1 }} disabled={guardando}>
-            {guardando ? "Guardando…" : "Cambiar"}
-          </button>
+  const enlace = `${window.location.origin}${window.location.pathname}?admin&modo=inventario`;
+
+  return (
+    <section style={tarjetaClave}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: "17px", fontWeight: 950, color: "#0f172a" }}>🔑 Acceso de los trabajadores</h2>
+          <div style={{ fontSize: "13px", fontWeight: 700, color: configurada ? "#166534" : "#b45309", marginTop: "2px" }}>
+            {configurada === null
+              ? "Falta ejecutar supabase/migracion_inventario.sql"
+              : configurada
+                ? "Clave definida"
+                : "Todavía no hay clave: los trabajadores no pueden entrar"}
+          </div>
         </div>
-        <p style={{ margin: 0, fontSize: "12px", color: "#64748b", fontWeight: 700 }}>
-          La contraseña de los trabajadores (“{CLAVE_INVENTARIO}”) no cambia.
-        </p>
-      </form>
-    </div>,
-    document.body
+        {!abierto && configurada !== null && (
+          <button type="button" style={botonPeq} onClick={() => setAbierto(true)}>
+            {configurada ? "Cambiar clave" : "Definir clave"}
+          </button>
+        )}
+      </div>
+
+      <div style={cajaEnlace}>
+        <div style={{ fontSize: "12px", fontWeight: 800, color: "#475569" }}>Enlace para el móvil de los trabajadores:</div>
+        <div style={{ fontSize: "13px", fontWeight: 800, color: "#0f172a", wordBreak: "break-all" }}>{enlace}</div>
+        <button
+          type="button"
+          style={botonPeq}
+          onClick={() => {
+            navigator.clipboard?.writeText(enlace).then(
+              () => setMensaje("✓ Enlace copiado. Pégalo en WhatsApp."),
+              () => setMensaje("Copia el enlace a mano.")
+            );
+          }}
+        >
+          📋 Copiar enlace
+        </button>
+      </div>
+
+      {abierto && (
+        <form onSubmit={guardar} style={formulario}>
+          <label style={campo}>
+            <span style={etiqueta}>Nueva clave de los trabajadores</span>
+            <input
+              type="text"
+              value={nueva}
+              onChange={(e) => setNueva(e.target.value)}
+              autoCapitalize="none"
+              autoCorrect="off"
+              style={{ ...entrada, fontSize: "16px", padding: "11px" }}
+              autoFocus
+            />
+          </label>
+          <label style={campo}>
+            <span style={etiqueta}>Tu contraseña del Admin (para confirmar)</span>
+            <input
+              type="password"
+              value={claveAdmin}
+              onChange={(e) => setClaveAdmin(e.target.value)}
+              style={{ ...entrada, fontSize: "16px", padding: "11px" }}
+            />
+          </label>
+          {error && <div style={cajaError}>{error}</div>}
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button type="button" style={botonPeq} onClick={() => setAbierto(false)}>
+              Cancelar
+            </button>
+            <button type="submit" style={{ ...botonEntrar, flex: 1, padding: "11px", fontSize: "15px" }} disabled={guardando}>
+              {guardando ? "Guardando…" : "Guardar clave"}
+            </button>
+          </div>
+        </form>
+      )}
+      {mensaje && <div style={cajaOk}>{mensaje}</div>}
+    </section>
+  );
+}
+
+function Pantalla({ titulo, subtitulo, children }) {
+  return (
+    <div style={fondo}>
+      <div style={tarjeta}>
+        <div style={logo}>L</div>
+        <h1 style={tituloEstilo}>{titulo}</h1>
+        <p style={subtituloEstilo}>{subtitulo}</p>
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -316,37 +369,38 @@ const fondo = {
   alignItems: "center",
   justifyContent: "center",
   padding: "16px",
-  background: "linear-gradient(160deg, #0f172a 0%, #1e293b 100%)",
+  background: "#f3f4f6",
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif',
   boxSizing: "border-box",
 };
 const tarjeta = {
   width: "100%",
-  maxWidth: "380px",
+  maxWidth: "360px",
   background: "#fff",
-  borderRadius: "22px",
-  padding: "26px 22px",
+  borderRadius: "20px",
+  padding: "24px 20px",
   display: "flex",
   flexDirection: "column",
-  gap: "14px",
-  boxShadow: "0 30px 60px rgba(0,0,0,0.35)",
+  gap: "12px",
+  boxShadow: "0 20px 40px rgba(15,23,42,0.12)",
   boxSizing: "border-box",
 };
 const logo = {
-  width: "56px",
-  height: "56px",
-  borderRadius: "16px",
+  width: "52px",
+  height: "52px",
+  borderRadius: "14px",
   background: "#16a34a",
   color: "#fff",
-  fontSize: "28px",
+  fontSize: "26px",
   fontWeight: 950,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   alignSelf: "center",
 };
-const titulo = { margin: 0, fontSize: "26px", fontWeight: 950, color: "#0f172a", textAlign: "center" };
-const subtitulo = { margin: "-8px 0 0", fontSize: "14px", fontWeight: 700, color: "#64748b", textAlign: "center" };
+const tituloEstilo = { margin: 0, fontSize: "24px", fontWeight: 950, color: "#0f172a", textAlign: "center" };
+const subtituloEstilo = { margin: "-6px 0 4px", fontSize: "14px", fontWeight: 700, color: "#64748b", textAlign: "center" };
+const cargando = { textAlign: "center", color: "#64748b", fontWeight: 700 };
 const formulario = { display: "flex", flexDirection: "column", gap: "12px" };
 const campo = { display: "flex", flexDirection: "column", gap: "6px" };
 const etiqueta = { fontSize: "13px", fontWeight: 900, color: "#475569" };
@@ -360,7 +414,6 @@ const entrada = {
   width: "100%",
   boxSizing: "border-box",
 };
-const casilla = { display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 700, color: "#334155" };
 const botonEntrar = {
   border: "none",
   borderRadius: "14px",
@@ -371,18 +424,35 @@ const botonEntrar = {
   fontWeight: 950,
   cursor: "pointer",
 };
-const botonSecundario = {
+const botonPeq = {
   border: "1px solid #cbd5e1",
-  borderRadius: "14px",
-  padding: "13px",
+  borderRadius: "12px",
+  padding: "9px 14px",
   background: "#fff",
   color: "#334155",
-  fontSize: "15px",
-  fontWeight: 900,
+  fontSize: "14px",
+  fontWeight: 800,
   cursor: "pointer",
+  alignSelf: "flex-start",
 };
-const separador = { height: "1px", background: "#e2e8f0", margin: "4px 0" };
+const tarjetaClave = {
+  background: "#fff",
+  border: "1px solid #e2e8f0",
+  borderRadius: "18px",
+  padding: "16px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "12px",
+};
+const cajaEnlace = {
+  background: "#f8fafc",
+  border: "1px dashed #cbd5e1",
+  borderRadius: "12px",
+  padding: "10px 12px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "6px",
+};
 const cajaError = { background: "#fef2f2", color: "#b91c1c", borderRadius: "12px", padding: "10px 12px", fontWeight: 800, fontSize: "14px" };
 const cajaOk = { background: "#f0fdf4", color: "#166534", borderRadius: "12px", padding: "10px 12px", fontWeight: 800, fontSize: "14px" };
-const cajaAviso = { background: "#fffbeb", color: "#92400e", borderRadius: "12px", padding: "10px 12px", fontWeight: 700, fontSize: "13px" };
-const cajaInfo = { background: "#eef2ff", color: "#3730a3", borderRadius: "12px", padding: "10px 12px", fontWeight: 600, fontSize: "13px" };
+const cajaInfo = { background: "#eef2ff", color: "#3730a3", borderRadius: "12px", padding: "10px 12px", fontWeight: 700, fontSize: "13px" };

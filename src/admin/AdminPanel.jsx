@@ -14,7 +14,13 @@ import Clientes from "./Clientes";
 import PedidosExportar from "./PedidosExportar";
 import ClienteMes from "./ClienteMes";
 import Inventario from "./Inventario";
-import AccesoAdmin, { CambiarClaveAdmin, borrarAcceso, leerAcceso } from "./AccesoAdmin";
+import AccesoAdmin, {
+  AccesoInventario,
+  claveTrabajadorSigueValida,
+  haySesionAdmin,
+  leerClaveTrabajador,
+  olvidarClaveTrabajador,
+} from "./AccesoAdmin";
 
 // Opciones de menú válidas como destino directo por URL, p.ej.
 // "?admin&seccion=pedidos" para abrir el Admin ya en Pedidos recibidos.
@@ -43,51 +49,60 @@ function leerParametrosURL() {
     // pensado para un acceso directo de Windows en otro ordenador — abre
     // solo la pantalla de Pedidos recibidos, sin el menú completo del Admin.
     modoAlmacen: parametros.get("modo") === "almacen",
-    // "?admin&modo=inventario": enlace para el móvil de los trabajadores.
-    // Pide la contraseña de trabajadores ("coke") y abre solo el Inventario.
+    // "?admin&modo=inventario": enlace del móvil de los trabajadores.
     modoInventario: parametros.get("modo") === "inventario",
   };
 }
 
-// Puerta de entrada del Admin: pide contraseña.
-//   "coke" -> solo Inventario (trabajadores) · contraseña del dueño -> todo.
+// Entrada del Admin:
+//   ?admin                       -> pide la contraseña del Admin al empezar la sesión.
+//   ?admin&...&modo=almacen      -> Pedidos recibidos del almacén, SIN contraseña.
+//   ?admin&modo=inventario       -> trabajadores: clave del inventario y solo Inventario.
 export default function AdminPanel() {
   const [{ modoAlmacen, modoInventario }] = useState(leerParametrosURL);
-  const [acceso, setAcceso] = useState(leerAcceso);
+  const [sesionAdmin, setSesionAdmin] = useState(haySesionAdmin);
 
-  const salir = () => {
-    borrarAcceso();
-    setAcceso(null);
-  };
-
-  // El acceso directo del almacén (Pedidos recibidos) NO pide contraseña.
-  if (modoAlmacen) return <PanelCompleto onSalir={salir} />;
-
-  // Enlace de los trabajadores: solo contraseña "coke" y solo Inventario.
-  if (modoInventario) {
-    if (!acceso) return <AccesoAdmin soloInventario onEntrar={setAcceso} />;
-    return <PanelInventario onSalir={salir} />;
-  }
-
-  if (!acceso) return <AccesoAdmin onEntrar={setAcceso} />;
-  if (acceso === "inventario") return <PanelInventario onSalir={salir} />;
-  return <PanelCompleto onSalir={salir} />;
+  if (modoAlmacen) return <PanelAdmin />;
+  if (modoInventario) return <PanelTrabajadores />;
+  if (!sesionAdmin) return <AccesoAdmin onEntrar={() => setSesionAdmin(true)} />;
+  return <PanelAdmin />;
 }
 
-// Lo que ven los trabajadores: solo el Inventario.
-function PanelInventario({ onSalir }) {
+// Móvil de los trabajadores: solo el Inventario.
+function PanelTrabajadores() {
+  // null = comprobando la clave recordada en el móvil
+  const [dentro, setDentro] = useState(() => (leerClaveTrabajador() ? null : false));
+
+  useEffect(() => {
+    if (dentro !== null) return;
+    claveTrabajadorSigueValida().then((valida) => {
+      if (!valida) olvidarClaveTrabajador();
+      setDentro(valida);
+    });
+  }, [dentro]);
+
+  if (dentro === null) return null;
+  if (!dentro) return <AccesoInventario onEntrar={() => setDentro(true)} />;
+
   return (
     <div id="lojo-admin-panel" style={layoutAlmacen}>
-      <div style={{ ...topBarAlmacen, justifyContent: "space-between", flexWrap: "wrap" }}>
+      <div style={{ ...topBarAlmacen, justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <div style={logoAlmacen}>L</div>
           <div>
             <h1 style={tituloAlmacen}>Inventario</h1>
-            <p style={subtituloAlmacen}>Cash Lojo · Trabajadores</p>
+            <p style={subtituloAlmacen}>Cash Lojo</p>
           </div>
         </div>
-        <button type="button" style={botonSalir} onClick={onSalir}>
-          🔒 Salir
+        <button
+          type="button"
+          style={botonSalirTrabajador}
+          onClick={() => {
+            olvidarClaveTrabajador();
+            setDentro(false);
+          }}
+        >
+          Salir
         </button>
       </div>
       <main style={contenidoAlmacen}>
@@ -97,9 +112,8 @@ function PanelInventario({ onSalir }) {
   );
 }
 
-function PanelCompleto({ onSalir }) {
+function PanelAdmin() {
   const [{ seccionInicial, modoAlmacen }] = useState(leerParametrosURL);
-  const [cambiandoClave, setCambiandoClave] = useState(false);
   // Al entrar en el Admin se abre siempre en "Pedidos recibidos" (salvo que
   // la URL pida otra sección con "?admin&seccion=...").
   const [opcion, setOpcion] = useState(seccionInicial || "pedidos");
@@ -213,16 +227,7 @@ function PanelCompleto({ onSalir }) {
               </p>
             )}
           </div>
-          <div style={botonesSesion}>
-            <button type="button" style={botonSesion} onClick={() => setCambiandoClave(true)}>
-              🔑 Contraseña
-            </button>
-            <button type="button" style={botonSesion} onClick={onSalir}>
-              🔒 Salir
-            </button>
-          </div>
         </div>
-        {cambiandoClave && <CambiarClaveAdmin onCerrar={() => setCambiandoClave(false)} />}
 
         {/* En Artículos la tarjeta no recorta (overflow visible) para que el
             buscador pueda quedarse fijo arriba al hacer scroll. */}
@@ -311,26 +316,12 @@ const subtitle = {
 
 // Estilos del modo almacén: pantalla mínima sin menú lateral, pensada para
 // el acceso directo que abren los operarios en otro ordenador.
-const botonesSesion = { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" };
-
-const botonSesion = {
-  border: "1px solid #cbd5e1",
-  background: "#fff",
-  color: "#334155",
-  borderRadius: "12px",
-  padding: "9px 14px",
-  fontSize: "14px",
-  fontWeight: 800,
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-};
-
-const botonSalir = {
+const botonSalirTrabajador = {
   border: "1px solid rgba(255,255,255,0.35)",
   background: "transparent",
   color: "#fff",
   borderRadius: "12px",
-  padding: "9px 14px",
+  padding: "8px 14px",
   fontSize: "14px",
   fontWeight: 800,
   cursor: "pointer",

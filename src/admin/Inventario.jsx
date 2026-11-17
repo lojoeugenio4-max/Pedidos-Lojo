@@ -16,6 +16,7 @@ import { supabase } from "../supabaseClient";
 import { supabaseStorage } from "../supabaseStorageClient";
 import { normalizarEan, variantesCodigo } from "../utils/buscarPorEan";
 import LectorCamara from "./LectorCamara";
+import { ClaveTrabajadores } from "./AccesoAdmin";
 
 const TAMANO_PAGINA = 1000;
 const REFRESCO_RESUMEN_MS = 15000;
@@ -110,7 +111,7 @@ async function buscarArticulosPorTexto(texto) {
   });
 }
 
-// soloTrabajador: acceso con la contraseña de trabajadores. Pueden contar y
+// soloTrabajador: enlace de los trabajadores (?admin&modo=inventario). Pueden contar y
 // ver el resumen, pero no crear, cerrar ni borrar inventarios.
 export default function Inventario({ soloTrabajador = false }) {
   const [disponible, setDisponible] = useState(true);
@@ -257,6 +258,8 @@ export default function Inventario({ soloTrabajador = false }) {
           Lee los códigos de barras con la cámara del móvil y escribe las unidades. Solo para el personal de Cash Lojo.
         </p>
       </div>
+
+      {!soloTrabajador && <ClaveTrabajadores />}
 
       {!soloTrabajador && (
       <section style={tarjeta}>
