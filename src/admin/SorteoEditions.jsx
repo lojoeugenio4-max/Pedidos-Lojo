@@ -643,6 +643,11 @@ export default function SorteoEditions() {
 
           {puedeProgramar && (
             <div style={resolverBox}>
+              <div style={sinRepetir ? avisoReglaOk : avisoReglaMal}>
+                {sinRepetir
+                  ? "✅ Sin repetir ganadores: quien ya ha ganado un Sorteo NO puede volver a ganar (ni la lista negra)."
+                  : "⚠️ OJO: ahora mismo los ganadores anteriores SÍ pueden volver a ganar. Para impedirlo, en «Configuración general» marca «Al azar, sin repetir ganadores» y pulsa «Guardar configuración»."}
+              </div>
               <label style={campo}>
                 <span>Fecha y hora del sorteo</span>
                 <input
@@ -833,5 +838,7 @@ const filaGanador = { display: "flex", alignItems: "center", justifyContent: "sp
 const badgeGanador = { marginLeft: 8, padding: "2px 8px", borderRadius: 999, background: "#16a34a", color: "#fff", fontSize: 11, fontWeight: 800 };
 const avisoError = { padding: "9px 12px", borderRadius: 9, background: "#fef2f2", color: "#991b1b", fontSize: 13, fontWeight: 700 };
 const numeroFijadoBox = { display: "flex", alignItems: "flex-end", gap: 10, flexWrap: "wrap", flexBasis: "100%", padding: 12, borderRadius: 10, background: "#fffbeb", border: "1px dashed #f59e0b" };
+const avisoReglaOk = { flexBasis: "100%", padding: "9px 12px", borderRadius: 9, background: "#f0fdf4", border: "1px solid #86efac", color: "#166534", fontSize: 13, fontWeight: 700 };
+const avisoReglaMal = { flexBasis: "100%", padding: "10px 12px", borderRadius: 9, background: "#fef2f2", border: "2px solid #ef4444", color: "#991b1b", fontSize: 14, fontWeight: 800 };
 const botonSorteo = { border: 0, borderRadius: 10, padding: "11px 18px", background: "#ff1e1e", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer" };
 const filaParticipante = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: 10, background: "#f9fafb", border: "1px solid #e5e7eb" };
