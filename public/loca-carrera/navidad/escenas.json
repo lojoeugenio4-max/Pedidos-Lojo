@@ -1,36 +1,78 @@
 {
-  "_ayuda": "Vídeos de la Loca Carrera de Navidad. solo = cae en el villano y no sale héroe; heroeGana = el héroe salva al cliente; heroePierde = sale el héroe pero gana el villano. 'final' se pone después de que la ficha retroceda.",
+  "_ayuda": "Vídeos de la Loca Carrera de Navidad. solo = cae en el villano y no sale héroe; heroeGana = el héroe salva al cliente; heroePierde = sale el héroe pero gana el villano. 'final' se pone después de que la ficha retroceda. espera = vídeos que salen a pantalla completa cuando nadie juega en 5 minutos (se alternan; los que no estén en la carpeta se saltan).",
   "villanos": {
     "ogro": {
-      "solo": ["ogro.mp4"],
+      "solo": [
+        "ogro.mp4"
+      ],
       "heroeGana": [
-        { "heroe": "Papá Noel", "video": "ogro-vs-papa-noel.mp4" },
-        { "heroe": "Jose Luis y Rafa", "video": "ogro-vs-joseluis-rafa.mp4" },
-        { "heroe": "Valentín", "video": "ogro-vs-valentin.mp4" },
-        { "heroe": "El Mijita", "video": "ogro-vs-mijita.mp4" },
-        { "heroe": "Elías", "video": "ogro-vs-elias.mp4" }
+        {
+          "heroe": "Papá Noel",
+          "video": "ogro-vs-papa-noel.mp4"
+        },
+        {
+          "heroe": "Jose Luis y Rafa",
+          "video": "ogro-vs-joseluis-rafa.mp4"
+        },
+        {
+          "heroe": "Valentín",
+          "video": "ogro-vs-valentin.mp4"
+        },
+        {
+          "heroe": "El Mijita",
+          "video": "ogro-vs-mijita.mp4"
+        },
+        {
+          "heroe": "Elías",
+          "video": "ogro-vs-elias.mp4"
+        }
       ],
       "heroePierde": []
     },
     "tacano": {
-      "solo": [{ "video": "tacano.mp4", "final": "tacano-final.mp4" }],
+      "solo": [
+        {
+          "video": "tacano.mp4",
+          "final": "tacano-final.mp4"
+        }
+      ],
       "heroeGana": [
-        { "heroe": "Papá Noel", "video": "tacano-vs-papa-noel.mp4" },
-        { "heroe": "El Mijita", "video": "tacano-vs-mijita.mp4" },
-        { "heroe": "Elías", "video": "tacano-vs-elias.mp4" }
+        {
+          "heroe": "Papá Noel",
+          "video": "tacano-vs-papa-noel.mp4"
+        },
+        {
+          "heroe": "El Mijita",
+          "video": "tacano-vs-mijita.mp4"
+        },
+        {
+          "heroe": "Elías",
+          "video": "tacano-vs-elias.mp4"
+        }
       ],
       "heroePierde": []
     },
     "lon": {
-      "solo": ["loco-lon.mp4"],
+      "solo": [
+        "loco-lon.mp4"
+      ],
       "heroeGana": [
-        { "heroe": "Jose Luis y Rafa", "video": "lon-vs-joseluis-rafa.mp4" }
+        {
+          "heroe": "Jose Luis y Rafa",
+          "video": "lon-vs-joseluis-rafa.mp4"
+        }
       ],
       "heroePierde": [
-        { "heroe": "Jose Luis y Rafa", "video": "lon-gana-joseluis-rafa.mp4" }
+        {
+          "heroe": "Jose Luis y Rafa",
+          "video": "lon-gana-joseluis-rafa.mp4"
+        }
       ]
     }
   },
-  "villancico": "villancico.mp4",
-  "trineo": null
+  "espera": [
+    "navidad-cash-lojo.mp4",
+    "promo-navidad.mp4",
+    "trineo-papa-noel.mp4"
+  ]
 }

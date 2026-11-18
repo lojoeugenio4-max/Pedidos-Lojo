@@ -2037,7 +2037,7 @@ async function trailer() {
     () => { senalaCasilla(seg.pos, 2.4, 3600, 'ease-in-out'); rotulo(`<small>🥈 LE PISA LOS TALONES</small><b>${seg.nombre}</b><span>casilla ${seg.pos}</span>`); },
     () => { const n = casillasDe('villano'); senalaCasilla(alAzar(n), 3, 3600, 'ease-in-out'); rotulo(`<small>👹 ¡CUIDADO EN LAS CASILLAS ${listaCasillas(n)}!</small><b>El Ogro</b><span>¡un mazazo y para atrás!</span>`); },
     () => { const n = casillasDe('jubilado'); senalaCasilla(alAzar(n), 3, 3600, 'ease-in-out'); rotulo(`<small>🕰️ Y EN LAS ${listaCasillas(n)}…</small><b>El Tacaño</b><span>¡cada campanada, una casilla atrás!</span>`); },
-    () => { const n = casillasDe('vieja'); senalaCasilla(alAzar(n), 3, 3600, 'ease-in-out'); rotulo(`<small>🎩 EN LAS ${listaCasillas(n)}…</small><b>Loco Lon</b><span>¡de vuelta a la salida!</span>`); },
+    () => { const n = casillasDe('vieja'); senalaCasilla(alAzar(n), 3, 3600, 'ease-in-out'); rotulo(`<small>🎩 EN LAS ${listaCasillas(n)}…</small><b>Loco Lon</b><span>¡una patada y casillas atrás!</span>`); },
     () => { const n = LOJOS[Math.floor(Math.random() * LOJOS.length)]; senalaCasilla(n, 2.8, 3600, 'ease-in-out'); rotulo(`<small>CASILLAS LOJO</small><b>¡De Lojo a Lojo…</b><span>…y tiro mientras mi pedido recojo!</span>`); },
     () => { senalaCasilla(6, 2.8, 3600, 'ease-in-out'); rotulo(`<small>📦 PALETS</small><b>¡Compro un palet…</b><span>…y tiro otra vez!</span>`); },
     () => { const k = Object.keys(PREMIOS).find(k => premioDisponible(k)); if (!k) return; const n = +k; senalaCasilla(n, 2.8, 3600, 'ease-in-out'); rotulo(`<small>🎁 CASILLA ${n}</small><b>${PREMIOS[n].nombre}</b><span>¡quedan ${PREMIOS[n].quedan}!</span>`); },
@@ -3669,8 +3669,10 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
 //     Loco Lon (antes Lucas, manda a la salida)
 //   · las escenas: en vez de las animaciones, se ponen a pantalla completa
 //     los vídeos de public/loca-carrera/navidad/ (lista en escenas.json)
-//   · cada 2 minutos, en vez de la tormenta: trineo de Papá Noel o el
-//     vídeo del villancico, alternando.
+//   · sin tormentas ni truenos: si nadie juega en 5 minutos, pantalla de
+//     espera con los vídeos de «espera» (villancico, promoción, trineo).
+//   · los premios (casilla de premio y mitad) con escena navideña y música
+//     del villancico (navidad/premio-villancico.mp3).
 //  Si falta un vídeo, el juego sigue igual con un cartel.
 // =====================================================================
 (function navidad() {
@@ -3722,8 +3724,7 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
       (v.heroeGana || []).forEach(h => todos.push(h.video));
       (v.heroePierde || []).forEach(h => todos.push(h.video));
     });
-    if (ESCENAS.villancico) todos.push(ESCENAS.villancico);
-    if (ESCENAS.trineo) todos.push(ESCENAS.trineo);
+    (ESCENAS.espera || []).forEach(v => todos.push(v));
     await Promise.all(todos.map(hay));
     console.info('Loca Carrera Navidad: vídeos disponibles', Object.entries(existe).filter(([, s]) => s).map(([a]) => a));
   })();
@@ -3734,12 +3735,30 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
     for (const x of lista) { const archivo = typeof x === 'string' ? x : x.video; if (await hay(archivo)) ok.push(typeof x === 'string' ? { video: x } : x); }
     return ok;
   }
-  const ultimo = {};
+  // Se reparten como una baraja: salen TODOS los vídeos de la lista, en orden
+  // al azar, antes de que se repita ninguno (y nunca el mismo dos veces seguidas).
+  const ultimo = {}, baraja = {};
   function unoAlAzar(lista, clave) {
     if (!lista.length) return null;
-    const opciones = lista.length > 1 ? lista.filter(x => x.video !== ultimo[clave]) : lista;
-    const v = opciones[Math.floor(Math.random() * opciones.length)]; ultimo[clave] = v.video; return v;
+    const ids = lista.map(x => x.video);
+    let b = (baraja[clave] || []).filter(v => ids.includes(v));
+    if (!b.length) {
+      b = ids.slice();
+      for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; }
+      if (b.length > 1 && b[0] === ultimo[clave]) b.push(b.shift());
+    }
+    const v = b.shift(); baraja[clave] = b; ultimo[clave] = v;
+    return lista.find(x => x.video === v);
   }
+  let videoForzado = null;   // pruebas: { clave, grupo, item }
+
+  // sin truenos en Navidad: el golpe del Ogro es un mazazo sordo
+  function mazazo(cu = 0) {
+    ruido(.5, { desde: 700, hasta: 90, vol: .9, cuando: cu, tipo: 'lowpass' });
+    ruido(.08, { desde: 2600, hasta: 900, vol: .45, cuando: cu, tipo: 'bandpass' });
+    tono(95, 38, .7, 'sine', .6, cu);
+  }
+  trueno = (fuerza = 1, cu = 0) => mazazo(cu);
 
   // ---------- reproductor de vídeo a pantalla completa ----------
   const capa = document.createElement('div'); capa.className = 'videoNav'; capa.id = 'videoNav';
@@ -3811,14 +3830,22 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
     const V = NOMBRES[tipo], f = fichas[c.id];
     const destino = (tipo === 'vieja' && !atras) ? 1 : retroceso(c.pos, atras);
     forzarAmigoId = null;
-    const saleHeroe = tocaAmigo();
-    const ganaVillano = saleHeroe ? GANA[tipo]() : true;
+    let saleHeroe = tocaAmigo();
+    let ganaVillano = saleHeroe ? GANA[tipo]() : true;
+    // pruebas: «probar un vídeo concreto» manda qué vídeo sale y quién gana
+    let video = null;
+    if (videoForzado && videoForzado.clave === V.clave) {
+      const vf = videoForzado; videoForzado = null;
+      saleHeroe = vf.grupo !== 'solo'; ganaVillano = vf.grupo !== 'heroeGana';
+      if (await hay(vf.item.video)) video = vf.item;
+    }
     aroCasilla(f); sonido.villano(); vineta('rojo'); await espera(900);
 
-    let video = null;
-    if (saleHeroe && !ganaVillano) video = unoAlAzar(await videosDe(V.clave, 'heroeGana'), V.clave + 'G');
-    else if (saleHeroe) video = unoAlAzar(await videosDe(V.clave, 'heroePierde'), V.clave + 'P');
-    if (!video && ganaVillano) video = unoAlAzar(await videosDe(V.clave, 'solo'), V.clave + 'S');
+    if (!video) {
+      if (saleHeroe && !ganaVillano) video = unoAlAzar(await videosDe(V.clave, 'heroeGana'), V.clave + 'G');
+      else if (saleHeroe) video = unoAlAzar(await videosDe(V.clave, 'heroePierde'), V.clave + 'P');
+      if (!video && ganaVillano) video = unoAlAzar(await videosDe(V.clave, 'solo'), V.clave + 'S');
+    }
 
     const quien = video?.heroe ? escaparHTML(video.heroe) : '';
     const rotulo = saleHeroe && !ganaVillano
@@ -3831,7 +3858,8 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
     if (saleHeroe && !ganaVillano) {
       // el héroe le salva: la ficha no se mueve
       fanfarria(); confeti();
-      await cartel(`<div class="grande">🦸</div><h2>¡SALVADO!</h2><p>${quien ? `<b>${quien}</b> ha frenado a ${V.nom.toLowerCase()}.` : `Un héroe de Cash Lojo ha frenado a ${V.nom.toLowerCase()}.`}<br>${escaparHTML(c.nombre)} se queda en la casilla ${c.pos}</p>`, 'amigo', visto ? 2600 : 3400);
+      const aQuien = { villano: 'al Ogro', jubilado: 'al Tacaño', vieja: 'a Loco Lon' }[tipo];
+      await cartel(`<div class="grande">🦸</div><h2>¡SALVADO!</h2><p>${quien ? `<b>${quien}</b> ${/ y /.test(quien) ? 'han' : 'ha'} frenado ${aQuien}.` : `Un héroe de Cash Lojo ha frenado ${aQuien}.`}<br>${escaparHTML(c.nombre)} se queda en la casilla ${c.pos}</p>`, 'amigo', visto ? 2600 : 3400);
       return;
     }
     if (!visto) await cartel(`<div class="grande">${V.ico}</div><h2>${V.nom}</h2><p>${V.castigo(c.pos - destino)}</p>`, 'villano', 2600);
@@ -3847,7 +3875,7 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
       }
       quitarCampana();
     } else {
-      if (tipo === 'villano') { trueno(1); sacudir(18, 700); } else { sonido.villano(); sacudir(10, 500); }
+      if (tipo === 'villano') { mazazo(); sacudir(18, 700); } else { sonido.villano(); sacudir(10, 500); }
       f.classList.add('volteo'); setTimeout(() => f.classList.remove('volteo'), 950);
       await saltarA(c, destino);
     }
@@ -3873,46 +3901,46 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
     return escenaVillanoNavidad('vieja', c, atras);
   };
 
-  // ---------- cada 2 minutos: trineo de Papá Noel y villancico ----------
-  const trineo = document.createElement('div'); trineo.className = 'trineoNav';
-  trineo.innerHTML = `<div class="tnVuelo">
-      <div class="tnRenos">${'<span class="reno">🦌</span>'.repeat(6)}</div>
-      <div class="tnTrineo"><span class="tnNoel">🎅</span><svg viewBox="0 0 200 110"><path d="M10 40 Q10 90 60 90 L170 90 Q190 90 192 72 L192 30 L150 30 L150 60 L40 60 Q30 60 30 40 Z" fill="#c8102e" stroke="#6b0010" stroke-width="5"/><path d="M40 60 L150 60" stroke="#ffd23f" stroke-width="5"/><path d="M5 100 Q20 108 40 104 L190 104 Q205 100 198 88" fill="none" stroke="#ffd23f" stroke-width="7" stroke-linecap="round"/><path d="M60 90 L55 104 M150 90 L155 104" stroke="#ffd23f" stroke-width="6"/></svg><span class="tnSaco">🎁</span></div>
-      <div class="tnPancarta">Cash Lojo les desea <b>¡Feliz Navidad!</b></div>
-    </div>`;
-  $('tv').appendChild(trineo);
-  function lluviaRegalos(ms) {
-    const fin = Date.now() + ms;
-    (function uno() {
-      if (Date.now() > fin) return;
-      const r = trineo.querySelector('.tnTrineo').getBoundingClientRect(), tr = $('tv').getBoundingClientRect();
-      const d = document.createElement('div'); d.className = 'regaloCae'; d.textContent = alAzar(['🎁', '🎁', '⭐', '🍬', '🎀', '❄️']);
-      d.style.left = (r.left - tr.left + r.width * .5) + 'px'; d.style.top = (r.top - tr.top + r.height * .6) + 'px';
-      $('tv').appendChild(d); setTimeout(() => d.remove(), 2600);
-      setTimeout(uno, 140 + Math.random() * 160);
-    })();
+  // ---------- PANTALLA DE ESPERA ----------
+  // Ya no pasa el trineo por el tablero ni hay tormentas cada 2 minutos.
+  // Si nadie juega en 5 minutos, el tablero se tapa y se ponen a pantalla
+  // completa los vídeos de «espera» de escenas.json (villancico, promoción y
+  // Papá Noel en el trineo), uno detrás de otro y alternando, con el tablero
+  // 20 segundos entre vídeo y vídeo. En cuanto llega una tirada, se corta.
+  const ESPERA_MS = 5 * 60 * 1000;
+  const TABLERO_ENTRE_VIDEOS_MS = 20 * 1000;
+  let ultimaActividad = Date.now(), enEspera = false, turnoEspera = 0;
+  window.momentoNavidad = async function () { };   // sustituye a la tormenta de Halloween
+  const hayJuego = () => ocupado || colaTiradas.length > 0;
+  async function videosEspera() {
+    await cargarEscenas;
+    const ok = [];
+    for (const v of (ESCENAS.espera || [])) if (await hay(v)) ok.push(v);
+    return ok;
   }
-  let pasada = 0;
-  async function vueloTrineo() {
-    const ruta = ['r1', 'r2', 'r3'][pasada++ % 3];
-    trineo.className = 'trineoNav ' + ruta; void trineo.offsetWidth; trineo.classList.add('vuela');
-    cascabeles(9);
-    setTimeout(() => lluviaRegalos(6500), 1200);
-    await espera(10500);
-    trineo.className = 'trineoNav';
-  }
-  let turnoMomento = 0;
-  window.momentoNavidad = async function () {
-    if (tormentaEnCurso || ocupado || document.hidden) return;
-    tormentaEnCurso = true;
+  async function pantallaEspera(soloUno = null) {
+    if (enEspera || tormentaEnCurso || hayJuego()) return;
+    enEspera = true; tormentaEnCurso = true;
     try {
-      await cargarEscenas;
-      const tocaVillancico = turnoMomento++ % 2 === 1 && ESCENAS.villancico && await hay(ESCENAS.villancico);
-      if (tocaVillancico) await ponerVideo(ESCENAS.villancico, { maxMs: 5 * 60000, cortarSi: () => colaTiradas.length > 0 || ocupado });
-      else if (ESCENAS.trineo && await hay(ESCENAS.trineo)) await ponerVideo(ESCENAS.trineo, { maxMs: 60000, cortarSi: () => colaTiradas.length > 0 });
-      else await vueloTrineo();
-    } finally { tormentaEnCurso = false; }
-  };
+      const lista = soloUno ? [soloUno] : await videosEspera();
+      if (!lista.length) return;
+      pararTrailer();
+      for (;;) {
+        const v = lista[turnoEspera++ % lista.length];
+        await ponerVideo(v, { maxMs: 10 * 60000, cortarSi: hayJuego });
+        if (soloUno || hayJuego()) break;
+        const t0 = Date.now();
+        while (Date.now() - t0 < TABLERO_ENTRE_VIDEOS_MS && !hayJuego()) await espera(400);
+        if (hayJuego()) break;
+      }
+    } finally { enEspera = false; tormentaEnCurso = false; ultimaActividad = Date.now(); }
+  }
+  setInterval(() => {
+    if (hayJuego() || document.hidden) { ultimaActividad = Date.now(); return; }
+    if (!enEspera && Date.now() - ultimaActividad > ESPERA_MS) pantallaEspera();
+  }, 1000);
+  // también cuenta como actividad que alguien use los botones de prueba
+  addEventListener('pointerdown', () => { if (!enEspera) ultimaActividad = Date.now(); }, true);
 
   // ---------- nieve cayendo ----------
   const cv = document.createElement('canvas'); cv.className = 'nieveNav'; $('tv').appendChild(cv);
@@ -3928,25 +3956,224 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
   // montones de nieve en el borde de abajo
   const monton = document.createElement('div'); monton.className = 'montonNieve'; $('zona').appendChild(monton);
 
+  // ---------- PREMIOS CON AMBIENTE DE NAVIDAD ----------
+  // Casilla de premio y premio de la mitad: en vez de sirenas y luces de
+  // policía, una noche nevada con guirnalda de bombillas, un gran regalo que
+  // tiembla con cascabeles y se abre en una lluvia de estrellas y copos,
+  // con la música del villancico «Ven a Cash Lojo» (navidad/premio-villancico.mp3).
+  const cssPremio = document.createElement('style');
+  cssPremio.textContent = `
+.premioNav{position:absolute;inset:0;z-index:20;pointer-events:none;overflow:hidden;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .4s;font-family:"Bowlby One",Impact,sans-serif;color:#fff;text-align:center}
+.premioNav.ver{opacity:1}
+.premioNav .pnFondo{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 38%,#1f4f86 0%,#0d2547 45%,#060f22 100%)}
+.premioNav .pnNieve{position:absolute;inset:-10% 0 0 0;background-image:radial-gradient(circle,rgba(255,255,255,.95) 0 2px,transparent 3px),radial-gradient(circle,rgba(255,255,255,.75) 0 1.5px,transparent 2.5px),radial-gradient(circle,rgba(255,255,255,.6) 0 1px,transparent 2px);background-size:9vmin 9vmin,6vmin 6vmin,4vmin 4vmin;background-position:0 0,3vmin 2vmin,1vmin 3vmin;animation:pnNieva 7s linear infinite}
+@keyframes pnNieva{to{background-position:2vmin 90vmin,6vmin 60vmin,3vmin 40vmin}}
+.premioNav .pnRayos{position:absolute;left:50%;top:46%;width:260vmax;height:260vmax;margin:-130vmax 0 0 -130vmax;opacity:0;background:repeating-conic-gradient(from 0deg,rgba(255,220,120,.16) 0deg 7deg,rgba(255,220,120,0) 7deg 20deg);-webkit-mask:radial-gradient(circle,#000 0,#000 18vmax,transparent 60vmax);mask:radial-gradient(circle,#000 0,#000 18vmax,transparent 60vmax);animation:pnGira 10s linear infinite;transition:opacity .7s}
+.premioNav.revela .pnRayos{opacity:1}
+@keyframes pnGira{to{transform:rotate(360deg)}}
+.premioNav .pnFlash{position:absolute;inset:0;background:#fff8d8;opacity:0}
+.premioNav.revela .pnFlash{animation:pnFlash .9s ease-out}
+@keyframes pnFlash{0%{opacity:.95}100%{opacity:0}}
+.premioNav .pnGuirnalda{position:absolute;left:0;right:0;top:0;height:11vmin;display:flex;justify-content:space-around;align-items:flex-start;background:linear-gradient(#0b3d1f,#0b3d1f 32%,transparent 33%);background-size:100% 100%}
+.premioNav .pnGuirnalda::before{content:"";position:absolute;left:-2%;right:-2%;top:1.2vmin;height:5vmin;border-bottom:.7vmin solid #1b6b33;border-radius:0 0 50% 50%/0 0 100% 100%}
+.premioNav .pnGuirnalda i{position:relative;margin-top:4.2vmin;width:2.4vmin;height:3.4vmin;border-radius:50% 50% 50% 50%/40% 40% 60% 60%;box-shadow:0 0 2.2vmin currentColor;background:currentColor;animation:pnBombilla 1.2s steps(1) infinite}
+.premioNav .pnGuirnalda i:nth-child(4n+1){color:#ff3b3b}.premioNav .pnGuirnalda i:nth-child(4n+2){color:#ffd23f;animation-delay:.3s}.premioNav .pnGuirnalda i:nth-child(4n+3){color:#3bd16f;animation-delay:.6s}.premioNav .pnGuirnalda i:nth-child(4n){color:#4aa8ff;animation-delay:.9s}
+@keyframes pnBombilla{50%{opacity:.35;box-shadow:none}}
+.premioNav .pnCaja{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:1.4vmin;padding:0 4vmin}
+.premioNav .pnCabecera{font-size:7.4vmin;line-height:1;color:#ffd23f;text-shadow:0 .5vmin 0 #8a0012,0 0 3vmin rgba(255,210,63,.6);letter-spacing:.05em}
+.premioNav .pnSub{font-family:Arial,Helvetica,sans-serif;font-weight:900;font-size:3.8vmin;text-shadow:0 .3vmin .6vmin #000}
+.premioNav .pnSub b{color:#ffd23f}
+/* el regalo */
+.premioNav .pnRegalo{position:relative;width:30vmin;height:30vmin;margin-top:2vmin;animation:pnBaja .9s cubic-bezier(.3,1.5,.5,1) both}
+@keyframes pnBaja{from{transform:translateY(-70vh) rotate(-12deg)}}
+.premioNav .pnRegalo .cuerpo{position:absolute;left:6%;right:6%;bottom:0;height:68%;border-radius:1.2vmin;background:linear-gradient(90deg,transparent 42%,#ffd23f 42% 58%,transparent 58%),linear-gradient(#e3172b,#a50e1f);box-shadow:inset 0 -2vmin 0 rgba(0,0,0,.18),0 2vmin 4vmin rgba(0,0,0,.5)}
+.premioNav .pnRegalo .tapa{position:absolute;left:0;right:0;top:20%;height:20%;border-radius:1.2vmin;background:linear-gradient(90deg,transparent 41%,#ffd23f 41% 59%,transparent 59%),linear-gradient(#ff2d40,#c3121f);box-shadow:0 1vmin 2vmin rgba(0,0,0,.4);transform-origin:20% 100%;transition:transform .7s cubic-bezier(.2,1.6,.4,1),opacity .7s}
+.premioNav .pnRegalo .lazo{position:absolute;left:50%;top:-6%;width:46%;height:32%;transform:translateX(-50%)}
+.premioNav .pnRegalo .lazo::before,.premioNav .pnRegalo .lazo::after{content:"";position:absolute;top:10%;width:50%;height:80%;border:1.6vmin solid #ffd23f;border-radius:50% 50% 50% 50%/60% 60% 40% 40%}
+.premioNav .pnRegalo .lazo::before{left:0;transform:rotate(-28deg)}.premioNav .pnRegalo .lazo::after{right:0;transform:rotate(28deg)}
+.premioNav.tiembla .pnRegalo{animation:pnTiembla .12s linear infinite}
+.premioNav.tiembla.fuerte .pnRegalo{animation:pnTiemblaF .08s linear infinite}
+@keyframes pnTiembla{25%{transform:rotate(-4deg)}75%{transform:rotate(4deg)}}
+@keyframes pnTiemblaF{25%{transform:rotate(-8deg) translateY(-1vmin)}75%{transform:rotate(8deg) translateY(-1vmin)}}
+.premioNav.abre .pnRegalo{animation:pnPop .5s ease-out forwards}
+.premioNav.abre .pnRegalo .tapa{transform:translate(-30vmin,-60vmin) rotate(-80deg);opacity:0}
+@keyframes pnPop{40%{transform:scale(1.15)}100%{transform:scale(1.5);opacity:0}}
+.premioNav.revela .pnRegalo,.premioNav.revela .pnPrevio{display:none}
+.premioNav .pnRevela{display:none;flex-direction:column;align-items:center;gap:1.2vmin}
+.premioNav.revela .pnRevela{display:flex;animation:pnSale .7s cubic-bezier(.2,1.5,.4,1) both}
+@keyframes pnSale{from{transform:scale(.2);opacity:0}}
+.premioNav .pnTitulo{font-size:10vmin;line-height:1;color:#fff;text-shadow:0 .6vmin 0 #b3122e,0 1.2vmin 0 #6b0010,0 0 4vmin rgba(255,255,255,.5)}
+.premioNav .pnFoto{max-height:30vmin;max-width:46vmin;object-fit:contain;background:#fff;border-radius:2vmin;padding:1.4vmin;border:1vmin solid #ffd23f;box-shadow:0 0 0 1vmin #b3122e,0 2vmin 5vmin rgba(0,0,0,.6)}
+.premioNav .pnEmoji{font-size:22vmin;line-height:1;filter:drop-shadow(0 1.5vmin 2vmin rgba(0,0,0,.5))}
+.premioNav .pnNombre{font-size:6.6vmin;line-height:1.05;color:#ffd23f;text-shadow:0 .5vmin 0 #6b0010;max-width:88vw}
+.premioNav .pnDetalle{font-family:Arial,Helvetica,sans-serif;font-weight:900;font-size:3.2vmin}
+.premioNav .pnCliente{font-size:4.6vmin;color:#fff;text-shadow:0 .4vmin 0 #0b3d1f}
+.premioNav .pnPie{font-family:Arial,Helvetica,sans-serif;font-weight:900;font-size:3vmin;background:#b3122e;border:.5vmin solid #ffd23f;border-radius:5vmin;padding:1vmin 3.4vmin;margin-top:.6vmin}
+.premioNav .pnBrillo{position:absolute;z-index:3;font-size:5vmin;left:50%;top:50%;animation:pnVuela var(--t) cubic-bezier(.15,.7,.4,1) forwards;filter:drop-shadow(0 0 1vmin rgba(255,230,140,.9))}
+@keyframes pnVuela{0%{transform:translate(-50%,-50%) scale(.3);opacity:1}100%{transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) rotate(var(--r)) scale(1.2);opacity:0}}
+`;
+  document.head.appendChild(cssPremio);
+
+  const musicaPremio = new Audio(CARPETA + 'premio-villancico.mp3'); musicaPremio.preload = 'auto';
+  let fundido = null;
+  function musica(on, vol = .55) {
+    clearInterval(fundido);
+    if (on) {
+      if (silenciado || !enPrimerPlano()) return;
+      try { musicaPremio.currentTime = 0; musicaPremio.volume = .25; musicaPremio.play().catch(() => { }); } catch { }
+    } else {
+      fundido = setInterval(() => { try { musicaPremio.volume = Math.max(0, musicaPremio.volume - .05); if (musicaPremio.volume <= .01) { clearInterval(fundido); musicaPremio.pause(); } } catch { clearInterval(fundido); } }, 90);
+      return;
+    }
+  }
+  function subirMusica(vol) { try { if (!musicaPremio.paused) musicaPremio.volume = vol; } catch { } }
+  function estallido(ov, n = 46) {
+    const cosas = ['⭐', '❄️', '✨', '🎁', '⭐', '❄️', '🔔', '🎄', '✨', '🍬'];
+    for (let i = 0; i < n; i++) {
+      const s = document.createElement('div'); s.className = 'pnBrillo'; s.textContent = cosas[i % cosas.length];
+      const a = Math.random() * 6.283, d = 30 + Math.random() * 55;
+      s.style.setProperty('--x', Math.cos(a) * d + 'vmax'); s.style.setProperty('--y', Math.sin(a) * d * .7 + 'vmax');
+      s.style.setProperty('--r', (Math.random() * 720 - 360) + 'deg'); s.style.setProperty('--t', (1.6 + Math.random() * 1.6) + 's');
+      s.style.fontSize = (3 + Math.random() * 5) + 'vmin';
+      ov.appendChild(s); setTimeout(() => s.remove(), 3400);
+    }
+  }
+  // la escena completa: previo (cae el regalo) → tiembla → se abre y sale el premio
+  async function showPremioNavidad({ cabecera, sub, subEspera, titulo, foto, nombre, detalle = '', cliente, pie }) {
+    pararTrailer();
+    const ov = document.createElement('div'); ov.className = 'premioNav';
+    ov.innerHTML = `<div class="pnFondo"></div><div class="pnRayos"></div><div class="pnNieve"></div><div class="pnFlash"></div>
+      <div class="pnGuirnalda">${'<i></i>'.repeat(18)}</div>
+      <div class="pnCaja">
+        <div class="pnPrevio">
+          <div class="pnCabecera">${cabecera}</div>
+          <div class="pnSub">${sub}</div>
+        </div>
+        <div class="pnRegalo"><div class="cuerpo"></div><div class="tapa"><div class="lazo"></div></div></div>
+        <div class="pnRevela">
+          <div class="pnTitulo">${titulo}</div>
+          ${foto ? `<img class="pnFoto" src="${foto}" alt="">` : '<div class="pnEmoji">🎁</div>'}
+          <div class="pnNombre">${escaparHTML(nombre)}</div>
+          ${detalle ? `<div class="pnDetalle">${escaparHTML(detalle)}</div>` : ''}
+          <div class="pnCliente">¡Enhorabuena, ${escaparHTML(cliente)}!</div>
+          <div class="pnPie">${pie}</div>
+        </div>
+      </div>`;
+    $('tv').appendChild(ov); void ov.offsetWidth;
+    try {
+      // 1) cae el regalo, suena el villancico y los cascabeles
+      ov.classList.add('ver'); musica(true); cascabeles(3); sacudir(6, 400);
+      await espera(3000);
+      // 2) el regalo tiembla cada vez más
+      ov.querySelector('.pnSub').innerHTML = subEspera;
+      ov.classList.add('tiembla'); cascabeles(1.4); redobleFinal(2.6);
+      await espera(1300); ov.classList.add('fuerte'); cascabeles(1.3);
+      await espera(1350);
+      // 3) ¡se abre! estrellas, copos, campanillas y el premio
+      ov.classList.remove('tiembla', 'fuerte'); ov.classList.add('abre');
+      subirMusica(.7); platillazo(); tintineo(18); sacudir(16, 700); estallido(ov);
+      await espera(480);
+      ov.classList.add('revela'); setTimeout(() => estallido(ov, 30), 500);
+      fuegosArtificiales(5000);
+      setTimeout(() => cascabeles(2), 1800);
+      await espera(6000);
+    } finally {
+      musica(false);
+      ov.classList.remove('ver'); await espera(450); ov.remove();
+    }
+  }
+  escenaPremio = async function (c, casilla, premio = {}) {
+    const p = PREMIOS[casilla];
+    if (p) { p.quedan = Math.max(0, p.quedan - 1); pintarPremios(); }
+    const { nombre, detalle } = textoPremio(premio, casilla);
+    await showPremioNavidad({
+      cabecera: '🎄 ¡REGALO DE NAVIDAD! 🎄',
+      sub: `¡<b>${escaparHTML(c.nombre)}</b> ha caído en la casilla de PREMIO ${casilla}!`,
+      subEspera: `¿Qué le trae Papá Noel a <b>${escaparHTML(c.nombre)}</b>…?`,
+      titulo: '🎁 ¡PREMIO! 🎁', foto: fotoPremio(premio), nombre, detalle, cliente: c.nombre,
+      pie: 'Recoge tu premio en caja · Cash Lojo',
+    });
+    nivelPublico?.(.025, 1.5);
+  };
+  escenaMitad = async function (c, premio = {}) {
+    const nombre = premio.texto || premio.articulo?.nombre || PREMIO_MITAD || 'Premio sorpresa';
+    await showPremioNavidad({
+      cabecera: '🚩 ¡MITAD DEL CAMINO! 🚩',
+      sub: `¡<b>${escaparHTML(c.nombre)}</b> ha pasado la casilla ${CASILLA_MITAD}!`,
+      subEspera: `Papá Noel tiene algo para <b>${escaparHTML(c.nombre)}</b>…`,
+      titulo: '🎁 ¡PREMIO DE LA MITAD! 🎁', foto: fotoPremio(premio), nombre, cliente: c.nombre,
+      pie: 'Recoge tu premio en caja · ¡ahora a por la meta!',
+    });
+  };
+
   // ---------- botones de prueba (no salen en la TV) ----------
   const ctr = document.querySelector('.controles');
   if (ctr) {
-    const poner = (id, txt) => { const b = $(id); if (b) b.textContent = txt; };
-    poner('btnSimMelon', '👹 Simular: cae en el Ogro');
-    poner('btnSimJub', '🕰️ Simular: cae en el Tacaño');
-    poner('btnSimVieja', '🎩 Simular: cae en Loco Lon');
-    poner('btnSimAmigo', '🦸 Simular: villano + héroe que gana');
-    poner('btnSimJL', '🦸 Simular: Ogro + héroe que gana');
-    poner('btnSimRafa', '🦸 Simular: Tacaño + héroe que gana');
-    poner('btnSimLucasPierde', '🦸 Simular: Loco Lon + héroe que gana');
-    poner('btnSimLucasGana', '😈 Simular: Loco Lon gana al héroe');
-    poner('btnSimMelonGana', '😈 Simular: el Ogro gana al héroe');
-    poner('btnSimJubGana', '😈 Simular: el Tacaño gana al héroe');
+    const poner = (id, txt, fn) => { const b = $(id); if (!b) return; b.textContent = txt; if (fn) b.onclick = () => { if (ocupado) return msg('Espera a que acabe la tirada'); audio(); fn(); }; };
+    const sinForzar = () => { forzarAmigo = false; forzarSinAmigo = false; forzarAmigoId = null; forzarMelonGana = forzarJubGana = forzarLucasGana = null; };
+    // dónde cae cada villano en las pruebas (desde, dado): 24 Ogro, 50 Tacaño, 31 Loco Lon
+    const CAE = { villano: [21, 3], jubilado: [46, 4], vieja: [28, 3] };
+    const caer = tipo => simular(...CAE[tipo]);
+    // villano solo, sin héroe
+    poner('btnSimMelon', '👹 Simular: cae en el Ogro (sin héroe)', () => { sinForzar(); forzarSinAmigo = true; caer('villano'); });
+    poner('btnSimJub', '🕰️ Simular: cae en el Tacaño (sin héroe)', () => { sinForzar(); forzarSinAmigo = true; caer('jubilado'); });
+    poner('btnSimVieja', '🎩 Simular: cae en Loco Lon (sin héroe)', () => { sinForzar(); forzarSinAmigo = true; caer('vieja'); });
+    // sale un héroe y GANA el héroe (siempre)
+    poner('btnSimJL', '🦸 Simular: Ogro + héroe que gana', () => { sinForzar(); forzarAmigo = true; forzarMelonGana = false; caer('villano'); });
+    poner('btnSimRafa', '🦸 Simular: Tacaño + héroe que gana', () => { sinForzar(); forzarAmigo = true; forzarJubGana = false; caer('jubilado'); });
+    poner('btnSimLucasPierde', '🦸 Simular: Loco Lon + héroe que gana', () => { sinForzar(); forzarAmigo = true; forzarLucasGana = false; caer('vieja'); });
+    poner('btnSimAmigo', '🦸 Simular: villano al azar + héroe que gana', () => { sinForzar(); forzarAmigo = true; forzarMelonGana = forzarJubGana = forzarLucasGana = false; caer(alAzar(['villano', 'jubilado', 'vieja'])); });
+    // sale un héroe y GANA el villano (siempre)
+    poner('btnSimMelonGana', '😈 Simular: el Ogro gana al héroe', () => { sinForzar(); forzarAmigo = true; forzarMelonGana = true; caer('villano'); });
+    poner('btnSimJubGana', '😈 Simular: el Tacaño gana al héroe', () => { sinForzar(); forzarAmigo = true; forzarJubGana = true; caer('jubilado'); });
+    poner('btnSimLucasGana', '😈 Simular: Loco Lon gana al héroe', () => { sinForzar(); forzarAmigo = true; forzarLucasGana = true; caer('vieja'); });
     ['btnSimJLpierde', 'btnSimJLjub', 'btnSimJLlucas'].forEach(id => { const b = $(id); if (b) b.hidden = true; });
     const chk = $('chkHalloween'); if (chk) chk.closest('label') ? chk.closest('label').hidden = true : chk.hidden = true;
-    const nuevo = (txt, fn) => { const b = document.createElement('button'); b.className = 'prin'; b.textContent = txt; b.onclick = fn; ctr.insertBefore(b, ctr.children[5] || null); };
-    nuevo('🎅 Simular: trineo de Papá Noel', () => { if (!ocupado && !tormentaEnCurso) { tormentaEnCurso = true; vueloTrineo().finally(() => tormentaEnCurso = false); } });
-    nuevo('🎵 Simular: vídeo del villancico', async () => { await cargarEscenas; if (ESCENAS.villancico && await hay(ESCENAS.villancico)) { turnoMomento = 1; window.momentoNavidad(); } else msg("Todavía no está el vídeo del villancico"); });
+    // fuera los botones de las tormentas de Halloween (Jubilado, Melón, truenos)
+    ctr.querySelectorAll('button').forEach(b => { if (/tormenta/i.test(b.textContent)) b.remove(); });
+    // los ajustes con los nombres de Navidad
+    const NOMBRE_NAV = [[/Melón Cabezón|Melón/g, 'Ogro'], [/Jubilado/g, 'Tacaño'], [/Lucas/g, 'Loco Lon']];
+    ctr.querySelectorAll('label').forEach(l => l.childNodes.forEach(n => { if (n.nodeType === 3) NOMBRE_NAV.forEach(([re, nv]) => { n.textContent = n.textContent.replace(re, nv); }); }));
+    ['chkFuertes', 'probFuerte'].forEach(id => { const x = $(id); if (x && x.closest('label')) x.closest('label').hidden = true; });
+
+    // ▶ probar UN vídeo concreto: salen todos los de escenas.json
+    const caja = document.createElement('span'); caja.style.cssText = 'display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap';
+    caja.innerHTML = '<select id="selVideoNav" style="max-width:420px"><option>Cargando vídeos…</option></select><button id="btnVideoNav" class="prin">🎬 Probar este vídeo</button>';
+    ctr.insertBefore(caja, ctr.children[5] || null);
+    const TIPO_DE = { ogro: 'villano', tacano: 'jubilado', lon: 'vieja' };
+    const NOM = { ogro: 'Ogro', tacano: 'Tacaño', lon: 'Loco Lon' };
+    const opciones = [];
+    cargarEscenas.then(async () => {
+      const sel = $('selVideoNav'); sel.innerHTML = '';
+      const grupo = (titulo) => { const g = document.createElement('optgroup'); g.label = titulo; sel.appendChild(g); return g; };
+      for (const [clave, v] of Object.entries(ESCENAS.villanos || {})) {
+        const g = grupo(NOM[clave] || clave);
+        const add = (txt, gr, item) => { const ok = existe[item.video]; const o = document.createElement('option'); o.value = opciones.length; o.textContent = (ok ? '' : '⚠️ FALTA · ') + txt + ' · ' + item.video; g.appendChild(o); opciones.push({ clave, grupo: gr, item }); };
+        (v.solo || []).forEach(x => add(`${NOM[clave]} solo`, 'solo', typeof x === 'string' ? { video: x } : x));
+        (v.heroeGana || []).forEach(x => add(`${x.heroe} ${/ y /.test(x.heroe) ? 'ganan' : 'gana'} a ${NOM[clave] === 'Loco Lon' ? '' : 'l '}${NOM[clave]}`.replace('a l ', 'al '), 'heroeGana', x));
+        (v.heroePierde || []).forEach(x => add(`${NOM[clave]} gana a ${x.heroe}`, 'heroePierde', x));
+      }
+      const ge = grupo('Pantalla de espera (5 min sin jugar)');
+      (ESCENAS.espera || []).forEach(v => { const o = document.createElement('option'); o.value = opciones.length; o.textContent = (existe[v] ? '' : '⚠️ FALTA · ') + v; ge.appendChild(o); opciones.push({ espera: v }); });
+    });
+    $('btnVideoNav').onclick = async () => {
+      if (ocupado || enEspera) return msg('Espera a que acabe lo que se está viendo');
+      const o = opciones[+$('selVideoNav').value]; if (!o) return;
+      audio();
+      if (o.espera) { if (!(await hay(o.espera))) return msg(`Falta el vídeo ${o.espera} en la carpeta navidad`); return pantallaEspera(o.espera); }
+      if (!(await hay(o.item.video))) return msg(`Falta el vídeo ${o.item.video} en la carpeta navidad`);
+      sinForzar();
+      if (o.grupo === 'solo') forzarSinAmigo = true; else forzarAmigo = true;
+      videoForzado = o;
+      caer(TIPO_DE[o.clave]);
+    };
+    const nuevo = (txt, fn) => { const b = document.createElement('button'); b.className = 'prin'; b.textContent = txt; b.onclick = fn; ctr.insertBefore(b, caja.nextSibling); };
+    nuevo('⏱ Simular: 5 minutos sin jugar (pantalla de espera)', async () => {
+      if (ocupado || enEspera) return;
+      audio();
+      if (!(await videosEspera()).length) return msg('Todavía no hay vídeos de espera en la carpeta navidad');
+      pantallaEspera();
+    });
   }
   addEventListener('keydown', e => { if (e.key === 'Escape' && cortarVideo) cortarVideo(); });
 })();
