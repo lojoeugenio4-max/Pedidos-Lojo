@@ -3678,7 +3678,7 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
   const NOMBRES = {
     villano: { clave: 'ogro', nom: 'EL OGRO', ico: '👹', castigo: n => `¡Mazazo! ${n} casillas atrás` },
     jubilado: { clave: 'tacano', nom: 'EL TACAÑO', ico: '🕰️', castigo: n => `${n} campanadas… ¡${n} casillas atrás!` },
-    vieja: { clave: 'lon', nom: 'LOCO LON', ico: '🎩', castigo: () => '¡De vuelta a la SALIDA!' },
+    vieja: { clave: 'lon', nom: 'LOCO LON', ico: '🎩', castigo: n => n > 0 ? `¡Patada! ${n} casillas atrás` : '¡De vuelta a la SALIDA!' },
   };
   // nombres que se ven en el tablero
   DATOS_VILLANO.villano.nom = 'EL OGRO';
@@ -3718,7 +3718,7 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
     catch { ESCENAS = {}; }
     const todos = [];
     Object.values(ESCENAS.villanos || {}).forEach(v => {
-      (v.solo || []).forEach(a => todos.push(a));
+      (v.solo || []).forEach(a => { if (typeof a === 'string') todos.push(a); else { todos.push(a.video); if (a.final) todos.push(a.final); } });
       (v.heroeGana || []).forEach(h => todos.push(h.video));
       (v.heroePierde || []).forEach(h => todos.push(h.video));
     });
@@ -3809,7 +3809,7 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
   // ---------- la escena de un villano (con o sin héroe) ----------
   async function escenaVillanoNavidad(tipo, c, atras) {
     const V = NOMBRES[tipo], f = fichas[c.id];
-    const destino = tipo === 'vieja' ? 1 : retroceso(c.pos, atras);
+    const destino = (tipo === 'vieja' && !atras) ? 1 : retroceso(c.pos, atras);
     forzarAmigoId = null;
     const saleHeroe = tocaAmigo();
     const ganaVillano = saleHeroe ? GANA[tipo]() : true;
@@ -3826,6 +3826,7 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
       : `<small>${V.ico} ¡HA CAÍDO EN ${V.nom}!</small><b>${escaparHTML(c.nombre)}</b><span>${V.castigo(c.pos - destino)}</span>`;
     let visto = false;
     if (video) visto = await ponerVideo(video.video, { rotulo, maxMs: 90000 });
+    const videoFinal = visto && video.final && await hay(video.final) ? video.final : null;
 
     if (saleHeroe && !ganaVillano) {
       // el héroe le salva: la ficha no se mueve
@@ -3852,6 +3853,8 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
     }
     rotuloFin(`<small>${V.ico} ${V.nom}</small><b>${escaparHTML(c.nombre)}</b><span>${destino === 1 ? 'vuelve a la SALIDA' : `retrocede a la casilla ${destino}`}</span>`);
     camaraGeneral(900); await espera(1500);
+    // segunda parte del vídeo (p. ej. el Tacaño riéndose después de las campanadas)
+    if (videoFinal) await ponerVideo(videoFinal, { maxMs: 30000 });
   }
   const campana = document.createElement('div'); campana.className = 'campanaNav'; $('tv').appendChild(campana);
   function rotuloCampana(n) { campana.innerHTML = `🔔<b>${n}</b>`; campana.classList.remove('dong'); void campana.offsetWidth; campana.classList.add('ver', 'dong'); }
@@ -3861,7 +3864,14 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
   // sustituyen a las escenas de Halloween
   escenaMelon = (c, atras = 3) => escenaVillanoNavidad('villano', c, atras);
   escenaJubilado = (c, atras = 3) => escenaVillanoNavidad('jubilado', c, atras);
-  escenaVieja = c => escenaVillanoNavidad('vieja', c, 0);
+  // Loco Lon quita las casillas que marque el ADMIN. En tirada real las manda el
+  // servidor; si el servidor no manda castigo (como ahora con Lucas), vuelve a la salida.
+  escenaVieja = c => {
+    let atras;
+    if (tiradaRealActual) { atras = castigoForzado || 0; castigoForzado = null; }
+    else atras = tomarCastigo(CASTIGOS.melon);
+    return escenaVillanoNavidad('vieja', c, atras);
+  };
 
   // ---------- cada 2 minutos: trineo de Papá Noel y villancico ----------
   const trineo = document.createElement('div'); trineo.className = 'trineoNav';
