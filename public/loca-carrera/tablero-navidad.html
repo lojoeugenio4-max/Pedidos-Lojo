@@ -3768,6 +3768,7 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
   let cortarVideo = null;
   // Devuelve true si se ha visto el vídeo; false si no se ha podido poner.
   function ponerVideo(archivo, { rotulo = '', maxMs = 120000, cortarSi = null } = {}) {
+    try { musica(false); } catch { }
     return new Promise(resolve => {
       let hecho = false, vigila = null, tope = null;
       const fin = ok => {
@@ -3856,8 +3857,8 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
     const videoFinal = visto && video.final && await hay(video.final) ? video.final : null;
 
     if (saleHeroe && !ganaVillano) {
-      // el héroe le salva: la ficha no se mueve
-      fanfarria(); confeti();
+      // el héroe le salva: la ficha no se mueve, y suena el estribillo entero
+      fanfarria(); confeti(); musica(true, .75);
       const aQuien = { villano: 'al Ogro', jubilado: 'al Tacaño', vieja: 'a Loco Lon' }[tipo];
       await cartel(`<div class="grande">🦸</div><h2>¡SALVADO!</h2><p>${quien ? `<b>${quien}</b> ${/ y /.test(quien) ? 'han' : 'ha'} frenado ${aQuien}.` : `Un héroe de Cash Lojo ha frenado ${aQuien}.`}<br>${escaparHTML(c.nombre)} se queda en la casilla ${c.pos}</p>`, 'amigo', visto ? 2600 : 3400);
       return;
@@ -4014,13 +4015,16 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
 `;
   document.head.appendChild(cssPremio);
 
+  // El estribillo «Ven a Cash Lojo» suena ENTERO (unos 30 s): no se corta al
+  // acabar la escena, sigue sonando sobre el tablero hasta el final. Solo se
+  // apaga (con fundido) si empieza un vídeo o la pantalla de espera.
   const musicaPremio = new Audio(CARPETA + 'premio-villancico.mp3'); musicaPremio.preload = 'auto';
   let fundido = null;
-  function musica(on, vol = .55) {
+  function musica(on, vol = .6) {
     clearInterval(fundido);
     if (on) {
       if (silenciado || !enPrimerPlano()) return;
-      try { musicaPremio.currentTime = 0; musicaPremio.volume = .25; musicaPremio.play().catch(() => { }); } catch { }
+      try { musicaPremio.currentTime = 0; musicaPremio.volume = vol; musicaPremio.play().catch(() => { }); } catch { }
     } else {
       fundido = setInterval(() => { try { musicaPremio.volume = Math.max(0, musicaPremio.volume - .05); if (musicaPremio.volume <= .01) { clearInterval(fundido); musicaPremio.pause(); } } catch { clearInterval(fundido); } }, 90);
       return;
@@ -4062,7 +4066,7 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
     $('tv').appendChild(ov); void ov.offsetWidth;
     try {
       // 1) cae el regalo, suena el villancico y los cascabeles
-      ov.classList.add('ver'); musica(true); cascabeles(3); sacudir(6, 400);
+      ov.classList.add('ver'); musica(true, .6); cascabeles(3); sacudir(6, 400);
       await espera(3000);
       // 2) el regalo tiembla cada vez más
       ov.querySelector('.pnSub').innerHTML = subEspera;
@@ -4071,14 +4075,13 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
       await espera(1350);
       // 3) ¡se abre! estrellas, copos, campanillas y el premio
       ov.classList.remove('tiembla', 'fuerte'); ov.classList.add('abre');
-      subirMusica(.7); platillazo(); tintineo(18); sacudir(16, 700); estallido(ov);
+      subirMusica(.8); platillazo(); tintineo(18); sacudir(16, 700); estallido(ov);
       await espera(480);
       ov.classList.add('revela'); setTimeout(() => estallido(ov, 30), 500);
       fuegosArtificiales(5000);
       setTimeout(() => cascabeles(2), 1800);
       await espera(6000);
     } finally {
-      musica(false);
       ov.classList.remove('ver'); await espera(450); ov.remove();
     }
   }
