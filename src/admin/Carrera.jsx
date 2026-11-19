@@ -10,6 +10,7 @@ import CarreraFreno from "./CarreraFreno";
 import CarreraFavoritos from "./CarreraFavoritos";
 import CarreraClasificacion from "./CarreraClasificacion";
 import { avisoAtencion, boton } from "./lojopolyEstilos";
+import { esNavidad } from "../utils/carreraTablero";
 
 // Admin de La Loca Carrera de Lojo. Trabaja siempre con la última edición:
 // la abierta (en preparación o en juego) o, si la última ya terminó, esa
@@ -92,15 +93,16 @@ export default function Carrera() {
 
       <div style={cajaNavidad}>
         <span>
-          🎄 <strong>Versión de Navidad (beta)</strong> · Solo para probar: la TV grande sigue con la de Halloween. Se
-          abre con clientes inventados y el botón «⚙ Pruebas» para simular villanos, héroes, trineo y villancico.
+          🎄 <strong>Tablero de Navidad para probar</strong> · Se abre con clientes inventados y el botón «⚙ Pruebas»
+          para simular villanos, héroes, premios y la pantalla de espera. No toca la carrera real: la TV grande abre la
+          versión de la edición actual ({esNavidad(edicion) ? "🎄 Navidad" : "🎃 Halloween"}).
         </span>
         <button
           type="button"
           style={{ ...boton, background: "#b91c1c" }}
           onClick={() => window.open("/loca-carrera/tablero-navidad.html", "_blank", "noopener")}
         >
-          Abrir tablero de Navidad (beta)
+          Probar tablero de Navidad
         </button>
       </div>
 
@@ -109,6 +111,9 @@ export default function Carrera() {
       {edicion && (
         <div style={cabeceraEdicion}>
           <strong>Edición {edicion.numero}</strong>
+          <span style={{ ...pastilla, color: esNavidad(edicion) ? "#065f46" : "#9a3412", background: esNavidad(edicion) ? "#d1fae5" : "#ffedd5" }}>
+            {esNavidad(edicion) ? "🎄 Navidad" : "🎃 Halloween"}
+          </span>
           <span style={{ ...pastilla, color: estado.color, background: estado.fondo }}>{estado.texto}</span>
           {edicion.solo_pruebas && <span style={{ ...pastilla, color: "#1e40af", background: "#dbeafe" }}>Solo clientes de pruebas</span>}
         </div>

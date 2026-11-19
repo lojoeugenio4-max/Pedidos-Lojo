@@ -3,10 +3,10 @@
 // Se abre desde «Pedidos recibidos» → botón «🏁 Loca Carrera» y se queda en
 // pantalla entre cliente y cliente, igual que el Bombo de Bingo o el Sorteo.
 //
-// El tablero es el diseñado (espiral, Halloween, Melón Cabezón, Jubilado,
-// Lucas, José Luis y Rafa, palets, Lojo...) y está tal cual en
-// public/loca-carrera/tablero.html. Aquí solo se abre a pantalla completa y se
-// le pasan los datos reales:
+// El tablero es el diseñado y está tal cual en public/loca-carrera/: el de
+// Halloween (tablero.html) o el de Navidad (tablero-navidad.html), según la
+// versión de la edición actual (carrera_ediciones.tema). Aquí solo se abre a
+// pantalla completa y se le pasan los datos reales:
 //   · en la URL, las casillas de los villanos del Admin (2 por villano, cada
 //     una con su %). Si se cambian en el Admin, el tablero se recarga solo.
 //   · por mensaje, cada 15 s: clientes (Top 10 y fichas de los 5 primeros),
@@ -16,14 +16,13 @@
 //     avisa al TPV (utils/carreraCanal.js) para que siga con la siguiente.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../supabaseClient";
-import { parametroVillanos } from "../../utils/carreraTablero";
+import { parametroVillanos, rutaTablero } from "../../utils/carreraTablero";
 import { avisarFinTiradaCarrera } from "../../utils/carreraCanal";
 
 const REFRESCO_MS = 15000;
 // Tiradas ya mandadas al tablero (aunque el tablero se cierre y se vuelva a
 // abrir): así nunca se repite la tirada del cliente anterior.
 const tiradasYaMandadas = new Set();
-const RUTA_TABLERO = "/loca-carrera/tablero.html";
 
 async function cargarDatosCarrera() {
   const { data: edicion, error } = await supabase
@@ -92,6 +91,7 @@ export default function CarreraTableroTV({ tirada = null }) {
   const iframeRef = useRef(null);
   const datosRef = useRef(null);
   const [villanos, setVillanos] = useState(null);
+  const [ruta, setRuta] = useState(rutaTablero(null));
   const [aviso, setAviso] = useState("");
   // Tiradas que aún no se han podido mandar al tablero (todavía cargando).
   const tiradasPendientesRef = useRef([]);
@@ -106,11 +106,11 @@ export default function CarreraTableroTV({ tirada = null }) {
     });
   }, []);
 
-  // Tablero nuevo (cambiaron las casillas de los villanos): hasta que avise
-  // de que está listo, las tiradas esperan.
+  // Tablero nuevo (cambiaron las casillas de los villanos o la versión
+  // Halloween/Navidad): hasta que avise de que está listo, las tiradas esperan.
   useEffect(() => {
     listoRef.current = false;
-  }, [villanos]);
+  }, [villanos, ruta]);
 
   useEffect(() => {
     if (!tirada?.token || tiradasYaMandadas.has(tirada.token)) return;
@@ -145,6 +145,7 @@ export default function CarreraTableroTV({ tirada = null }) {
         datosRef.current = d;
         setAviso(d.edicion ? "" : "La Loca Carrera todavía no está creada en el Admin.");
         setVillanos(parametroVillanos(d.edicion));
+        setRuta(rutaTablero(d.edicion));
         enviar();
       } catch (err) {
         console.warn("Loca Carrera TV:", err);
@@ -177,9 +178,9 @@ export default function CarreraTableroTV({ tirada = null }) {
       {villanos !== null && (
         <iframe
           ref={iframeRef}
-          key={villanos}
+          key={`${ruta}|${villanos}`}
           title="La Loca Carrera de Lojo"
-          src={`${RUTA_TABLERO}?tv=1&v=${encodeURIComponent(villanos)}`}
+          src={`${ruta}?tv=1&v=${encodeURIComponent(villanos)}`}
           style={estilos.iframe}
           allow="autoplay"
           onLoad={enviar}

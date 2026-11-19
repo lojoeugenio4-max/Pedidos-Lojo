@@ -12,8 +12,10 @@ import {
   ayuda,
 } from "./lojopolyEstilos";
 import {
-  VILLANOS,
   ORDEN_VILLANOS,
+  villanosDe,
+  esNavidad,
+  HEROES_NAVIDAD,
   CASILLA_SALIDA,
   CASILLA_META,
   normalizarVillanosCasillas,
@@ -61,6 +63,7 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
       posiciones: normalizarVillanosCasillas(edicion),
       castigos_melon: normalizarCastigos(edicion.castigos_melon),
       castigos_jubilado: normalizarCastigos(edicion.castigos_jubilado),
+      castigos_vieja: normalizarCastigos(edicion.castigos_vieja),
       prob_anulacion: edicion.prob_anulacion ?? 40,
     });
   }, [edicion]);
@@ -92,6 +95,11 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
 
   const sumaMelon = form.castigos_melon.reduce((s, c) => s + num(c.prob), 0);
   const sumaJubilado = form.castigos_jubilado.reduce((s, c) => s + num(c.prob), 0);
+  const sumaVieja = form.castigos_vieja.reduce((s, c) => s + num(c.prob), 0);
+  // En Navidad cambian los nombres y Loco Lon («vieja») quita casillas como los
+  // otros dos; en Halloween, Lucas manda a la Salida.
+  const navidad = esNavidad(edicion);
+  const VILLANOS = villanosDe(edicion);
 
   // Problema de cada posición (casilla repetida, fuera del tablero o encima
   // de otra casilla especial). null si está bien.
@@ -109,7 +117,7 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
   async function guardar() {
     setMensaje("");
     setError("");
-    if (Math.round(sumaMelon) !== 100 || Math.round(sumaJubilado) !== 100) {
+    if (Math.round(sumaMelon) !== 100 || Math.round(sumaJubilado) !== 100 || (navidad && Math.round(sumaVieja) !== 100)) {
       setError("Los porcentajes de los 3 castigos de cada villano tienen que sumar 100 %.");
       return;
     }
@@ -129,6 +137,7 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
         ...columnasAntiguasVillanos(posiciones),
         castigos_melon: limpiar(form.castigos_melon),
         castigos_jubilado: limpiar(form.castigos_jubilado),
+        ...(navidad ? { castigos_vieja: limpiar(form.castigos_vieja) } : {}),
         prob_anulacion: pct(form.prob_anulacion),
         updated_at: new Date().toISOString(),
       })
@@ -139,7 +148,9 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
       setError(
         err.message?.includes("villanos_casillas")
           ? "Falta aplicar la migración migracion_carrera_villanos_dobles.sql en Supabase."
-          : `No se ha podido guardar: ${err.message}`
+          : err.message?.includes("castigos_vieja")
+            ? "Falta aplicar la migración migracion_carrera_navidad.sql en Supabase."
+            : `No se ha podido guardar: ${err.message}`
       );
       return;
     }
@@ -167,8 +178,8 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
       {ORDEN_VILLANOS.map((villano) => {
         const datos = VILLANOS[villano];
         const indices = form.posiciones.map((p, i) => (p.villano === villano ? i : -1)).filter((i) => i >= 0);
-        const esLucas = villano === "vieja";
-        const claveCastigos = villano === "melon" ? "castigos_melon" : "castigos_jubilado";
+        const esLucas = villano === "vieja" && !navidad;
+        const claveCastigos = villano === "melon" ? "castigos_melon" : villano === "vieja" ? "castigos_vieja" : "castigos_jubilado";
         return (
           <TarjetaVillano
             key={villano}
@@ -179,7 +190,7 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
             onAnadir={() => anadirPosicion(villano)}
             onQuitar={quitarPosicion}
             castigos={esLucas ? null : form[claveCastigos]}
-            suma={villano === "melon" ? sumaMelon : sumaJubilado}
+            suma={villano === "melon" ? sumaMelon : villano === "vieja" ? sumaVieja : sumaJubilado}
             textoCastigo={esLucas ? "Vuelta a la salida (casilla 1), en todas sus casillas." : null}
             bloqueada={bloqueada}
             onCastigo={(i, clave, valor) => cambiarCastigo(claveCastigos, i, clave, valor)}
@@ -188,13 +199,14 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
         );
       })}
 
-      <h4 style={{ ...tituloSeccion, marginTop: 6 }}>🦸 Amigos: José Luis y Rafa</h4>
+      <h4 style={{ ...tituloSeccion, marginTop: 6 }}>{navidad ? "🦸 Héroes de Navidad" : "🦸 Amigos: José Luis y Rafa"}</h4>
       <div style={fila}>
         <CampoPct id="lc-prob-anulacion" texto="% de que un amigo anule al villano" valor={form.prob_anulacion} bloqueada={bloqueada} onCambio={(v) => cambiar("prob_anulacion", v)} />
         <div style={{ flex: 2, minWidth: 220, alignSelf: "end" }}>
           <p style={ayuda}>
-            Vale para los 3 villanos y todas sus casillas. Cuando un cliente cae en un villano, con este porcentaje aparece
-            José Luis o Rafa (uno de los dos al azar), lo aparta y el cliente se queda donde estaba.
+            Vale para los 3 villanos y todas sus casillas. Cuando un cliente cae en un villano, con este porcentaje aparece{" "}
+            {navidad ? `un héroe (${HEROES_NAVIDAD}, por turnos)` : "José Luis o Rafa (uno de los dos al azar)"}, lo aparta y
+            el cliente se queda donde estaba.
           </p>
         </div>
       </div>

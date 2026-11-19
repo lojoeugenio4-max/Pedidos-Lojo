@@ -26,6 +26,26 @@ export const VILLANOS = {
 };
 export const ORDEN_VILLANOS = ["melon", "vieja", "jubilado"];
 
+// ---------- Versión del tablero: Halloween o Navidad ----------
+// Cada edición lleva su versión (carrera_ediciones.tema). El juego es el mismo
+// (mismas claves internas de villanos); solo cambian el tablero de la TV, los
+// vídeos y los nombres. En Navidad, «vieja» es Loco Lon y quita casillas
+// (castigos_vieja) en vez de mandar a la Salida.
+export const TEMAS_CARRERA = {
+  halloween: { nombre: "Halloween", emoji: "🎃", ruta: "/loca-carrera/tablero.html" },
+  navidad: { nombre: "Navidad", emoji: "🎄", ruta: "/loca-carrera/tablero-navidad.html" },
+};
+export const esNavidad = (edicion) => edicion?.tema === "navidad";
+export const rutaTablero = (edicion) => (esNavidad(edicion) ? TEMAS_CARRERA.navidad : TEMAS_CARRERA.halloween).ruta;
+
+export const VILLANOS_NAVIDAD = {
+  melon: { nombre: "El Ogro", corto: "Ogro", emoji: "👹", color: "#16a34a" },
+  vieja: { nombre: "Loco Lon", corto: "Loco Lon", emoji: "🎩", color: "#7c3aed" },
+  jubilado: { nombre: "El Tacaño", corto: "Tacaño", emoji: "🕰️", color: "#b91c1c" },
+};
+export const villanosDe = (edicion) => (esNavidad(edicion) ? VILLANOS_NAVIDAD : VILLANOS);
+export const HEROES_NAVIDAD = "Papá Noel, Jose Luis y Rafa, Valentín, el Mijita y Elías";
+
 // Posiciones por defecto (5 por villano), repartidas por todo el tablero y
 // con más al principio para que haya emoción desde la primera tirada.
 export const POSICIONES_VILLANOS_DEFECTO = {

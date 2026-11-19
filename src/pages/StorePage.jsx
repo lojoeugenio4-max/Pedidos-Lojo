@@ -395,6 +395,20 @@ export default function StorePage() {
   const carreraRodandoRef = useRef(false);
   const carreraTimerRef = useRef(null);
   const carreraEsperaRef = useRef(null); // { token, tirada, timer }
+  // Versión de la carrera (Halloween / Navidad) para los nombres del texto de
+  // la tirada. Si la columna «tema» aún no existe, se queda en Halloween.
+  const carreraNavidadRef = useRef(false);
+  useEffect(() => {
+    supabase
+      .from("carrera_ediciones")
+      .select("tema")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!error) carreraNavidadRef.current = data?.tema === "navidad";
+      });
+  }, []);
   function programarTiradaCarrera(ms) {
     if (carreraTimerRef.current) window.clearTimeout(carreraTimerRef.current);
     carreraTimerRef.current = window.setTimeout(() => {
@@ -1620,8 +1634,12 @@ export default function StorePage() {
   }
 
   function textoTiradaCarrera(t) {
-    const nombresVillano = { melon: "el Melón Cabezón", jubilado: "el Jubilado", vieja: "Lucas" };
-    const nombresAmigo = { jose_luis: "José Luis", rafa: "Rafa" };
+    const navidad = carreraNavidadRef.current;
+    const nombresVillano = navidad
+      ? { melon: "el Ogro", jubilado: "el Tacaño", vieja: "Loco Lon" }
+      : { melon: "el Melón Cabezón", jubilado: "el Jubilado", vieja: "Lucas" };
+    // En Navidad el héroe lo elige la TV (Papá Noel, el Mijita...): aquí no se nombra.
+    const nombresAmigo = navidad ? {} : { jose_luis: "José Luis", rafa: "Rafa" };
     const partes = [`${Number(t.desde) <= 1 ? "Desde la salida, dado" : "Dado"} ${t.dado}: casilla ${t.casilla_dado}.`];
     (t.eventos || []).forEach((e) => {
       if (e.tipo === "rebote") partes.push(`Se pasa de la meta y rebota a la ${e.vuelve_a}.`);
@@ -1630,8 +1648,8 @@ export default function StorePage() {
         const v = nombresVillano[e.villano] || "un villano";
         partes.push(
           e.anulado
-            ? `Le atrapa ${v}, pero ${nombresAmigo[e.amigo] || "un amigo"} le salva.`
-            : e.villano === "vieja"
+            ? `Le atrapa ${v}, pero ${nombresAmigo[e.amigo] || (navidad ? "un héroe de Cash Lojo" : "un amigo")} le salva.`
+            : e.villano === "vieja" && !navidad
               ? `Le atrapa ${v}: vuelve a la salida.`
               : `Le atrapa ${v}: retrocede a la ${e.a}.`
         );

@@ -15,6 +15,7 @@ import {
   avisoAtencion,
   ayuda,
 } from "./lojopolyEstilos";
+import { TEMAS_CARRERA } from "../utils/carreraTablero";
 
 // Configuración general y tiradas de La Loca Carrera. Las tiradas se dan
 // igual que los números del Sorteo: por cada X cajas de artículos distintos
@@ -23,6 +24,7 @@ import {
 
 const VACIA = {
   nombre: "La Loca Carrera de Lojo",
+  tema: "halloween",
   solo_pruebas: true,
   fecha_inicio: "",
   modo: "todos",
@@ -58,6 +60,7 @@ export default function CarreraConfiguracion({ edicion, onGuardado }) {
     }
     setForm({
       nombre: edicion.nombre || VACIA.nombre,
+      tema: edicion.tema === "navidad" ? "navidad" : "halloween",
       solo_pruebas: edicion.solo_pruebas ?? true,
       fecha_inicio: edicion.fecha_inicio || "",
       modo: edicion.modo || "todos",
@@ -107,6 +110,10 @@ export default function CarreraConfiguracion({ edicion, onGuardado }) {
       updated_at: new Date().toISOString(),
       ...extra,
     };
+    // La versión (Halloween/Navidad) solo se manda si la base de datos ya tiene
+    // la columna «tema» (migracion_carrera_navidad.sql) o si se elige Navidad:
+    // así, sin la migración, la carrera de Halloween se sigue guardando igual.
+    if ((edicion && "tema" in edicion) || form.tema === "navidad") payload.tema = form.tema;
 
     try {
       let edicionId = edicion?.id;
@@ -131,7 +138,11 @@ export default function CarreraConfiguracion({ edicion, onGuardado }) {
       onGuardado?.();
       return true;
     } catch (err) {
-      setError(`No se ha podido guardar: ${err.message}`);
+      setError(
+        String(err.message || "").includes("tema")
+          ? "Falta aplicar la migración migracion_carrera_navidad.sql en Supabase (SQL Editor)."
+          : `No se ha podido guardar: ${err.message}`
+      );
       return false;
     } finally {
       setGuardando(false);
@@ -165,6 +176,9 @@ export default function CarreraConfiguracion({ edicion, onGuardado }) {
   }
 
   const ejemplo = Math.max(1, Number(form.variedad_minima) || 1);
+  // La versión no se cambia con la carrera en marcha (ni terminada): las reglas
+  // de Loco Lon y Lucas son distintas.
+  const temaBloqueado = Boolean(edicion) && edicion.estado !== "preparacion";
 
   return (
     <div style={contenedor}>
@@ -177,6 +191,32 @@ export default function CarreraConfiguracion({ edicion, onGuardado }) {
         <span>Nombre</span>
         <input id="lc-nombre" style={input} value={form.nombre} disabled={bloqueada} onChange={(e) => cambiar("nombre", e.target.value)} />
       </label>
+
+      <div style={campo}>
+        <span>Versión del tablero</span>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          {Object.entries(TEMAS_CARRERA).map(([clave, t]) => (
+            <label key={clave} style={radio}>
+              <input
+                type="radio"
+                name="lc-tema"
+                checked={form.tema === clave}
+                disabled={bloqueada || temaBloqueado}
+                onChange={() => cambiar("tema", clave)}
+              />
+              {t.emoji} {t.nombre}
+            </label>
+          ))}
+        </div>
+      </div>
+      <p style={ayuda}>
+        La TV grande abre el tablero de esta versión. El juego es el mismo; cambian el tablero, los vídeos y los
+        villanos: con <strong>Navidad</strong> son el Ogro, el Tacaño y Loco Lon (que quita casillas en vez de mandar a la
+        salida), y los héroes {"Papá Noel, Jose Luis y Rafa, Valentín, el Mijita y Elías"}.{" "}
+        {temaBloqueado
+          ? "Con la carrera ya empezada no se cambia la versión: se elige al crear la siguiente edición."
+          : "Se puede cambiar mientras la carrera está en preparación."}
+      </p>
 
       <label style={campoCheckbox}>
         <input id="lc-pruebas" type="checkbox" checked={form.solo_pruebas} disabled={bloqueada} onChange={(e) => cambiar("solo_pruebas", e.target.checked)} />
