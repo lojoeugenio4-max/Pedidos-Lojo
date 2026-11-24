@@ -8,6 +8,7 @@ import CarreraPremioMitad from "./CarreraPremioMitad";
 import CarreraComodin from "./CarreraComodin";
 import CarreraFreno from "./CarreraFreno";
 import CarreraFavoritos from "./CarreraFavoritos";
+import CarreraSprint from "./CarreraSprint";
 import CarreraClasificacion from "./CarreraClasificacion";
 import { avisoAtencion, boton } from "./lojopolyEstilos";
 import { esNavidad } from "../utils/carreraTablero";
@@ -24,6 +25,7 @@ const PESTANAS = [
   { id: "mitad", titulo: "Premio de la mitad (32)" },
   { id: "comodin", titulo: "🃏 Comodín" },
   { id: "freno", titulo: "🐢 Freno al líder" },
+  { id: "sprint", titulo: "🏁 Sprint final" },
   { id: "final", titulo: "Premio final" },
   { id: "clasificacion", titulo: "Clasificación y premios" },
 ];
@@ -162,6 +164,7 @@ export default function Carrera() {
           {pestana === "mitad" && edicion && <CarreraPremioMitad edicion={edicion} onGuardado={cargar} />}
           {pestana === "comodin" && edicion && <CarreraComodin edicion={edicion} onGuardado={cargar} />}
           {pestana === "freno" && edicion && <CarreraFreno edicion={edicion} onGuardado={cargar} />}
+          {pestana === "sprint" && edicion && <CarreraSprint edicion={edicion} onGuardado={cargar} />}
           {pestana === "final" && edicion && <CarreraPremioFinal edicion={edicion} onGuardado={cargar} />}
           {pestana === "clasificacion" && edicion && <CarreraClasificacion edicion={edicion} />}
         </>
