@@ -4109,6 +4109,153 @@ window.addEventListener('resize', () => { clearTimeout(tResize); tResize = setTi
     });
   };
 
+  // ---------- ¡GANADOR DE LA CARRERA! GRAN FINAL DE NAVIDAD ----------
+  // Unos 30 s al ritmo del estribillo entero «Ven a Cash Lojo»: de fondo todos
+  // los personajes juntos (navidad/final-grupo.mp4, sin sonido), fuegos
+  // artificiales, el trofeo, el nombre del ganador letra a letra, el regalo
+  // con el GRAN PREMIO, el podio y la despedida «¡Feliz Navidad!».
+  const cssFinal = document.createElement('style');
+  cssFinal.textContent = `
+.finalNav{position:absolute;inset:0;z-index:20;pointer-events:none;overflow:hidden;opacity:0;transition:opacity .8s;font-family:"Bowlby One",Impact,sans-serif;color:#fff;text-align:center}
+.finalNav.ver{opacity:1}
+.finalNav .fnVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(.38) saturate(1.2) blur(.15vmin);transform:scale(1.06);transition:filter 1.6s,transform 8s ease-out}
+.finalNav.despedida .fnVideo{filter:brightness(.95) saturate(1.1);transform:scale(1)}
+.finalNav .fnFondo{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 40%,#1f4f86 0%,#0d2547 50%,#060f22 100%)}
+.finalNav.conVideo .fnFondo{background:radial-gradient(ellipse at 50% 40%,rgba(31,79,134,.25) 0%,rgba(6,15,34,.55) 100%)}
+.finalNav .fnFoco{position:absolute;top:-10%;width:40vmin;height:130%;background:linear-gradient(rgba(255,240,180,.5),rgba(255,240,180,0) 85%);clip-path:polygon(42% 0,58% 0,100% 100%,0 100%);mix-blend-mode:screen;opacity:.0;transition:opacity 1s}
+.finalNav.focos .fnFoco{opacity:.55}
+.finalNav .fnFoco.f1{left:4%;transform-origin:50% 0;animation:fnBarre 4.5s ease-in-out infinite alternate}
+.finalNav .fnFoco.f2{right:4%;transform-origin:50% 0;animation:fnBarre 4.5s ease-in-out infinite alternate-reverse}
+@keyframes fnBarre{from{transform:rotate(-22deg)}to{transform:rotate(22deg)}}
+.finalNav .pnNieve,.finalNav .pnRayos,.finalNav .pnFlash,.finalNav .pnGuirnalda{z-index:1}
+.finalNav.trofeo .pnRayos{opacity:1}
+.finalNav .fnFlash{position:absolute;inset:0;background:#fff6cf;opacity:0;z-index:5}
+.finalNav .fnFlash.dale{animation:pnFlash 1s ease-out}
+.finalNav .fnCaja{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.6vmin;padding:12vmin 4vmin 4vmin}
+.finalNav .fnCab{font-size:9vmin;line-height:1;color:#ffd23f;text-shadow:0 .6vmin 0 #8a0012,0 1.2vmin 0 #4a0008,0 0 4vmin rgba(255,210,63,.7);opacity:0;transform:scale(3)}
+.finalNav .fnCab.ver{animation:fnGolpe .6s cubic-bezier(.2,1.6,.4,1) forwards}
+@keyframes fnGolpe{0%{opacity:0;transform:scale(3)}100%{opacity:1;transform:scale(1)}}
+.finalNav .fnTrofeo{font-size:24vmin;line-height:1;filter:drop-shadow(0 0 4vmin rgba(255,210,63,.95)) drop-shadow(0 2vmin 2vmin rgba(0,0,0,.6));opacity:0;transform:translateY(60vh) scale(.4)}
+.finalNav .fnTrofeo.ver{animation:fnSube 1.4s cubic-bezier(.2,1.3,.4,1) forwards,fnFlota 2.4s ease-in-out 1.4s infinite alternate}
+@keyframes fnSube{to{opacity:1;transform:none}}
+@keyframes fnFlota{from{transform:translateY(0) rotate(-4deg)}to{transform:translateY(-2vmin) rotate(4deg)}}
+.finalNav .fnNombre{font-size:11vmin;line-height:1.02;max-width:94vw;color:#fff;text-shadow:0 .7vmin 0 #b3122e,0 1.4vmin 0 #5a0010,0 0 5vmin rgba(255,255,255,.55)}
+.finalNav .fnNombre span{display:inline-block;opacity:0;transform:translateY(-30vh) rotate(-30deg)}
+.finalNav .fnNombre span.ver{animation:fnLetra .55s cubic-bezier(.2,1.6,.4,1) forwards}
+@keyframes fnLetra{to{opacity:1;transform:none}}
+.finalNav .fnNombre.baila span{animation:fnBaila 1.1s ease-in-out infinite alternate;opacity:1;transform:none}
+@keyframes fnBaila{from{transform:translateY(0)}to{transform:translateY(-1.6vmin)}}
+.finalNav .fnSub{font-family:Arial,Helvetica,sans-serif;font-weight:900;font-size:4vmin;text-shadow:0 .3vmin .8vmin #000;opacity:0;transition:opacity .8s}
+.finalNav .fnSub.ver{opacity:1}
+.finalNav .fnSub b{color:#ffd23f}
+.finalNav .fnPremio{display:none;flex-direction:column;align-items:center;gap:1vmin;padding:2.2vmin 5vmin;border-radius:3vmin;background:linear-gradient(135deg,#fff7d6,#ffd23f);color:#7a0010;border:1vmin solid #b3122e;box-shadow:0 0 0 .8vmin #ffd23f,0 0 6vmin rgba(255,210,63,.9),0 3vmin 6vmin rgba(0,0,0,.6)}
+.finalNav .fnPremio.ver{display:flex;animation:pnSale .8s cubic-bezier(.2,1.5,.4,1) both}
+.finalNav .fnPremio small{font-size:3.6vmin;letter-spacing:.08em}
+.finalNav .fnPremio b{font-size:6vmin;line-height:1.05;font-weight:400;max-width:80vw}
+.finalNav .pnRegalo{display:none;width:26vmin;height:26vmin}
+.finalNav .pnRegalo.ver{display:block}
+.finalNav .fnPodio{display:flex;align-items:flex-end;gap:2vmin;opacity:0;transform:translateY(20vh);transition:opacity .8s,transform .9s cubic-bezier(.2,1.3,.4,1)}
+.finalNav .fnPodio.ver{opacity:1;transform:none}
+.finalNav .fnPodio div{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;width:24vmin;border-radius:1.4vmin 1.4vmin 0 0;padding:1.2vmin;font-size:2.8vmin;line-height:1.1;box-shadow:0 1.5vmin 3vmin rgba(0,0,0,.5)}
+.finalNav .fnPodio div em{font-style:normal;font-size:5vmin}
+.finalNav .fnPodio .p1{width:auto;min-width:46vmin;max-width:88vw;height:auto;border-radius:2vmin;padding:1.6vmin 5vmin;gap:.6vmin;background:linear-gradient(#ffe066,#c78f00);color:#5a0010;border:.8vmin solid #fff3b0;box-shadow:0 0 5vmin rgba(255,210,63,.9),0 1.5vmin 3vmin rgba(0,0,0,.5)}.finalNav .fnPodio .p1 em{font-size:12vmin;line-height:1}.finalNav .fnPodio .p1 span{font-size:3vmin;letter-spacing:.06em}.finalNav .fnPodio .p1 b{font-weight:400;font-size:6vmin;line-height:1.05}
+.finalNav .fnPodio .p2{height:12vmin;background:linear-gradient(#f1f4f8,#9fb0c2);color:#1b2a3a}
+.finalNav .fnPodio .p3{height:9vmin;background:linear-gradient(#e7a36a,#9b5a2a);color:#2a1200}
+.finalNav .fnFeliz{position:absolute;left:0;right:0;bottom:6%;z-index:4;font-size:11vmin;line-height:1;color:#ffd23f;text-shadow:0 .7vmin 0 #b3122e,0 1.4vmin 0 #4a0008,0 0 5vmin rgba(255,210,63,.8);opacity:0;transform:scale(.3)}
+.finalNav .fnFeliz small{display:block;font-size:4.6vmin;color:#fff;text-shadow:0 .4vmin 0 #0b3d1f,0 0 2vmin #000}
+.finalNav .fnFeliz.ver{animation:fnGolpe .9s cubic-bezier(.2,1.6,.4,1) forwards}
+.finalNav.despedida .fnCaja{opacity:0;transition:opacity .8s}
+.finalNav .fnLluvia{position:absolute;z-index:4;top:-8vmin;font-size:4vmin;animation:fnCae var(--t) linear forwards}
+@keyframes fnCae{to{transform:translateY(118vh) rotate(var(--r))}}
+`;
+  document.head.appendChild(cssFinal);
+
+  function lluviaFinal(ov, ms) {
+    const fin = Date.now() + ms, cosas = ['🎁', '⭐', '❄️', '🎄', '🔔', '✨', '🍬', '🎀', '🌟'];
+    (function una() {
+      if (Date.now() > fin || !ov.isConnected) return;
+      const s = document.createElement('div'); s.className = 'fnLluvia'; s.textContent = cosas[Math.floor(Math.random() * cosas.length)];
+      s.style.left = (Math.random() * 98) + '%'; s.style.fontSize = (2.6 + Math.random() * 4) + 'vmin';
+      s.style.setProperty('--t', (3.2 + Math.random() * 3) + 's'); s.style.setProperty('--r', (Math.random() * 900 - 450) + 'deg');
+      ov.appendChild(s); setTimeout(() => s.remove(), 6500);
+      setTimeout(una, 90 + Math.random() * 110);
+    })();
+  }
+  const destello = ov => { const f = ov.querySelector('.fnFlash'); f.classList.remove('dale'); void f.offsetWidth; f.classList.add('dale'); };
+
+  celebracionMeta = async function (c) {
+    pararTrailer();
+    const f = fichas[c.id];
+    // 1) en el tablero: la ficha llega a la meta
+    camaraCasilla?.(META, 2.6, 700); vineta('oro'); sonido.meta(); campanada?.(); confeti();
+    if (f) { f.classList.add('volteo'); setTimeout(() => f.classList.remove('volteo'), 950); }
+    sacudir(12, 700); await espera(1500);
+    camaraGeneral(900);
+
+    // 2) se abre el gran final a pantalla completa con el villancico entero
+    const nombre = escaparHTML(c.nombre);
+    const letras = [...c.nombre].map(ch => ch === ' ' ? '<span>&nbsp;</span>' : `<span>${escaparHTML(ch)}</span>`).join('');
+    const ov = document.createElement('div'); ov.className = "premioNav finalNav";
+    ov.innerHTML = `<video class="fnVideo" muted playsinline loop preload="auto"></video>
+      <div class="fnFondo"></div><div class="fnFoco f1"></div><div class="fnFoco f2"></div>
+      <div class="pnRayos"></div><div class="pnNieve"></div>
+      <div class="pnGuirnalda">${'<i></i>'.repeat(18)}</div>
+      <div class="fnCaja">
+        <div class="fnCab">🏆 ¡TENEMOS GANADOR! 🏆</div>
+        <div class="fnTrofeo">🏆</div>
+        <div class="fnNombre">${letras}</div>
+        <div class="fnSub">gana <b>La Loca Carrera de Lojo</b> · Edición de Navidad</div>
+        <div class="pnRegalo"><div class="cuerpo"></div><div class="tapa"><div class="lazo"></div></div></div>
+        <div class="fnPremio"><small>🎁 SE LLEVA EL GRAN PREMIO 🎁</small><b>${escaparHTML(PREMIO_FINAL)}</b></div>
+        <div class="fnPodio"><div class="p1"><em>🥇</em><span>CAMPEÓN DE LA LOCA CARRERA</span><b>${nombre}</b></div></div>
+      </div>
+      <div class="fnFeliz"><small>¡Gracias a todos por jugar!</small>Cash Lojo les desea<br>¡Feliz Navidad!</div>
+      <div class="fnFlash"></div>`;
+    $('tv').appendChild(ov);
+    const vid = ov.querySelector('.fnVideo');
+    vid.onplaying = () => ov.classList.add('conVideo');
+    vid.src = CARPETA + 'final-grupo.mp4'; vid.play().catch(() => { });
+    const $o = s => ov.querySelector(s);
+    try {
+      void ov.offsetWidth; ov.classList.add('ver', 'focos');
+      musica(true, .95); cascabeles(3); tintineo(14);
+      await espera(1200);
+      // «¡TENEMOS GANADOR!» de golpe, con fuegos artificiales sin parar
+      $o('.fnCab').classList.add('ver'); destello(ov); platillazo(); sacudir(14, 600);
+      fuegosArtificiales(26000);
+      await espera(1100);
+      // sube el trofeo dorado y giran los rayos
+      ov.classList.add('trofeo'); $o('.fnTrofeo').classList.add('ver'); tintineo(20);
+      await espera(1500);
+      // el nombre del ganador, letra a letra
+      const spans = [...ov.querySelectorAll('.fnNombre span')], paso = Math.max(55, Math.min(140, 2200 / Math.max(1, spans.length)));
+      for (const s of spans) { s.classList.add('ver'); tono(1200 + Math.random() * 900, 1800, .07, 'triangle', .05); await espera(paso); }
+      await espera(500); $o('.fnNombre').classList.add('baila'); $o('.fnSub').classList.add('ver');
+      confeti(); estallido(ov, 40); lluviaFinal(ov, 22000);
+      await espera(3000);
+      // el regalo del GRAN PREMIO: cae, tiembla y se abre
+      $o('.fnTrofeo').style.display = 'none'; $o('.fnSub').classList.remove('ver');
+      const regalo = $o('.pnRegalo'); regalo.classList.add('ver'); cascabeles(2);
+      await espera(1200);
+      ov.classList.add('tiembla'); redobleFinal(2.4); await espera(1200); ov.classList.add('fuerte'); await espera(1200);
+      ov.classList.remove('tiembla', 'fuerte'); ov.classList.add('abre'); destello(ov); platillazo(); sacudir(18, 800); estallido(ov, 60);
+      await espera(480); regalo.classList.remove('ver'); ov.classList.remove('abre');
+      $o('.fnPremio').classList.add('ver'); confeti(); fanfarria();
+      await espera(4200);
+      // medalla de oro del campeón (solo hay un ganador)
+      $o('.fnPremio').classList.remove('ver'); $o('.fnPodio').classList.add('ver'); tintineo(12); ovacion?.(2.5); destello(ov); estallido(ov, 40);
+      await espera(4300);
+      // despedida: se ven todos los personajes juntos y «¡Feliz Navidad!»
+      ov.classList.add('despedida'); ov.classList.remove('focos', 'trofeo');
+      $o('.fnFeliz').classList.add('ver'); destello(ov); platillazo(); estallido(ov, 50); confeti(); cascabeles(4);
+      await espera(6500);
+    } finally {
+      ov.classList.remove('ver'); await espera(900);
+      try { vid.pause(); } catch { } ov.remove(); musica(false);
+    }
+    await bandera(`<small>FIN DE LA EDICIÓN DE NAVIDAD</small><b>¡Enhorabuena, ${nombre}!</b><span>Recoge tu GRAN PREMIO en caja · Muy pronto, nueva Loca Carrera de Lojo</span>`, 4200);
+  };
+
   // ---------- botones de prueba (no salen en la TV) ----------
   const ctr = document.querySelector('.controles');
   if (ctr) {
