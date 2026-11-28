@@ -95,6 +95,92 @@ function conLimiteDeTiempo(promesa, limiteMs = 7000) {
   ]);
 }
 
+// ---------- Guardado del pedido para «Pedidos recibidos» ----------
+// Antes el pedido se guardaba en segundo plano justo cuando el cliente pulsaba
+// el botón de WhatsApp: al saltar a WhatsApp el móvil congelaba la app y, a
+// veces, el pedido llegaba por WhatsApp (y su QR existía) pero nunca aparecía
+// en «Pedidos recibidos». Ahora se guarda ANTES de abrir WhatsApp, con varios
+// intentos, y si aun así no se puede, se queda apuntado en el móvil y se vuelve
+// a intentar solo (al abrir la app y al recuperar la conexión).
+const CLAVE_PEDIDOS_SIN_GUARDAR = "cash-lojo-pedidos-sin-guardar";
+
+function leerPedidosSinGuardar() {
+  try {
+    const lista = JSON.parse(localStorage.getItem(CLAVE_PEDIDOS_SIN_GUARDAR) || "[]");
+    return Array.isArray(lista) ? lista : [];
+  } catch {
+    return [];
+  }
+}
+
+function escribirPedidosSinGuardar(lista) {
+  try {
+    if (lista.length) localStorage.setItem(CLAVE_PEDIDOS_SIN_GUARDAR, JSON.stringify(lista));
+    else localStorage.removeItem(CLAVE_PEDIDOS_SIN_GUARDAR);
+  } catch {
+    // sin almacenamiento en el móvil: no se puede apuntar
+  }
+}
+
+function apuntarPedidoSinGuardar(pedidoId, movimientos) {
+  const lista = leerPedidosSinGuardar().filter((p) => p.pedidoId !== pedidoId);
+  lista.push({ pedidoId, movimientos, apuntadoAt: new Date().toISOString() });
+  escribirPedidosSinGuardar(lista);
+}
+
+function quitarPedidoSinGuardar(pedidoId) {
+  const lista = leerPedidosSinGuardar();
+  if (lista.some((p) => p.pedidoId === pedidoId)) escribirPedidosSinGuardar(lista.filter((p) => p.pedidoId !== pedidoId));
+}
+
+// Sustituye las líneas del pedido (si es una modificación, quita las de antes).
+// Hacerlo dos veces deja lo mismo, así que se puede reintentar sin miedo.
+async function escribirMovimientosPedido(pedidoId, movimientos) {
+  const { error: borrarError } = await supabase.from("estadisticas_movimientos").delete().eq("pedido_id", pedidoId);
+  if (borrarError) throw borrarError;
+  if (!movimientos.length) return;
+  const { error: movimientosError } = await supabase.from("estadisticas_movimientos").insert(movimientos);
+  if (movimientosError) throw movimientosError;
+}
+
+const esperaMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// 3 intentos (unos 15 s como mucho). Si no se puede, se apunta para después.
+async function guardarMovimientosConReintentos(pedidoId, movimientos, { apuntarSiFalla = true } = {}) {
+  for (let intento = 1; intento <= 3; intento += 1) {
+    try {
+      await conLimiteDeTiempo(escribirMovimientosPedido(pedidoId, movimientos), 4500);
+      quitarPedidoSinGuardar(pedidoId);
+      return true;
+    } catch (error) {
+      console.warn(`No se pudo guardar el pedido (intento ${intento} de 3):`, error);
+      if (intento < 3) await esperaMs(600 * intento);
+    }
+  }
+  if (apuntarSiFalla) apuntarPedidoSinGuardar(pedidoId, movimientos);
+  return false;
+}
+
+let reintentandoPedidos = false;
+async function reintentarPedidosSinGuardar() {
+  if (reintentandoPedidos) return;
+  const lista = leerPedidosSinGuardar();
+  if (!lista.length) return;
+  reintentandoPedidos = true;
+  try {
+    for (const p of lista) {
+      try {
+        await conLimiteDeTiempo(escribirMovimientosPedido(p.pedidoId, p.movimientos || []), 8000);
+        quitarPedidoSinGuardar(p.pedidoId);
+      } catch (error) {
+        console.warn("Pedido apuntado aún sin guardar, se reintentará:", p.pedidoId, error);
+      }
+    }
+  } finally {
+    reintentandoPedidos = false;
+  }
+}
+
 const LANGUAGE_STORAGE_KEY = "cash-lojo-language";
 const APP_INSTALLED_STORAGE_KEY = "cash-lojo-app-instalada";
 const ORDER_STORAGE_VERSION = 3;
@@ -740,6 +826,20 @@ export default function App() {
   // ubicación. Se carga aparte del catálogo: si falla, el catálogo no se
   // ve afectado y el pedido sale simplemente por orden alfabético.
   const [ubicacionPorArticulo, setUbicacionPorArticulo] = useState({});
+
+  // Pedidos que no se pudieron guardar para «Pedidos recibidos» (se cortó la
+  // conexión al enviarlos): se vuelven a intentar al abrir la app y cada vez
+  // que el móvil recupera la conexión.
+  useEffect(() => {
+    reintentarPedidosSinGuardar();
+    const alVolverConexion = () => reintentarPedidosSinGuardar();
+    window.addEventListener("online", alVolverConexion);
+    const intervalo = window.setInterval(reintentarPedidosSinGuardar, 60000);
+    return () => {
+      window.removeEventListener("online", alVolverConexion);
+      window.clearInterval(intervalo);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelado = false;
@@ -3701,7 +3801,8 @@ export default function App() {
   async function guardarEstadisticasPedido(
     itemsPedido = orderedItems,
     pedidoId = crearPedidoId(),
-    customerNamePedido = ""
+    customerNamePedido = "",
+    opciones = {}
   ) {
     try {
       const movimientos = itemsPedido
@@ -3751,24 +3852,9 @@ export default function App() {
       // Si este pedido_id ya tenía filas guardadas (porque es una
       // modificación de un pedido enviado antes), las sustituimos en vez
       // de acumularlas: así en Estadísticas solo aparece un pedido por
-      // cliente, con el contenido más reciente.
-      const { error: borrarError } = await supabase
-        .from("estadisticas_movimientos")
-        .delete()
-        .eq("pedido_id", pedidoId);
-
-      if (borrarError) throw borrarError;
-
-      if (!movimientos.length) return true;
-
-      const { error: movimientosError } = await supabase
-        .from("estadisticas_movimientos")
-        .insert(movimientos);
-
-      if (movimientosError) {
-        throw movimientosError;
-      }
-      return true;
+      // cliente, con el contenido más reciente. Con varios intentos y, si
+      // no se puede, queda apuntado en el móvil para reintentarlo después.
+      return await guardarMovimientosConReintentos(pedidoId, movimientos, opciones);
     } catch (err) {
       console.error("Error guardando estadísticas:", err);
       // No bloqueamos WhatsApp si falla la estadística. (El Cliente
@@ -4632,7 +4718,11 @@ export default function App() {
     });
 
     // Guardamos estadísticas en segundo plano, sin bloquear WhatsApp.
-    guardarEstadisticasPedido(itemsPedido, pedidoIdEstadisticas, customerNamePedido);
+    // Se espera a que el pedido quede guardado ANTES de abrir WhatsApp (al
+    // saltar a WhatsApp el móvil puede congelar la app y el pedido se perdía
+    // para «Pedidos recibidos»). Si no se puede, queda apuntado y se reintenta
+    // solo; el WhatsApp se envía igualmente.
+    await guardarEstadisticasPedido(itemsPedido, pedidoIdEstadisticas, customerNamePedido);
 
     const whatsappUrlPreparada = construirUrlWhatsapp({
       whatsappNumber: WHATSAPP_NUMBER,
@@ -4660,7 +4750,7 @@ export default function App() {
       // siempre sin explicación (que es justo lo que le pasó a un
       // cliente: el pedido se guardó en Pedidos recibidos pero WhatsApp
       // nunca llegó a abrirse ni a mostrar ningún aviso de error).
-      await conLimiteDeTiempo(sendByWhatsAppInterno(), 25000);
+      await conLimiteDeTiempo(sendByWhatsAppInterno(), 40000);
     } catch (error) {
       // Antes, cualquier error no controlado aquí se quedaba solo en la
       // consola del navegador (invisible en el móvil): el botón volvía
@@ -4707,8 +4797,8 @@ export default function App() {
 
       const itemsComodin = [...orderedItems];
       const guardado = await conLimiteDeTiempo(
-        guardarEstadisticasPedido(itemsComodin, crearPedidoId(), nombreReal),
-        15000
+        guardarEstadisticasPedido(itemsComodin, crearPedidoId(), nombreReal, { apuntarSiFalla: false }),
+        20000
       ).catch((error) => {
         console.error("No se pudo guardar el pedido del Cliente Comodín:", error);
         return false;
