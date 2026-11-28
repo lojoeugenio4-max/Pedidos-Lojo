@@ -10,7 +10,7 @@ import CarreraFreno from "./CarreraFreno";
 import CarreraFavoritos from "./CarreraFavoritos";
 import CarreraSprint from "./CarreraSprint";
 import CarreraClasificacion from "./CarreraClasificacion";
-import { avisoAtencion, boton } from "./lojopolyEstilos";
+import { avisoAtencion, avisoOk, boton } from "./lojopolyEstilos";
 import { esNavidad } from "../utils/carreraTablero";
 
 // Admin de La Loca Carrera de Lojo. Trabaja siempre con la última edición:
@@ -29,6 +29,55 @@ const PESTANAS = [
   { id: "final", titulo: "Premio final" },
   { id: "clasificacion", titulo: "Clasificación y premios" },
 ];
+
+// Tiradas que los clientes no usaron en la edición anterior (p. ej. Halloween):
+// se pueden pasar a la nueva con su mismo QR (admin_carrera_traspasar_pendientes,
+// migracion_carrera_traspasar_pendientes.sql). Solo sale si hay algo que pasar.
+function TraspasoPendientes({ edicionId }) {
+  const [info, setInfo] = useState(null);
+  const [pasando, setPasando] = useState(false);
+  const [mensaje, setMensaje] = useState("");
+  const [error, setError] = useState("");
+
+  const contar = useCallback(async () => {
+    const { data, error: err } = await supabase.rpc("admin_carrera_traspasar_pendientes", { p_aplicar: false });
+    setInfo(err ? null : data);
+  }, []);
+
+  useEffect(() => {
+    contar();
+  }, [contar, edicionId]);
+
+  async function pasar() {
+    if (!window.confirm(`¿Pasar ${info.tiradas} tiradas de ${info.clientes} clientes a esta edición?`)) return;
+    setError("");
+    setMensaje("");
+    setPasando(true);
+    const { data, error: err } = await supabase.rpc("admin_carrera_traspasar_pendientes", { p_aplicar: true });
+    setPasando(false);
+    if (err || !data?.ok) {
+      setError(`No se han podido pasar: ${err?.message || data?.mensaje || "error desconocido"}`);
+      return;
+    }
+    setMensaje(`Hecho: ${data.tiradas} tiradas de ${data.clientes} clientes pasadas. Usan el mismo QR que ya tenían.`);
+    contar();
+  }
+
+  if (mensaje) return <div style={{ ...avisoOk, marginBottom: 16 }}>{mensaje}</div>;
+  if (!info?.ok || !info.tiradas) return null;
+  return (
+    <div style={{ ...avisoAtencion, display: "grid", gap: 10, marginBottom: 16 }}>
+      <span>
+        🎟️ De la edición {info.edicion_anterior} quedaron <strong>{info.tiradas} tiradas sin usar</strong> de{" "}
+        <strong>{info.clientes} clientes</strong>. Puedes pasarlas a esta edición: cada cliente las jugará con el mismo QR que ya tiene.
+      </span>
+      {error && <div style={avisoError}>{error}</div>}
+      <button type="button" style={boton} onClick={pasar} disabled={pasando}>
+        {pasando ? "Pasando..." : `Pasar las ${info.tiradas} tiradas a la edición ${info.edicion_nueva}`}
+      </button>
+    </div>
+  );
+}
 
 export const ESTADOS_CARRERA = {
   preparacion: { texto: "En preparación", color: "#92400e", fondo: "#fef3c7" },
@@ -132,6 +181,8 @@ export default function Carrera() {
           </button>
         </div>
       )}
+
+      {edicion && !terminada && <TraspasoPendientes edicionId={edicion.id} />}
 
       <div style={barraPestanas} role="tablist">
         {PESTANAS.map((p) => {
