@@ -3,7 +3,8 @@
 //
 // Casillas fijas del tablero:
 //   · 1 = Salida, 63 = Meta (hay que llegar con número exacto).
-//   · 5 casillas de premio (se configuran en Admin → Casillas de premio).
+//   · Casillas de premio: las 5 de siempre (10, 20, 38, 47 y 56) y las que se
+//     añadan en Admin → Casillas de premio (tabla carrera_casillas_premio).
 //   · 6 casillas Lojo («De Lojo a Lojo y tiro mientras mi pedido recojo»).
 //   · 2 casillas Palet («Compro un palet y tiro otra vez»).
 //   · Villanos: cada uno sale varias veces (5 por defecto) y cada casilla tiene su % de caída
@@ -13,7 +14,10 @@ export const TOTAL_CASILLAS = 63;
 export const CASILLA_SALIDA = 1;
 export const CASILLA_META = 63;
 
+// Las 5 casillas de premio de siempre: se crean solas en cada edición y no se
+// pueden quitar. Las demás se añaden en el Admin (Casillas de premio).
 export const CASILLAS_PREMIO = [10, 20, 38, 47, 56];
+export const CASILLA_MITAD = 32;
 export const CASILLAS_LOJO = [9, 18, 27, 36, 45, 54];
 export const CASILLAS_PALET = [6, 12];
 
@@ -88,26 +92,50 @@ export function columnasAntiguasVillanos(posiciones) {
 }
 
 // Qué hay en cada casilla (sin contar villanos, que dependen de la edición).
-export function tipoCasillaFija(n) {
+// `premios` = casillas de premio de la edición (por defecto, las 5 de siempre).
+export function tipoCasillaFija(n, premios = CASILLAS_PREMIO) {
   if (n === CASILLA_SALIDA) return "salida";
   if (n === CASILLA_META) return "meta";
-  if (CASILLAS_PREMIO.includes(n)) return "premio";
+  if (premios.includes(n) || CASILLAS_PREMIO.includes(n)) return "premio";
   if (CASILLAS_LOJO.includes(n)) return "lojo";
   if (CASILLAS_PALET.includes(n)) return "palet";
   return null;
 }
 
 // Mapa casilla → { tipo, villano? } con todo el tablero de una edición.
-export function mapaTablero(edicion) {
+export function mapaTablero(edicion, premios = CASILLAS_PREMIO) {
   const mapa = {};
   for (let n = 1; n <= TOTAL_CASILLAS; n += 1) {
-    const tipo = tipoCasillaFija(n);
+    const tipo = tipoCasillaFija(n, premios);
     if (tipo) mapa[n] = { tipo };
   }
   normalizarVillanosCasillas(edicion).forEach((p) => {
     if (!mapa[p.casilla]) mapa[p.casilla] = { tipo: "villano", villano: p.villano, prob: p.prob };
   });
   return mapa;
+}
+
+// Casilla libre que más lejos queda de todo lo demás (para repartir bien las
+// casillas nuevas de premio). null si no queda ninguna libre.
+export function casillaLibreRepartida(edicion, premios = CASILLAS_PREMIO) {
+  const ocupada = new Set([CASILLA_MITAD, ...normalizarVillanosCasillas(edicion).map((p) => p.casilla)]);
+  for (let n = 1; n <= TOTAL_CASILLAS; n += 1) if (tipoCasillaFija(n, premios)) ocupada.add(n);
+  let mejor = null;
+  let distanciaMejor = -1;
+  for (let n = CASILLA_SALIDA + 2; n < CASILLA_META - 1; n += 1) {
+    if (ocupada.has(n)) continue;
+    let d = 99;
+    premios.forEach((p) => { d = Math.min(d, Math.abs(p - n)); });
+    if (d > distanciaMejor) { distanciaMejor = d; mejor = n; }
+  }
+  return mejor;
+}
+
+// Parámetro de la URL del tablero con las casillas de premio: "10,15,20,...".
+export function parametroPremios(premios) {
+  return [...new Set(premios.map(Number).filter((n) => n > CASILLA_SALIDA && n < CASILLA_META))]
+    .sort((a, b) => a - b)
+    .join(",");
 }
 
 // Parámetro de la URL del tablero (public/loca-carrera/tablero.html) con las

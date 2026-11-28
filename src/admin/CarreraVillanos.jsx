@@ -22,6 +22,7 @@ import {
   columnasAntiguasVillanos,
   tipoCasillaFija,
   MAX_CASILLAS_POR_VILLANO,
+  CASILLAS_PREMIO,
 } from "../utils/carreraTablero";
 
 // Los 3 villanos están en casillas fijas (el cliente ve dónde está el
@@ -57,6 +58,23 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
   const [mensaje, setMensaje] = useState("");
   const [error, setError] = useState("");
   const bloqueada = edicion.estado === "terminada";
+  // Casillas de premio de esta edición (las 5 de siempre + las añadidas en
+  // «Casillas de premio»): un villano no puede ponerse encima.
+  const [premios, setPremios] = useState(CASILLAS_PREMIO);
+
+  useEffect(() => {
+    let vivo = true;
+    supabase
+      .from("carrera_casillas_premio")
+      .select("casilla")
+      .eq("edicion_id", edicion.id)
+      .then(({ data }) => {
+        if (vivo && data?.length) setPremios(data.map((c) => Number(c.casilla)));
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [edicion.id]);
 
   useEffect(() => {
     setForm({
@@ -80,7 +98,7 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
       const ocupadas = new Set(a.posiciones.map((p) => Math.round(num(p.casilla))));
       let libre = null;
       for (let n = CASILLA_SALIDA + 1; n < CASILLA_META && libre === null; n += 1) {
-        if (!ocupadas.has(n) && !tipoCasillaFija(n) && n !== 32) libre = n;
+        if (!ocupadas.has(n) && !tipoCasillaFija(n, premios) && n !== 32) libre = n;
       }
       const primera = a.posiciones.find((p) => p.villano === villano);
       const nueva = { villano, casilla: libre ?? "", prob: primera?.prob ?? 20 };
@@ -107,7 +125,7 @@ export default function CarreraVillanos({ edicion, onGuardado }) {
     const n = Math.round(num(form.posiciones[indice].casilla));
     if (n <= CASILLA_SALIDA || n >= CASILLA_META) return `Tiene que estar entre la ${CASILLA_SALIDA + 1} y la ${CASILLA_META - 1}.`;
     if (n === 32) return "La 32 es la casilla del premio de la mitad.";
-    const tipo = tipoCasillaFija(n);
+    const tipo = tipoCasillaFija(n, premios);
     if (tipo) return `La ${n} ya es ${NOMBRE_TIPO[tipo]}.`;
     const repetida = form.posiciones.findIndex((p, i) => i !== indice && Math.round(num(p.casilla)) === n);
     if (repetida >= 0) return `La ${n} ya la tiene ${VILLANOS[form.posiciones[repetida].villano].nombre}.`;

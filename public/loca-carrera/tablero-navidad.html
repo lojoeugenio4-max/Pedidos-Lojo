@@ -1055,8 +1055,8 @@ const VILLANOS_CASILLAS = (() => {
     .map(([n, v, p]) => ({ casilla: +n, tipo: TIPO_VILLANO[v], prob: p === undefined || p === '' ? null : +p }))
     .filter(x => x.tipo && x.casilla > 1 && x.casilla < 63);
   if (lista.length) return lista;
-  // por defecto: 5 casillas por villano, con más al principio del tablero
-  const def = { villano: [4, 14, 24, 35, 44], vieja: [8, 22, 31, 41, 58], jubilado: [11, 17, 29, 50, 61] };
+  // (pruebas) 7 casillas por villano, como se van a poner en Navidad
+  const def = { villano: [4, 14, 19, 24, 35, 44, 49], vieja: [8, 13, 22, 31, 41, 53, 58], jubilado: [11, 17, 29, 39, 46, 50, 61] };
   return Object.entries(def).flatMap(([tipo, cs]) => cs.map(casilla => ({ casilla, tipo, prob: null })));
 })();
 const casillasDe = tipo => VILLANOS_CASILLAS.filter(x => x.tipo === tipo).map(x => x.casilla).sort((a, b) => a - b);
@@ -1078,6 +1078,16 @@ const PREMIOS = {
   56: { nombre: 'Cheque de 50 €', quedan: 2, desde: '2099-01-01' }, // aún no ha llegado su fecha
 };
 let PREMIO_FINAL = 'Cheque de 50 € canjeable en productos Lojo';
+// Casillas de premio de la edición: la TV las manda en la URL (?p=10,15,20,...).
+// Sin URL (pruebas), las 5 de siempre y 10 más repartidas, para ver cómo queda.
+(() => {
+  const libre = n => n > 2 && n < 63 && n !== 32 && !LOJOS.includes(n) && !ESPECIALES[n] && !VILLANOS_CASILLAS.some(x => x.casilla === n);
+  const deUrl = (PARAMS.get('p') || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 1 && n < 63 && n !== 32);
+  const lista = deUrl.length ? deUrl : [...Object.keys(PREMIOS).map(Number), ...[3, 15, 21, 26, 33, 40, 43, 52, 57, 60].filter(libre)];
+  Object.keys(PREMIOS).forEach(k => { if (!lista.includes(+k)) delete PREMIOS[k]; });
+  const PRUEBA = ['1 caja de turrón', '1 caja de polvorones', '1 botella de cava', '1 caja de mantecados', '1 lote de ibéricos', '1 caja de vino', '1 queso curado', '1 caja de bombones', '1 caja de refrescos', '1 caja de cerveza'];
+  lista.filter(n => !PREMIOS[n]).forEach((n, i) => { PREMIOS[n] = deUrl.length ? { nombre: 'Premio', quedan: 0 } : { nombre: PRUEBA[i % PRUEBA.length], quedan: 2 }; });
+})();
 Object.keys(PREMIOS).forEach(n => ESPECIALES[n] = { tipo: 'regalo', ico: '🎁', nom: 'PREMIO', color: '#ff4fa3' });
 LOJOS.forEach(n => ESPECIALES[n] = { tipo: 'lojo', nom: 'LOJO', color: '#1b1fa8' });
 VILLANOS_CASILLAS.forEach(x => { if (!ESPECIALES[x.casilla]) ESPECIALES[x.casilla] = { ...DATOS_VILLANO[x.tipo], prob: x.prob }; });

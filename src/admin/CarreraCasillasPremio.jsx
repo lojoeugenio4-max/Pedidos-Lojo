@@ -2,6 +2,16 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import LojoPolyArticuloPremio from "./LojoPolyArticuloPremio";
 import {
+  CASILLAS_PREMIO,
+  CASILLA_MITAD,
+  CASILLA_SALIDA,
+  CASILLA_META,
+  casillaLibreRepartida,
+  normalizarVillanosCasillas,
+  tipoCasillaFija,
+  villanosDe,
+} from "../utils/carreraTablero";
+import {
   contenedor,
   tituloSeccion,
   campo,
@@ -10,14 +20,17 @@ import {
   fila,
   boton,
   botonSecundario,
+  botonPeligro,
   avisoError,
   avisoOk,
   ayuda,
 } from "./lojopolyEstilos";
 
-// Las 5 casillas de premio del tablero (10, 20, 38, 47 y 56). Cada una
-// tiene su premio, un número máximo de veces y una fecha desde la que se
+// Casillas de premio del tablero: las 5 de siempre (10, 20, 38, 47 y 56) y
+// las que se añadan aquí (función admin_carrera_anadir_casilla_premio). Cada
+// una tiene su premio, un número máximo de veces y una fecha desde la que se
 // puede caer en ella. Agotada o sin activar, el dado nunca lleva a ella.
+// Las añadidas se pueden quitar mientras no se haya dado ningún premio en ellas.
 
 export default function CarreraCasillasPremio({ edicion }) {
   const [casillas, setCasillas] = useState([]);
@@ -52,11 +65,13 @@ export default function CarreraCasillasPremio({ edicion }) {
         el dado saca otro número. Una casilla sin premio tampoco da nada. Los premios ganados aparecen en «Clasificación y
         premios» para marcarlos como entregados.
       </p>
+      <AnadirCasilla edicion={edicion} casillas={casillas} bloqueada={edicion.estado === "terminada"} onHecho={cargar} />
       {casillas.map((c) => (
         <TarjetaCasilla
           key={c.id}
           casilla={c}
           contador={contador[c.casilla]}
+          edicionId={edicion.id}
           bloqueada={edicion.estado === "terminada"}
           onGuardado={cargar}
         />
@@ -65,7 +80,83 @@ export default function CarreraCasillasPremio({ edicion }) {
   );
 }
 
-function TarjetaCasilla({ casilla, contador, bloqueada, onGuardado }) {
+// Añadir una casilla de premio nueva (propone la casilla libre más repartida).
+function AnadirCasilla({ edicion, casillas, bloqueada, onHecho }) {
+  const usadas = casillas.map((c) => Number(c.casilla));
+  const sugerida = casillaLibreRepartida(edicion, usadas);
+  const [numero, setNumero] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState("");
+  const [mensaje, setMensaje] = useState("");
+  const VILL = villanosDe(edicion);
+
+  useEffect(() => setNumero(sugerida ? String(sugerida) : ""), [sugerida]);
+
+  function problema(n) {
+    if (!Number.isInteger(n)) return "Escribe el número de la casilla.";
+    if (n <= CASILLA_SALIDA + 1 || n >= CASILLA_META) return `Tiene que estar entre la ${CASILLA_SALIDA + 2} y la ${CASILLA_META - 1}.`;
+    if (n === CASILLA_MITAD) return `La ${CASILLA_MITAD} es la del premio de la mitad.`;
+    if (usadas.includes(n)) return `La ${n} ya es casilla de premio.`;
+    const fija = tipoCasillaFija(n, usadas);
+    if (fija) return `La ${n} ya es casilla ${fija === "lojo" ? "Lojo" : fija === "palet" ? "Palet" : fija}.`;
+    const villano = normalizarVillanosCasillas(edicion).find((p) => p.casilla === n);
+    if (villano) return `En la ${n} está ${VILL[villano.villano]?.nombre || "un villano"}. Cámbialo antes en «Villanos y amigos».`;
+    return null;
+  }
+
+  async function anadir() {
+    setError("");
+    setMensaje("");
+    const n = Math.round(Number(numero));
+    const p = problema(n);
+    if (p) {
+      setError(p);
+      return;
+    }
+    setOcupado(true);
+    const { error: err } = await supabase.rpc("admin_carrera_anadir_casilla_premio", { p_edicion: edicion.id, p_casilla: n });
+    setOcupado(false);
+    if (err) {
+      setError(
+        /function|does not exist|schema cache/i.test(err.message)
+          ? "Falta aplicar en Supabase la migración migracion_carrera_casillas_premio_extra.sql."
+          : `No se ha podido añadir: ${err.message}`
+      );
+      return;
+    }
+    setMensaje(`Casilla ${n} añadida. Ponle su premio abajo y guárdala.`);
+    onHecho?.();
+  }
+
+  if (bloqueada) return null;
+  return (
+    <div style={{ ...tarjeta, background: "#ecfdf5", borderColor: "#a7f3d0" }}>
+      <strong style={{ fontSize: 15 }}>➕ Añadir casilla de premio</strong>
+      <span style={{ fontSize: 13, color: "#065f46" }}>
+        Ahora hay {casillas.length} casillas de premio. Te propongo la casilla libre que queda más repartida por el tablero;
+        puedes cambiarla. No puede estar encima de un villano, una casilla Lojo o Palet, ni en la {CASILLA_MITAD}.
+      </span>
+      {error && <div style={avisoError}>{error}</div>}
+      {mensaje && <div style={avisoOk}>{mensaje}</div>}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <input
+          id="lc-premio-nueva-casilla"
+          style={{ ...input, width: 110 }}
+          type="number"
+          min={CASILLA_SALIDA + 2}
+          max={CASILLA_META - 1}
+          value={numero}
+          onChange={(e) => setNumero(e.target.value)}
+        />
+        <button type="button" style={boton} onClick={anadir} disabled={ocupado || !numero}>
+          {ocupado ? "Añadiendo..." : "Añadir casilla"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TarjetaCasilla({ casilla, contador, edicionId, bloqueada, onGuardado }) {
   const [form, setForm] = useState(casilla);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState("");
@@ -121,6 +212,22 @@ function TarjetaCasilla({ casilla, contador, bloqueada, onGuardado }) {
         ? "Guardado. Artículo nuevo: su contador empieza de cero."
         : "Guardado."
     );
+    onGuardado?.();
+  }
+
+  const esExtra = !CASILLAS_PREMIO.includes(Number(casilla.casilla));
+  const [quitando, setQuitando] = useState(false);
+  async function quitar() {
+    if (!window.confirm(`¿Quitar la casilla de premio ${casilla.casilla} del tablero?`)) return;
+    setMensaje("");
+    setError("");
+    setQuitando(true);
+    const { error: err } = await supabase.rpc("admin_carrera_quitar_casilla_premio", { p_edicion: edicionId, p_casilla: Number(casilla.casilla) });
+    setQuitando(false);
+    if (err) {
+      setError(`No se ha podido quitar: ${err.message}`);
+      return;
+    }
     onGuardado?.();
   }
 
@@ -216,6 +323,11 @@ function TarjetaCasilla({ casilla, contador, bloqueada, onGuardado }) {
               title="Para cuando pones un premio nuevo cambiando solo el texto: el contador vuelve a 0"
             >
               {reiniciando ? "Poniendo a cero..." : "♻️ Empezar de cero con este premio"}
+            </button>
+          )}
+          {esExtra && Number(contador?.dados || 0) === 0 && (
+            <button type="button" style={botonPeligro} onClick={quitar} disabled={quitando}>
+              {quitando ? "Quitando..." : "🗑️ Quitar esta casilla"}
             </button>
           )}
         </div>

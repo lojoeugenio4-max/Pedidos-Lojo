@@ -7,8 +7,9 @@
 // Halloween (tablero.html) o el de Navidad (tablero-navidad.html), según la
 // versión de la edición actual (carrera_ediciones.tema). Aquí solo se abre a
 // pantalla completa y se le pasan los datos reales:
-//   · en la URL, las casillas de los villanos del Admin (2 por villano, cada
-//     una con su %). Si se cambian en el Admin, el tablero se recarga solo.
+//   · en la URL, las casillas de los villanos del Admin (cada una con su %) y
+//     las casillas de premio de la edición. Si se cambian en el Admin, el
+//     tablero se recarga solo.
 //   · por mensaje, cada 15 s: clientes (Top 10 y fichas de los 5 primeros),
 //     premios de las casillas (los agotados salen tachados) y premio final.
 //   · `tirada`: la tirada que acaba de hacer un cliente en caja (resultado de
@@ -16,7 +17,7 @@
 //     avisa al TPV (utils/carreraCanal.js) para que siga con la siguiente.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../supabaseClient";
-import { parametroVillanos, rutaTablero } from "../../utils/carreraTablero";
+import { parametroPremios, parametroVillanos, rutaTablero } from "../../utils/carreraTablero";
 import { avisarFinTiradaCarrera } from "../../utils/carreraCanal";
 
 const REFRESCO_MS = 15000;
@@ -84,13 +85,15 @@ async function cargarDatosCarrera() {
     }
   }
 
-  return { edicion, jugadores, premios, premioMitad, comodin };
+  const casillasPremio = parametroPremios((cas.data || []).map((c) => c.casilla));
+  return { edicion, jugadores, premios, premioMitad, comodin, casillasPremio };
 }
 
 export default function CarreraTableroTV({ tirada = null }) {
   const iframeRef = useRef(null);
   const datosRef = useRef(null);
   const [villanos, setVillanos] = useState(null);
+  const [casillasPremio, setCasillasPremio] = useState("");
   const [ruta, setRuta] = useState(rutaTablero(null));
   const [aviso, setAviso] = useState("");
   // Tiradas que aún no se han podido mandar al tablero (todavía cargando).
@@ -110,7 +113,7 @@ export default function CarreraTableroTV({ tirada = null }) {
   // Halloween/Navidad): hasta que avise de que está listo, las tiradas esperan.
   useEffect(() => {
     listoRef.current = false;
-  }, [villanos, ruta]);
+  }, [villanos, ruta, casillasPremio]);
 
   useEffect(() => {
     if (!tirada?.token || tiradasYaMandadas.has(tirada.token)) return;
@@ -145,6 +148,7 @@ export default function CarreraTableroTV({ tirada = null }) {
         datosRef.current = d;
         setAviso(d.edicion ? "" : "La Loca Carrera todavía no está creada en el Admin.");
         setVillanos(parametroVillanos(d.edicion));
+        setCasillasPremio(d.casillasPremio || "");
         setRuta(rutaTablero(d.edicion));
         enviar();
       } catch (err) {
@@ -178,9 +182,9 @@ export default function CarreraTableroTV({ tirada = null }) {
       {villanos !== null && (
         <iframe
           ref={iframeRef}
-          key={`${ruta}|${villanos}`}
+          key={`${ruta}|${villanos}|${casillasPremio}`}
           title="La Loca Carrera de Lojo"
-          src={`${ruta}?tv=1&v=${encodeURIComponent(villanos)}`}
+          src={`${ruta}?tv=1&v=${encodeURIComponent(villanos)}${casillasPremio ? `&p=${casillasPremio}` : ""}`}
           style={estilos.iframe}
           allow="autoplay"
           onLoad={enviar}
